@@ -23,6 +23,7 @@ jobs:
           - name: bzip2
           - name: connect
           - name: coreutils
+          - name: findutils
           - name: fzf
           - name: gawk
           - name: getopt
@@ -34,7 +35,6 @@ jobs:
           - name: gnutar
           - name: go-task
           - name: gost
-          - name: indent
           - name: inetutils
           - name: lsof
           - name: m4
