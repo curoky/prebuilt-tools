@@ -1,0 +1,46 @@
+version: "3"
+
+includes:
+  lib:
+    taskfile: ../common/Taskfile.yaml
+    flatten: true
+
+tasks:
+  bazelisk: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix bazelisk_static
+  croc: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix croc_static
+  fzf: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix fzf_static
+  gdu: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix gdu_static
+  gh: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix gh_static
+  git-lfs: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix git_lfs_static
+  go-task: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix go_task_static
+  gost: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix gost_static
+  shfmt: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix shfmt_static
+
+  diffutils: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix diffutils_static
+  gnupg-minimal: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix gnupg_minimal_static
+
+  python311: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix python311_static
+
+  silver-searcher:
+    - task: setup-extra
+    - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix silver_searcher_static
+
+  protobuf_3_8_0:
+    - task: setup-extra
+    - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix protobuf_3_8_0_static
+
+  protobuf_3_9_2:
+    - task: setup-extra
+    - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix protobuf_3_9_2_static
+
+  wget:
+    - task: setup-extra
+    - nix-env -p ~/nix/profiles/prebuilt -iA old.pkgsStatic.wget
+
+  ruff:
+    - task: setup-extra
+    - nix-env -p ~/nix/profiles/prebuilt -iA old.pkgsStatic.ruff
+
+  git:
+    - task: setup-extra
+    - nix-env -p ~/nix/profiles/prebuilt -iA git_fix.pkgsStatic.git

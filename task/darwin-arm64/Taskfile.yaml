@@ -1,0 +1,15 @@
+version: "3"
+
+includes:
+  lib:
+    taskfile: ../common/Taskfile.yaml
+    flatten: true
+
+tasks:
+  silver-searcher: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.silver-searcher
+  # zsh: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zsh
+  fzf: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.fzf
+  git-lfs: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.git-lfs
+  go-task: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.go-task
+  gost: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.gost
+  shfmt: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.shfmt
