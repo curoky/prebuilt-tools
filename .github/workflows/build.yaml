@@ -1,0 +1,220 @@
+name: build
+
+on:
+  push:
+    paths:
+      - ".github/workflows/build.yaml"
+      - "pkgs/**"
+      - "task/**"
+      - "script/**"
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '0 0 - name: - name: 0'
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - name: aria2
+          - name: bzip2
+          - name: connect
+          - name: coreutils
+          - name: fzf
+          - name: gettext
+          - name: git-lfs
+          - name: gnupatch
+          - name: go-task
+          - name: gost
+          - name: inetutils
+          - name: lsof
+          - name: m4
+          - name: ncdu_1
+          - name: netcat
+          - name: rsync
+          - name: shfmt
+          - name: silver-searcher
+          - name: unzip
+          - name: vim
+          - name: xz
+          - name: zip
+          - name: zsh
+          - name: zstd
+          - name: zsh-bundle
+          - name: vim-bundle
+          - name: rime-bundle
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3"
+      - uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-24.11
+      - run: sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b ~/.local/bin
+
+      - run: ~/.local/bin/task -t task/darwin-arm64/Taskfile.yaml setup
+      - run: ~/.local/bin/task -t task/darwin-arm64/Taskfile.yaml ${{ matrix.name }}
+      - run: ./script/pack.py
+      - run: ./script/patch-nix-path.sh tmp/output
+      - run: |
+          cd tmp
+          mv output ${{ matrix.name }}
+          tar -czvf ${{ matrix.name }}.darwin_arm64.tar.gz ${{ matrix.name }}
+      - uses: svenstaro/upload-release-action@v2
+        with:
+          file: tmp/${{ matrix.name }}.darwin_arm64.tar.gz
+          asset_name: ${{ matrix.name }}.darwin_arm64.tar.gz
+          tag: "v1.0"
+          overwrite: true
+
+      - uses: mxschmitt/action-tmate@v3
+        if: ${{ failure() }}
+        timeout-minutes: 30
+
+  linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        # task --list-all | sed -e 's/://g' -e 's/*/- name:/g'
+        include:
+          - name: aria2
+          - name: atuin
+          - name: autoconf
+          - name: automake
+          - name: bash
+          - name: bat
+          - name: bazelisk
+          - name: binutils
+          - name: bison
+          - name: buildifier
+          - name: bzip2
+          - name: cacert
+          - name: connect
+          - name: coreutils
+          - name: croc
+          - name: curl
+          - name: diffutils
+          - name: ethtool
+          - name: eza
+          - name: fd
+          - name: file
+          - name: findutils
+          - name: flex
+          - name: fzf
+          - name: gdb
+          - name: gdu
+          - name: gettext
+          - name: gh
+          - name: git
+          - name: git-absorb
+          - name: git-extras
+          - name: git-lfs
+          - name: glibcLocales
+          - name: gnugrep
+          - name: gnumake
+          - name: gnupatch
+          - name: gnupg-minimal
+          - name: gnused
+          - name: gnutar
+          - name: go-task
+          - name: gost
+          - name: gzip
+          - name: inetutils
+          - name: iproute2
+          - name: iptables
+          - name: iputils
+          - name: jq
+          - name: krb5
+          - name: less
+          - name: libcap
+          - name: libtool
+          - name: llvmPackages_18.clang-unwrapped
+          - name: lsb-release
+          - name: lsof
+          - name: m4
+          - name: man
+          - name: miniserve
+          - name: ncdu_1
+          - name: netcat
+          - name: nettools
+          - name: ninja
+          - name: nixfmt-rfc-style
+          - name: nixpkgs-fmt
+          - name: numactl
+          - name: openssh_gssapi
+          - name: openssl
+          - name: patchelf
+          - name: perl
+          - name: pkg-config
+          - name: procps
+          - name: procs
+          - name: protobuf_24
+          - name: protobuf_25
+          - name: protobuf_28
+          - name: protobuf_3_8_0
+          - name: protobuf_3_9_2
+          - name: python311
+          - name: rime-bundle
+          - name: rsync
+          - name: ruff
+          # - name: setup
+          # - name: setup-extra
+          - name: shfmt
+          - name: silver-searcher
+          - name: snappy
+          - name: starship
+          - name: strace
+          - name: tmux
+          - name: tmux-bundle
+          - name: tree
+          - name: tzdata
+          - name: unzip
+          - name: util-linux
+          - name: vim
+          - name: vim-bundle
+          - name: wget
+          - name: xxd
+          - name: xz
+          - name: zip
+          - name: zlib
+          - name: zlib-ng
+          - name: zsh
+          - name: zsh-bundle
+          - name: zstd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3"
+      - uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-24.11
+
+      - run: sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b ~/.local/bin
+
+      - run: ~/.local/bin/task -t task/linux-x86_64/Taskfile.yaml setup
+      - run: ~/.local/bin/task -t task/linux-x86_64/Taskfile.yaml ${{ matrix.name }}
+      - run: ./script/pack.py
+      - run: ./script/patch-nix-path.sh tmp/output
+      - run: |
+          cd tmp
+          mv output ${{ matrix.name }}
+          tar -czvf ${{ matrix.name }}.linux_x86_64.tar.gz ${{ matrix.name }}
+      # - run: chmod +w -R /tmp/output
+      # - run: ./script/strip-bin.sh /tmp/output
+      - uses: svenstaro/upload-release-action@v2
+        with:
+          file: tmp/${{ matrix.name }}.linux_x86_64.tar.gz
+          asset_name: ${{ matrix.name }}.linux_x86_64.tar.gz
+          tag: "v1.0"
+          overwrite: true
+
+      - uses: mxschmitt/action-tmate@v3
+        if: ${{ failure() }}
+        timeout-minutes: 30
