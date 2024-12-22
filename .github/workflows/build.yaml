@@ -24,28 +24,36 @@ jobs:
           - name: connect
           - name: coreutils
           - name: fzf
+          - name: gawk
+          - name: getopt
           - name: gettext
           - name: git-lfs
+          - name: gnugrep
           - name: gnupatch
+          - name: gnused
+          - name: gnutar
           - name: go-task
           - name: gost
+          - name: indent
           - name: inetutils
           - name: lsof
           - name: m4
           - name: ncdu_1
           - name: netcat
+          - name: openssl
+          - name: rime-bundle
           - name: rsync
           - name: shfmt
           - name: silver-searcher
           - name: unzip
           - name: vim
+          - name: vim-bundle
           - name: xz
           - name: zip
           - name: zsh
-          - name: zstd
           - name: zsh-bundle
-          - name: vim-bundle
-          - name: rime-bundle
+          - name: zstd
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -107,8 +115,10 @@ jobs:
           - name: findutils
           - name: flex
           - name: fzf
+          - name: gawk
           - name: gdb
           - name: gdu
+          - name: getopt
           - name: gettext
           - name: gh
           - name: git
@@ -125,6 +135,7 @@ jobs:
           - name: go-task
           - name: gost
           - name: gzip
+          - name: indent
           - name: inetutils
           - name: iproute2
           - name: iptables
@@ -163,8 +174,6 @@ jobs:
           - name: rime-bundle
           - name: rsync
           - name: ruff
-          # - name: setup
-          # - name: setup-extra
           - name: shfmt
           - name: silver-searcher
           - name: snappy

@@ -27,6 +27,8 @@ tasks:
   atuin: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.atuin
   autoconf: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.autoconf
   automake: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.automake
+  gawk: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gawk
+  getopt: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.getopt
   bash: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bash
   bat: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bat
   binutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.binutils
@@ -34,7 +36,7 @@ tasks:
   buildifier: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.buildifier
   bzip2: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bzip2
   connect: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.connect
-  coreutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.coreutils
+  # coreutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.coreutils
   curl: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.curl
   ethtool: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ethtool
   eza: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.eza
@@ -53,6 +55,7 @@ tasks:
   gnused: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnused
   gnutar: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnutar
   gzip: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gzip
+  indent: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.indent
   inetutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.inetutils
   iproute2: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.iproute2
   iptables: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.iptables
@@ -111,3 +114,6 @@ tasks:
   zsh:
     - task: setup-extra
     - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh_static
+  
+  coreutils: 
+    - nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix coreutils_static
