@@ -114,6 +114,6 @@ tasks:
   zsh:
     - task: setup-extra
     - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh_static
-  
-  coreutils: 
+
+  coreutils:
     - nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix coreutils_static

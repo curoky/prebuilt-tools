@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # Copyright (c) 2024-2024 curoky(cccuroky@gmail.com).
 #
-# This file is part of prebuilt.
-# See https://github.com/curoky/prebuilt for further info.
+# This file is part of prebuilt-tools.
+# See https://github.com/curoky/prebuilt-tools for further info.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
