@@ -62,9 +62,8 @@ jobs:
           - name: zstd
 
     steps:
-      - name: Set flag to skip steps
-        id: set_skip_flag
-        run: echo "skip_steps=true" >> $GITHUB_ENV
+      - run: echo "skip_steps=true" >> $GITHUB_ENV
+      - run: echo "skip_steps=false" >> $GITHUB_ENV
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.name == matrix.name }}
 
       - uses: actions/checkout@v4
@@ -217,9 +216,8 @@ jobs:
           - name: zsh-bundle
           - name: zstd
     steps:
-      - name: Set flag to skip steps
-        id: set_skip_flag
-        run: echo "skip_steps=true" >> $GITHUB_ENV
+      - run: echo "skip_steps=true" >> $GITHUB_ENV
+      - run: echo "skip_steps=false" >> $GITHUB_ENV
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.name == matrix.name }}
 
       - uses: actions/checkout@v4
