@@ -26,6 +26,7 @@ jobs:
           - name: findutils
           - name: fzf
           - name: gawk
+          - name: gdu
           - name: getopt
           - name: gettext
           - name: git-lfs
