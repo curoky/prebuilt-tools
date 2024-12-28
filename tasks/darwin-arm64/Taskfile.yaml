@@ -8,7 +8,10 @@ includes:
 tasks:
   silver-searcher: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.silver-searcher
   # zsh: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zsh
+
+  # go pkgs
   fzf: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.fzf
+  gdu: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.gdu
   git-lfs: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.git-lfs
   go-task: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.go-task
   gost: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.gost
