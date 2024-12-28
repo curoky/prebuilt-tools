@@ -6,7 +6,7 @@ on:
   #     - ".github/workflows/build.yaml"
   #     - "pkgs/**"
   #     - "tasks/**"
-  #     - "scirpts/**"
+  #     - "scripts/**"
   workflow_dispatch:
     inputs:
       name:
@@ -83,8 +83,8 @@ jobs:
           sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b ~/.local/bin
           ~/.local/bin/task -t tasks/darwin-arm64/Taskfile.yaml setup
           ~/.local/bin/task -t tasks/darwin-arm64/Taskfile.yaml ${{ matrix.name }}
-          ./scirpts/pack.py
-          ./scirpts/patch-nix-path.sh tmp/output
+          ./scripts/pack.py
+          ./scripts/patch-nix-path.sh tmp/output
           cd tmp
           mv output ${{ matrix.name }}
           tar -czvf ${{ matrix.name }}.darwin_arm64.tar.gz ${{ matrix.name }}
@@ -235,15 +235,15 @@ jobs:
           sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b ~/.local/bin
           ~/.local/bin/task -t tasks/linux-x86_64/Taskfile.yaml setup
           ~/.local/bin/task -t tasks/linux-x86_64/Taskfile.yaml ${{ matrix.name }}
-          ./scirpts/pack.py
-          ./scirpts/patch-nix-path.sh tmp/output
+          ./scripts/pack.py
+          ./scripts/patch-nix-path.sh tmp/output
           cd tmp
           mv output ${{ matrix.name }}
           tar -czvf ${{ matrix.name }}.linux_x86_64.tar.gz ${{ matrix.name }}
         if: ${{ env.skip_steps != 'true' }}
 
       # - run: chmod +w -R /tmp/output
-      # - run: ./scirpts/strip-bin.sh /tmp/output
+      # - run: ./scripts/strip-bin.sh /tmp/output
       - uses: svenstaro/upload-release-action@v2
         if: ${{ env.skip_steps != 'true' }}
         with:
