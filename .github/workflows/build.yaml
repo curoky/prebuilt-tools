@@ -194,6 +194,7 @@ jobs:
           - name: rime-bundle
           - name: rsync
           - name: ruff
+          - name: scc
           - name: shfmt
           - name: silver-searcher
           - name: snappy
