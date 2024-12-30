@@ -193,6 +193,8 @@ in
   };
 
   cacert = pkgs.callPackage ./cacert.nix { };
+  dive_static = pkgs.pkgsStatic.callPackage ./dive.nix { };
+
   zsh-bundle = pkgs.callPackage ./zsh-bundle.nix { };
   vim-bundle = pkgs.callPackage ./vim-bundle.nix { };
   rime-bundle = pkgs.callPackage ./rime-bundle.nix { };

@@ -44,3 +44,7 @@ tasks:
   git:
     - task: setup-extra
     - nix-env -p ~/nix/profiles/prebuilt -iA git_fix.pkgsStatic.git
+
+  dive:
+    - task: setup-extra
+    - nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix dive_static

@@ -127,6 +127,7 @@ jobs:
           - name: croc
           - name: curl
           - name: diffutils
+          - name: dive
           - name: ethtool
           - name: eza
           - name: fd
