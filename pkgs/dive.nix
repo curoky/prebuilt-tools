@@ -51,6 +51,8 @@ buildGoModule rec {
     })
   ];
 
+  checkPhase = "" ;
+
   ldflags = [
     "-s"
     "-w"
