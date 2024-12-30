@@ -23,6 +23,8 @@ tasks:
 
   python311: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix python311_static
 
+  glibcLocales: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix glibcLocales
+
   silver-searcher:
     - task: setup-extra
     - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix silver_searcher_static

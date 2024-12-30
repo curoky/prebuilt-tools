@@ -191,6 +191,9 @@ in
   gnupg_minimal_static = pkgs.pkgsStatic.gnupg.override {
     enableMinimal = true;
   };
+  glibcLocales = pkgs.glibcLocales.override {
+    allLocales = false;
+  };
 
   cacert = pkgs.callPackage ./cacert.nix { };
 

@@ -48,7 +48,6 @@ tasks:
   gettext: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gettext
   git-absorb: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.git-absorb
   git-extras: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.git-extras
-  glibcLocales: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.glibcLocales
   gnugrep: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnugrep
   gnumake: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnumake
   gnupatch: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnupatch
