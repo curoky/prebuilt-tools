@@ -36,6 +36,12 @@ let
   fzf_static = pkgs.fzf.overrideAttrs (oldAttrs: rec {
     CGO_ENABLED = "0";
   });
+  dive_static = pkgs.dive.overrideAttrs (oldAttrs: rec {
+    CGO_ENABLED = "0";
+  });
+  scc_static = pkgs.scc.overrideAttrs (oldAttrs: rec {
+    CGO_ENABLED = "0";
+  });
 in
 {
   inherit shfmt_static;
@@ -47,4 +53,6 @@ in
   inherit git_lfs_static;
   inherit go_task_static;
   inherit gost_static;
+  inherit dive_static;
+  inherit scc_static;
 }

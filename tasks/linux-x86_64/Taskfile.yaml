@@ -15,6 +15,8 @@ tasks:
   go-task: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix go_task_static
   gost: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix gost_static
   shfmt: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix shfmt_static
+  scc: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix scc_static
+  dive: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix dive_static
 
   diffutils: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix diffutils_static
   gnupg-minimal: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix gnupg_minimal_static
@@ -44,7 +46,3 @@ tasks:
   git:
     - task: setup-extra
     - nix-env -p ~/nix/profiles/prebuilt -iA git_fix.pkgsStatic.git
-
-  dive:
-    - task: setup-extra
-    - nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix dive_static
