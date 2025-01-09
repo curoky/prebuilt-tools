@@ -19,10 +19,33 @@
 set -xeuo pipefail
 
 arch=$(echo $(uname -s)_$(uname -m) | tr '[:upper:]' '[:lower:]') # linux_amd64/darwin_arm64
-name=$1
 
-rm -rf tmp
-mkdir -p tmp/${name}.${arch}
-curl -SL https://github.com/curoky/prebuilt-tools/releases/download/v1.0/${name}.${arch}.tar.gz \
-  -o tmp/${name}.${arch}.tar.gz
-tar -x --gunzip -f tmp/${name}.${arch}.tar.gz -C tmp/${name}.${arch} --strip-components=1
+download_path=tmp
+install_path=tmp
+
+while getopts "i:d:n:a:" opt; do
+  case "$opt" in
+    n)
+      name="$OPTARG"
+      ;;
+    i)
+      install_path="$OPTARG"
+      ;;
+    d)
+      download_path="$OPTARG"
+      ;;
+    a)
+      arch="$OPTARG"
+      ;;
+    \?)
+      echo "Usage: $0 [-n name] [-i install_path] [-d download_path] [-a arch]"
+      exit 1
+      ;;
+  esac
+done
+
+mkdir -p $install_path
+mkdir -p $download_path
+curl -sSL https://github.com/curoky/prebuilt-tools/releases/download/v1.0/${name}.${arch}.tar.gz \
+  -o $download_path/${name}.tar.gz
+tar -x --gunzip -f $download_path/${name}.tar.gz -C $install_path --strip-components=1
