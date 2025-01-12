@@ -1,4 +1,4 @@
-{ lib, stdenv, fetchFromGitHub, vimPlugins}:
+{ lib, stdenv, vimPlugins}:
 
 let
   inherit (vimPlugins) vim-plug;

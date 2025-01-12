@@ -1,4 +1,4 @@
-{ lib, stdenv, python3, fetchurl, fetchFromGitHub, cmake, fetchzip, opencc, unzip, python3Packages, pkgs}:
+{ lib, stdenv, fetchFromGitHub}:
 
 stdenv.mkDerivation rec {
   pname = "tmux-conf";

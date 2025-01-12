@@ -1,4 +1,4 @@
-{ lib, stdenv, python3, fetchurl, fetchFromGitHub, cmake, fetchzip, opencc, unzip, python3Packages, pkgs}:
+{ lib, stdenv, fetchurl, opencc, unzip}:
 
 stdenv.mkDerivation rec {
   pname = "rime-bundle";
