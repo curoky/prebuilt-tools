@@ -1,6 +1,9 @@
 name: build
 
 on:
+  push:
+    branches:
+      - master
   # push:
   #   paths:
   #     - ".github/workflows/build.yaml"
@@ -60,6 +63,13 @@ jobs:
           - name: zsh
           - name: zsh-bundle
           - name: zstd
+          - name: starship
+          - name: eza
+          - name: bat
+          - name: atuin
+          - name: ruff
+          - name: fd
+          - name: git-absorb
 
     steps:
       - run: echo "skip_steps=true" >> $GITHUB_ENV

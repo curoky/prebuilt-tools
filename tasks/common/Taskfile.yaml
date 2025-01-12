@@ -24,13 +24,11 @@ tasks:
   #   - nix-channel --update
 
   aria2: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.aria2
-  atuin: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.atuin
   autoconf: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.autoconf
   automake: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.automake
   gawk: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gawk
   getopt: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.getopt
   bash: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bash
-  bat: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bat
   binutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.binutils
   bison: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bison
   buildifier: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.buildifier
@@ -39,14 +37,11 @@ tasks:
   # coreutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.coreutils
   curl: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.curl
   ethtool: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ethtool
-  eza: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.eza
-  fd: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.fd
   file: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.file
   findutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.findutils
   flex: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.flex
   gdb: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gdb
   gettext: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gettext
-  git-absorb: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.git-absorb
   git-extras: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.git-extras
   gnugrep: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnugrep
   gnumake: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnumake
@@ -89,7 +84,6 @@ tasks:
   protobuf_28: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.protobuf_28
   rsync: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.rsync
   snappy: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.snappy
-  starship: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.starship
   strace: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.strace
   tmux: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.tmux
   tree: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.tree

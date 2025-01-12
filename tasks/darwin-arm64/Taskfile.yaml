@@ -16,3 +16,12 @@ tasks:
   go-task: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.go-task
   gost: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.gost
   shfmt: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.shfmt
+
+  # rust pkgs
+  starship: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.starship
+  eza: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.eza
+  bat: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.bat
+  atuin: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.atuin
+  ruff: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.ruff
+  fd: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.fd
+  git-absorb: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.git-absorb
