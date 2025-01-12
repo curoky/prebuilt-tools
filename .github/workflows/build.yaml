@@ -67,14 +67,14 @@ jobs:
           - name: eza
           - name: bat
           - name: atuin
-          - name: ruff
           - name: fd
           - name: git-absorb
+          - name: git-extras
 
     steps:
       - run: echo "skip_steps=true" >> $GITHUB_ENV
       - run: echo "skip_steps=false" >> $GITHUB_ENV
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.name == matrix.name }}
+        if: ${{ github.event_name == 'workflow_dispatch' && contains(inputs.name, matrix.name) }}
 
       - uses: actions/checkout@v4
         if: ${{ env.skip_steps != 'true' }}
@@ -227,10 +227,12 @@ jobs:
           - name: zsh
           - name: zsh-bundle
           - name: zstd
+          - name: exiftool
+
     steps:
       - run: echo "skip_steps=true" >> $GITHUB_ENV
       - run: echo "skip_steps=false" >> $GITHUB_ENV
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.name == matrix.name }}
+        if: ${{ github.event_name == 'workflow_dispatch' && contains(inputs.name, matrix.name) }}
 
       - uses: actions/checkout@v4
         if: ${{ env.skip_steps != 'true' }}

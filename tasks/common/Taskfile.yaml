@@ -59,7 +59,6 @@ tasks:
   less: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.less
   libcap: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.libcap
   libtool: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.libtool
-  llvmPackages_18.clang-unwrapped: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.llvmPackages_18.clang-unwrapped
   lsb-release: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.lsb-release
   lsof: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.lsof
   m4: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.m4
@@ -97,6 +96,8 @@ tasks:
   zlib-ng: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zlib-ng
   zlib: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zlib
   zstd: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zstd
+  smartmontools: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.smartmontools
+  exiftool: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.exiftool
 
   cacert: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix cacert
   vim-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix vim-bundle

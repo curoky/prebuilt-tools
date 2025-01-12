@@ -8,6 +8,8 @@ includes:
 tasks:
   silver-searcher: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.silver-searcher
   # zsh: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zsh
+  wget: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.wget
+  llvmPackages_18.clang-unwrapped: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.llvmPackages_18.clang-unwrapped
 
   # go pkgs
   fzf: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.fzf
