@@ -96,7 +96,6 @@ tasks:
   zlib-ng: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zlib-ng
   zlib: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zlib
   zstd: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zstd
-  smartmontools: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.smartmontools
   exiftool: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.exiftool
 
   cacert: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix cacert

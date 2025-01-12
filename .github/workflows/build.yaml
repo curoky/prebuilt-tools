@@ -70,6 +70,7 @@ jobs:
           - name: fd
           - name: git-absorb
           - name: git-extras
+          - name: smartmontools
 
     steps:
       - run: echo "skip_steps=true" >> $GITHUB_ENV
