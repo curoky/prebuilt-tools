@@ -13,7 +13,6 @@ tasks:
   bat: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bat
   git-absorb: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.git-absorb
   llvmPackages_18.clang-unwrapped: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.llvmPackages_18.clang-unwrapped
-  ruff: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ruff
 
   bazelisk: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix bazelisk_static
   croc: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix croc_static
@@ -49,6 +48,10 @@ tasks:
   wget:
     - task: setup-extra
     - nix-env -p ~/nix/profiles/prebuilt -iA old.pkgsStatic.wget
+
+  ruff:
+    - task: setup-extra
+    - nix-env -p ~/nix/profiles/prebuilt -iA old.pkgsStatic.ruff
 
   git:
     - task: setup-extra
