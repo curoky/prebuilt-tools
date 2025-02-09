@@ -18,7 +18,7 @@
 
 set -xeuo pipefail
 
-arch=$(echo $(uname -s)_$(uname -m) | tr '[:upper:]' '[:lower:]') # linux_amd64/darwin_arm64
+arch=$(echo $(uname -s)-$(uname -m) | tr '[:upper:]' '[:lower:]') # linux_amd64/darwin_arm64
 
 download_path=tmp
 install_path=tmp
