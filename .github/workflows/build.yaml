@@ -95,14 +95,14 @@ jobs:
           ./scripts/patch-nix-path.sh tmp/output
           cd tmp
           mv output ${{ matrix.name }}
-          tar -czvf ${{ matrix.name }}.darwin_arm64.tar.gz ${{ matrix.name }}
+          tar -czvf ${{ matrix.name }}.darwin-arm64.tar.gz ${{ matrix.name }}
         if: ${{ env.skip_steps != 'true' }}
 
       - uses: svenstaro/upload-release-action@v2
         if: ${{ env.skip_steps != 'true' }}
         with:
-          file: tmp/${{ matrix.name }}.darwin_arm64.tar.gz
-          asset_name: ${{ matrix.name }}.darwin_arm64.tar.gz
+          file: tmp/${{ matrix.name }}.darwin-arm64.tar.gz
+          asset_name: ${{ matrix.name }}.darwin-arm64.tar.gz
           tag: "v1.0"
           overwrite: true
 
