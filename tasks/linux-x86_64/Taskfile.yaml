@@ -12,7 +12,7 @@ tasks:
   atuin: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.atuin
   bat: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bat
   git-absorb: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.git-absorb
-  ruff: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ruff
+  # ruff: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ruff
   llvmPackages_18.clang-unwrapped: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.llvmPackages_18.clang-unwrapped
 
   bazelisk: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix bazelisk_static
@@ -33,6 +33,8 @@ tasks:
   python311: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix python311_static
 
   glibcLocales: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix glibcLocales
+
+  ruff: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix ruff_static
 
   silver-searcher:
     - task: setup-extra
