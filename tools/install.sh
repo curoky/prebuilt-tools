@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Copyright (c) 2018-2024 curoky(cccuroky@gmail.com).
+# Copyright (c) 2024-2025 curoky(cccuroky@gmail.com).
 #
-# This file is part of dotbox.
-# See https://github.com/curoky/dotbox for further info.
+# This file is part of prebuilt-tools.
+# See https://github.com/curoky/prebuilt-tools for further info.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.

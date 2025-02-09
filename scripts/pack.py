@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2024-2024 curoky(cccuroky@gmail.com).
+# Copyright (c) 2024-2025 curoky(cccuroky@gmail.com).
 #
 # This file is part of prebuilt-tools.
 # See https://github.com/curoky/prebuilt-tools for further info.
