@@ -9,16 +9,24 @@ tasks:
       - mkdir -p ~/nix/profiles
 
   setup-extra:
-    - nix-channel --add https://nixos.org/channels/nixos-24.05 old
-    - nix-channel --add https://nixos.org/channels/nixpkgs-unstable unstable
-    - nix-channel --add https://github.com/NixOS/nixpkgs/archive/master.tar.gz master
-    - nix-channel --add https://github.com/NixOS/nixpkgs/archive/staging.tar.gz staging
+    # - nix-channel --add https://nixos.org/channels/nixos-24.05 old
+    # - nix-channel --add https://nixos.org/channels/nixpkgs-unstable unstable
+    # - nix-channel --add https://github.com/NixOS/nixpkgs/archive/master.tar.gz master
+    # - nix-channel --add https://github.com/NixOS/nixpkgs/archive/staging.tar.gz staging
     - nix-channel --add https://github.com/tobim/nixpkgs/archive/refs/heads/pkgs/git-static.tar.gz git_fix
     - nix-channel --update
-    - nix-channel --list
-  # setup-old:
-  #   - nix-channel --add https://nixos.org/channels/nixos-24.11 nixpkgs
-  #   - nix-channel --update
+  setup-old:
+    - nix-channel --add https://nixos.org/channels/nixos-24.05 old
+    - nix-channel --update
+  setup-unstable:
+    - nix-channel --add https://nixos.org/channels/nixpkgs-unstable unstable
+    - nix-channel --update
+  setup-master:
+    - nix-channel --add https://github.com/NixOS/nixpkgs/archive/master.tar.gz master
+    - nix-channel --update
+  setup-staging:
+    - nix-channel --add https://github.com/NixOS/nixpkgs/archive/staging.tar.gz staging
+    - nix-channel --update
   # setup-git_fix:
   #   - nix-channel --add https://github.com/tobim/nixpkgs/archive/refs/heads/pkgs/git-static.tar.gz nixpkgs
   #   - nix-channel --update
@@ -106,7 +114,7 @@ tasks:
   tmux-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix tmux-bundle
 
   zsh:
-    - task: setup-extra
+    - task: setup-old
     - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh_static
 
   coreutils:

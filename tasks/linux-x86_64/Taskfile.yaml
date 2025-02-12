@@ -37,19 +37,19 @@ tasks:
   ruff: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix ruff_static
 
   silver-searcher:
-    - task: setup-extra
-    - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix silver_searcher_static
+    - task: setup-old
+    - nix-env -I old=$HOME/.nix-defexpr/channels/staging -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix silver_searcher_static
 
   protobuf_3_8_0:
-    - task: setup-extra
+    - task: setup-old
     - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix protobuf_3_8_0_static
 
   protobuf_3_9_2:
-    - task: setup-extra
+    - task: setup-old
     - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix protobuf_3_9_2_static
 
   wget:
-    - task: setup-extra
+    - task: setup-old
     - nix-env -p ~/nix/profiles/prebuilt -iA old.pkgsStatic.wget
 
   git:

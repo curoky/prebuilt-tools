@@ -8,6 +8,8 @@
 
 { pkgs ? import <nixpkgs> { },
   old ? import <old> { },
+  staging ? import <staging> { },
+  unstable ? import <unstable> { },
 }:
 
 let
