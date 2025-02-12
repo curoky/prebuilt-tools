@@ -7,7 +7,8 @@ ENV NIX_PATH=nixpkgs=channel:nixos-24.11 \
 
 RUN nix-channel --add https://nixos.org/channels/nixos-24.11 nixpkgs \
   && nix-channel --update \
-  && nix-env -p /nix/var/nix/profiles/packer -iA nixpkgs.python3 nixpkgs.go-task nixpkgs.gnused nixpkgs.gnutar
+  && nix-env -p /nix/var/nix/profiles/packer -iA nixpkgs.python3 nixpkgs.go-task \
+    nixpkgs.gnused nixpkgs.gnutar nixpkgs.findutils nixpkgs.file nixpkgs.gnugrep
 
 ARG PACKAGE_NAME=curl
 ARG ARCH_NAME=linux-x86_64
