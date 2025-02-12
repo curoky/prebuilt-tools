@@ -21,7 +21,7 @@ prefix="$1"
 
 for f in $(find $prefix -type f); do
   if file --brief "$f" | grep -q 'text'; then
-    sed -e 's|#\!\s*/nix/store/[a-z0-9\._-]*/bin/|#\! /usr/bin/env |g' -i "" "$f" || true
-    sed -e 's|/nix/store/[a-z0-9\._-]*/bin/||g' -i "" "$f" || true
+    sed -e 's|#\!\s*/nix/store/[a-z0-9\._-]*/bin/|#\! /usr/bin/env |g' -i"" "$f" || true
+    sed -e 's|/nix/store/[a-z0-9\._-]*/bin/||g' -i"" "$f" || true
   fi
 done
