@@ -34,6 +34,8 @@ tasks:
 
   glibcLocales: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix glibcLocales
 
+  curl: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix curl
+
   ruff: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix ruff_static
 
   silver-searcher:
@@ -50,7 +52,8 @@ tasks:
 
   wget:
     - task: setup-old
-    - nix-env -p ~/nix/profiles/prebuilt -iA old.pkgsStatic.wget
+    # - nix-env -p ~/nix/profiles/prebuilt -iA old.pkgsStatic.wget
+    - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix wget
 
   git:
     - task: setup-extra

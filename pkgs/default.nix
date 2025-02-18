@@ -204,6 +204,9 @@ in
 
   cacert = pkgs.callPackage ./cacert.nix { };
 
+  curl = pkgs.pkgsStatic.callPackage ./curl.nix { };
+  wget = old.pkgsStatic.callPackage ./wget.nix { };
+
   zsh-bundle = pkgs.callPackage ./zsh-bundle.nix { };
   vim-bundle = pkgs.callPackage ./vim-bundle.nix { };
   rime-bundle = pkgs.callPackage ./rime-bundle.nix { };

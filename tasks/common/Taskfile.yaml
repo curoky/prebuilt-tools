@@ -43,7 +43,7 @@ tasks:
   bzip2: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bzip2
   connect: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.connect
   # coreutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.coreutils
-  curl: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.curl
+  # curl: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.curl
   ethtool: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ethtool
   file: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.file
   findutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.findutils
@@ -83,7 +83,7 @@ tasks:
   openssl: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.openssl.bin
   patchelf: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.patchelf
   perl: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.perl
-  pkg-config: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.pkg-config
+  pkg-config: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.pkg-config-unwrapped
   procps: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.procps
   procs: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.procs
   protobuf_24: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.protobuf_24
