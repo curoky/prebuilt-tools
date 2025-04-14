@@ -38,4 +38,7 @@ elif [[ $package_name == "wget" ]]; then
 elif [[ $package_name == "zsh" ]]; then
   mv ${output}/bin/zsh ${output}/bin/_zsh
   cp scripts/wrapper/zsh ${output}/bin/zsh
+elif [[ $package_name == "makeself" ]]; then
+  mv ${output}/bin/makeself ${output}/bin/_makeself
+  cp scripts/wrapper/makeself ${output}/bin/makeself
 fi
