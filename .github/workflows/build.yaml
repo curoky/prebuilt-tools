@@ -70,6 +70,7 @@ jobs:
           - name: fd
           - name: git-absorb
           - name: git-extras
+          - name: makeself
 
     steps:
       - run: echo "skip_steps=true" >> $GITHUB_ENV
@@ -226,6 +227,7 @@ jobs:
           - name: zsh-bundle
           - name: zstd
           - name: exiftool
+          - name: makeself
 
     steps:
       - run: echo "skip_steps=true" >> $GITHUB_ENV
