@@ -94,6 +94,7 @@ jobs:
           ~/.local/bin/task -t tasks/darwin-arm64/Taskfile.yaml ${{ matrix.name }}
           ./scripts/pack.py
           ./scripts/patch-nix-path.sh tmp/output
+          ./scripts/wrap.sh ${{ matrix.name }} tmp/output
           cd tmp
           mv output ${{ matrix.name }}
           tar -czvf ${{ matrix.name }}.darwin-arm64.tar.gz ${{ matrix.name }}
