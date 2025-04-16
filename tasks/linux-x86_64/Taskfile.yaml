@@ -14,6 +14,7 @@ tasks:
   git-absorb: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.git-absorb
   # ruff: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ruff
   llvmPackages_18.clang-unwrapped: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.llvmPackages_18.clang-unwrapped
+  lld_18: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.lld_18
 
   bazelisk: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix bazelisk_static
   croc: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix croc_static

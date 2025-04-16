@@ -175,7 +175,7 @@ jobs:
           - name: less
           - name: libcap
           - name: libtool
-          - name: llvmPackages_18.clang-unwrapped
+          # - name: llvmPackages_18.clang-unwrapped
           - name: lsb-release
           - name: lsof
           - name: m4
@@ -246,6 +246,64 @@ jobs:
         with:
           file: ${{ matrix.name }}.linux-x86_64.tar.gz
           asset_name: ${{ matrix.name }}.linux-x86_64.tar.gz
+          tag: "v1.0"
+          overwrite: true
+
+      - uses: mxschmitt/action-tmate@v3
+        if: ${{ failure() }}
+        timeout-minutes: 30
+
+  linux-clang-tools:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        version:
+          - 18
+    steps:
+      - run: echo "skip_steps=true" >> $GITHUB_ENV
+      - run: echo "skip_steps=false" >> $GITHUB_ENV
+        if: ${{ (github.event_name == 'workflow_dispatch' && contains(inputs.name, 'clang-tools')) || (github.event_name == 'push' && github.ref == 'refs/heads/master') }}
+
+      - uses: actions/checkout@v4
+        if: ${{ env.skip_steps != 'true' }}
+
+      - run: ./docker/build.sh llvmPackages_18.clang-unwrapped linux-x86_64
+        if: ${{ env.skip_steps != 'true' }}
+
+      - run: ./docker/build.sh lld_18 linux-x86_64
+        if: ${{ env.skip_steps != 'true' }}
+
+      - name: pack clang-format
+        run: |
+          tar -x --gunzip -f llvmPackages_18.clang-unwrapped.linux-x86_64.tar.gz -C tmp --strip-components=1
+          mkdir -p clang-format_18/bin
+          cp tmp/bin/clang-format clang-format_18/bin/clang-format
+          tar -c --gunzip -f clang-format_18.tar.gz clang-format_18
+        if: ${{ env.skip_steps != 'true' }}
+
+      - uses: svenstaro/upload-release-action@v2
+        if: ${{ env.skip_steps != 'true' }}
+        with:
+          file: llvmPackages_18.clang-unwrapped.linux-x86_64.tar.gz
+          asset_name: llvmPackages_18.clang-unwrapped.linux-x86_64.tar.gz
+          tag: "v1.0"
+          overwrite: true
+
+      - uses: svenstaro/upload-release-action@v2
+        if: ${{ env.skip_steps != 'true' }}
+        with:
+          file: clang-format_18.tar.gz
+          asset_name: clang-format_18.tar.gz
+          tag: "v1.0"
+          overwrite: true
+
+      - uses: svenstaro/upload-release-action@v2
+        if: ${{ env.skip_steps != 'true' }}
+        with:
+          file: lld_18.linux-x86_64.tar.gz
+          asset_name: lld_18.linux-x86_64.tar.gz
           tag: "v1.0"
           overwrite: true
 
