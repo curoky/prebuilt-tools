@@ -279,7 +279,7 @@ jobs:
         run: |
           tar -x --gunzip -f llvmPackages_18.clang-unwrapped.linux-x86_64.tar.gz -C tmp --strip-components=1
           mkdir -p clang-format_18/bin
-          cp tmp/bin/clang-format clang-format_18/bin/clang-format
+          cp tmp/bin/clang-format clang-format_18/bin/clang-format-18
           tar -c --gunzip -f clang-format_18.tar.gz clang-format_18
         if: ${{ env.skip_steps != 'true' }}
 
@@ -294,8 +294,8 @@ jobs:
       - uses: svenstaro/upload-release-action@v2
         if: ${{ env.skip_steps != 'true' }}
         with:
-          file: clang-format_18.tar.gz
-          asset_name: clang-format_18.tar.gz
+          file: clang-format_18.linux-x86_64.tar.gz
+          asset_name: clang-format_18.linux-x86_64.tar.gz
           tag: "v1.0"
           overwrite: true
 
