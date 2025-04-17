@@ -19,7 +19,7 @@ let
   diffutils_static = pkgs.pkgsStatic.diffutils.overrideAttrs (oldAttrs: rec {
     doCheck = false;
   });
-  zsh_static = pkgs.pkgsStatic.zsh.overrideAttrs (oldAttrs: rec {
+  zsh_static = old.pkgsStatic.zsh.overrideAttrs (oldAttrs: rec {
     patchPhase = oldAttrs.patchPhase or "" + ''
       echo "link=either" >> Src/Modules/system.mdd
       echo "link=either" >> Src/Modules/regex.mdd
