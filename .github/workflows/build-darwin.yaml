@@ -1,0 +1,113 @@
+name: build darwin
+
+on:
+  push:
+    branches:
+      - master
+  # push:
+  #   paths:
+  #     - ".github/workflows/build.yaml"
+  #     - "pkgs/**"
+  #     - "tasks/**"
+  #     - "scripts/**"
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "package name"
+        default: ""
+        required: false
+        type: string
+  # schedule:
+  #   - cron: '0 0 - name: - name: 0'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - name: aria2
+          - name: bzip2
+          - name: connect
+          - name: coreutils
+          - name: findutils
+          - name: fzf
+          - name: gawk
+          - name: gdu
+          - name: getopt
+          - name: gettext
+          - name: git-lfs
+          - name: gnugrep
+          - name: gnupatch
+          - name: gnused
+          - name: gnutar
+          - name: go-task
+          - name: gost
+          - name: inetutils
+          - name: lsof
+          - name: m4
+          - name: ncdu_1
+          - name: netcat
+          - name: openssl
+          - name: rime-bundle
+          - name: rsync
+          - name: shfmt
+          - name: silver-searcher
+          - name: unzip
+          - name: vim
+          - name: vim-bundle
+          - name: xz
+          - name: zip
+          - name: zsh
+          - name: zsh-bundle
+          - name: zstd
+          - name: starship
+          - name: eza
+          - name: bat
+          - name: atuin
+          - name: fd
+          - name: git-absorb
+          - name: git-extras
+          - name: makeself
+
+    steps:
+      - run: echo "skip_steps=true" >> $GITHUB_ENV
+      - run: echo "skip_steps=false" >> $GITHUB_ENV
+        if: ${{ (github.event_name == 'workflow_dispatch' && contains(inputs.name, matrix.name)) || (github.event_name == 'push' && github.ref == 'refs/heads/master') }}
+
+      - uses: actions/checkout@v4
+        if: ${{ env.skip_steps != 'true' }}
+      - uses: actions/setup-python@v5
+        if: ${{ env.skip_steps != 'true' }}
+        with:
+          python-version: "3"
+      - uses: cachix/install-nix-action@v27
+        if: ${{ env.skip_steps != 'true' }}
+        with:
+          nix_path: nixpkgs=channel:nixos-24.11
+
+      - run: |
+          sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b ~/.local/bin
+          ~/.local/bin/task -t tasks/darwin-arm64/Taskfile.yaml setup
+          ~/.local/bin/task -t tasks/darwin-arm64/Taskfile.yaml ${{ matrix.name }}
+          ./scripts/pack.py
+          ./scripts/patch-nix-path.sh tmp/output
+          ./scripts/wrap.sh ${{ matrix.name }} tmp/output
+          cd tmp
+          mv output ${{ matrix.name }}
+          tar -czvf ${{ matrix.name }}.darwin-arm64.tar.gz ${{ matrix.name }}
+        if: ${{ env.skip_steps != 'true' }}
+
+      - uses: svenstaro/upload-release-action@v2
+        if: ${{ env.skip_steps != 'true' }}
+        with:
+          file: tmp/${{ matrix.name }}.darwin-arm64.tar.gz
+          asset_name: ${{ matrix.name }}.darwin-arm64.tar.gz
+          tag: "v1.0"
+          overwrite: true
+
+      - uses: mxschmitt/action-tmate@v3
+        if: ${{ failure() }}
+        timeout-minutes: 30
