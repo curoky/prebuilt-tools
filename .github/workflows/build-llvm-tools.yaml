@@ -1,4 +1,4 @@
-name: build
+name: build llvm-tools
 
 on:
   push:

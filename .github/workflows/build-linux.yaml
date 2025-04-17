@@ -1,4 +1,4 @@
-name: build
+name: build linux
 
 on:
   push:
@@ -68,7 +68,7 @@ jobs:
           - name: gnugrep
           - name: gnumake
           - name: gnupatch
-          - name: gnupg-minimal
+          - name: gnupg
           - name: gnused
           - name: gnutar
           - name: go-task
