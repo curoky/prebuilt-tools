@@ -269,25 +269,25 @@ jobs:
       - uses: actions/checkout@v4
         if: ${{ env.skip_steps != 'true' }}
 
-      - run: ./docker/build.sh llvmPackages_18.clang-unwrapped linux-x86_64
-        if: ${{ env.skip_steps != 'true' }}
-
-      - run: ./docker/build.sh lld_18 linux-x86_64
+      - run: ./docker/build.sh llvm_18 linux-x86_64
         if: ${{ env.skip_steps != 'true' }}
 
       - name: pack clang-format
         run: |
-          tar -x --gunzip -f llvmPackages_18.clang-unwrapped.linux-x86_64.tar.gz -C tmp --strip-components=1
+          tar -x --gunzip -f llvm_18.linux-x86_64.tar.gz -C tmp --strip-components=1
           mkdir -p clang-format_18/bin
           cp tmp/bin/clang-format clang-format_18/bin/clang-format-18
           tar -c --gunzip -f clang-format_18.tar.gz clang-format_18
+          mkdir -p lld_18/bin
+          cp tmp/bin/lld lld_18/bin/lld-18
+          tar -c --gunzip -f lld_18.tar.gz lld_18
         if: ${{ env.skip_steps != 'true' }}
 
       - uses: svenstaro/upload-release-action@v2
         if: ${{ env.skip_steps != 'true' }}
         with:
-          file: llvmPackages_18.clang-unwrapped.linux-x86_64.tar.gz
-          asset_name: llvmPackages_18.clang-unwrapped.linux-x86_64.tar.gz
+          file: llvm_18.linux-x86_64.tar.gz
+          asset_name: llvm_18.linux-x86_64.tar.gz
           tag: "v1.0"
           overwrite: true
 

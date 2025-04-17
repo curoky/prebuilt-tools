@@ -37,7 +37,7 @@ tasks:
   gawk: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gawk
   getopt: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.getopt
   bash: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bash
-  binutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.binutils
+  binutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.binutils-unwrapped
   bison: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bison
   buildifier: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.buildifier
   bzip2: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bzip2
