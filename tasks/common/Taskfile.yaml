@@ -108,7 +108,7 @@ tasks:
   exiftool: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.exiftool
   makeself: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.makeself
 
-  zsh: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh_static
+  # zsh: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh_static
   cacert: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix cacert
   coreutils: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix coreutils_static
 
@@ -116,3 +116,7 @@ tasks:
   zsh-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh-bundle
   rime-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix rime-bundle
   tmux-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix tmux-bundle
+
+  zsh:
+    - task: setup-old
+    - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh_static

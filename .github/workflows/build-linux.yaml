@@ -68,7 +68,7 @@ jobs:
           - name: gnugrep
           - name: gnumake
           - name: gnupatch
-          - name: gnupg
+          - name: gnupg-minimal
           - name: gnused
           - name: gnutar
           - name: go-task

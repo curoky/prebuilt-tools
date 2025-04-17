@@ -30,7 +30,7 @@ tasks:
   dive: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix dive_static
 
   diffutils: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix diffutils_static
-  # gnupg-minimal: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix gnupg_minimal_static
+  gnupg-minimal: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix gnupg_minimal_static
 
   python311: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix python311_static
 
@@ -38,7 +38,7 @@ tasks:
 
   curl: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix curl
 
-  # ruff: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix ruff_static
+  ruff: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix ruff_static
 
   silver-searcher:
     - task: setup-old
@@ -57,13 +57,13 @@ tasks:
     # - nix-env -p ~/nix/profiles/prebuilt -iA old.pkgsStatic.wget
     - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix wget
 
-  ruff:
-    - task: setup-unstable
-    - nix-env -I nixpkgs=$HOME/.nix-defexpr/channels/unstable -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ruff
+  # ruff:
+  #   - task: setup-unstable
+  #   - nix-env -I nixpkgs=$HOME/.nix-defexpr/channels/unstable -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ruff
 
-  gnupg:
-    - task: setup-unstable
-    - nix-env -I nixpkgs=$HOME/.nix-defexpr/channels/unstable -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnupg
+  # gnupg:
+  #   - task: setup-unstable
+  #   - nix-env -I nixpkgs=$HOME/.nix-defexpr/channels/unstable -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnupg
 
   git:
     - task: setup-extra
