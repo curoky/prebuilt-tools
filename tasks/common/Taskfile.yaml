@@ -107,6 +107,7 @@ tasks:
   smartmontools: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.smartmontools
   exiftool: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.exiftool
   makeself: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.makeself
+  parallel: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.parallel
 
   # zsh: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh_static
   cacert: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix cacert
