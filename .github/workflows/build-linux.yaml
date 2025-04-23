@@ -13,8 +13,8 @@ on:
   workflow_dispatch:
     inputs:
       name:
-        description: 'package name'
-        default: ''
+        description: "package name"
+        default: ""
         required: false
         type: string
   # schedule:
@@ -154,7 +154,7 @@ jobs:
         with:
           file: ${{ matrix.name }}.linux-x86_64.tar.gz
           asset_name: ${{ matrix.name }}.linux-x86_64.tar.gz
-          tag: 'v1.0'
+          tag: "v1.0"
           overwrite: true
 
       - uses: mxschmitt/action-tmate@v3

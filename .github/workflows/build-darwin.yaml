@@ -13,8 +13,8 @@ on:
   workflow_dispatch:
     inputs:
       name:
-        description: 'package name'
-        default: ''
+        description: "package name"
+        default: ""
         required: false
         type: string
   # schedule:
@@ -96,7 +96,8 @@ jobs:
       - uses: Homebrew/actions/setup-homebrew@master
         if: ${{ env.skip_steps != 'true' }}
 
-      - run: brew install go-task
+      - run: echo "/opt/homebrew/opt/binutils/bin" >> $GITHUB_PATH
+      - run: brew install go-task binutils
         if: ${{ env.skip_steps != 'true' }}
 
       - uses: actions/checkout@v4
@@ -105,7 +106,7 @@ jobs:
       - uses: actions/setup-python@v5
         if: ${{ env.skip_steps != 'true' }}
         with:
-          python-version: '3'
+          python-version: "3"
 
       - uses: nixbuild/nix-quick-install-action@v30
         if: ${{ env.skip_steps != 'true' }}
@@ -148,7 +149,7 @@ jobs:
           task -t tasks/common/Taskfile.yaml setup
           task -t tasks/darwin-arm64/Taskfile.yaml ${{ matrix.name }}
           ./scripts/pack.py
-          ./scripts/patch-nix-path.sh tmp/output
+          ./scripts/patch.sh tmp/output
           ./scripts/wrap.sh ${{ matrix.name }} tmp/output
           cd tmp
           mv output ${{ matrix.name }}
@@ -160,7 +161,7 @@ jobs:
         with:
           file: tmp/${{ matrix.name }}.darwin-arm64.tar.gz
           asset_name: ${{ matrix.name }}.darwin-arm64.tar.gz
-          tag: 'v1.0'
+          tag: "v1.0"
           overwrite: true
 
       - uses: fawazahmed0/action-debug-vscode@main

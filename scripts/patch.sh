@@ -19,9 +19,41 @@ set -xeuo pipefail
 
 prefix="$1"
 
+# remove path which contain nix
 for f in $(find $prefix -type f); do
   if file --brief "$f" | grep -q 'text'; then
     sed -e 's|#\!\s*/nix/store/[a-z0-9\._-]*/bin/|#\! /usr/bin/env |g' -i"" "$f" || true
     sed -e 's|/nix/store/[a-z0-9\._-]*/bin/||g' -i"" "$f" || true
   fi
+done
+
+# strip binaries for reducing size
+for f in $(find $prefix -type f); do
+  if file "$f" | grep -q 'ELF'; then
+    strip --strip-unneeded "$f"
+  fi
+done
+
+# clean up unnecessary files
+find $prefix -name "*.a" -delete
+find $prefix -name "*.pyc" -delete
+
+# remove invalid link
+find $prefix -type l -exec test ! -e {} \; -print | while read -r file; do
+  rm -rf "$file"
+done
+
+# remove outside links
+find $prefix -type l | while read -r link; do
+  target=$(readlink -f "$link")
+  if [[ $target != "$prefix"* ]]; then
+    rm -v "$link"
+  fi
+done
+
+# rename wrapped files
+find $prefix -type f -name ".*-wrapped" | while read -r file; do
+  dir=$(dirname "$file")
+  new_name=$(basename "$file" | sed -e 's/-wrapped//g' -e 's/^.//')
+  mv "$file" "$dir/$new_name"
 done

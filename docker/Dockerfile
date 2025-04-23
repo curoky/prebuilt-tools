@@ -8,7 +8,8 @@ ENV NIX_PATH=nixpkgs=channel:nixos-24.11 \
 RUN nix-channel --add https://nixos.org/channels/nixos-24.11 nixpkgs \
   && nix-channel --update \
   && nix-env -p /nix/var/nix/profiles/packer -iA nixpkgs.python3 nixpkgs.go-task \
-    nixpkgs.gnused nixpkgs.gnutar nixpkgs.findutils nixpkgs.file nixpkgs.gnugrep
+    nixpkgs.gnused nixpkgs.gnutar nixpkgs.findutils nixpkgs.file nixpkgs.gnugrep \
+    nixpkgs.binutils
 
 ARG PACKAGE_NAME=curl
 ARG ARCH_NAME=linux-x86_64
@@ -19,7 +20,7 @@ COPY . .
 RUN task -t tasks/${ARCH_NAME}/Taskfile.yaml setup
 RUN task -t tasks/${ARCH_NAME}/Taskfile.yaml ${PACKAGE_NAME}
 RUN ./scripts/pack.py
-RUN ./scripts/patch-nix-path.sh tmp/output
+RUN ./scripts/patch.sh tmp/output
 RUN ./scripts/wrap.sh ${PACKAGE_NAME} tmp/output
 RUN cd tmp \
   && mv output ${PACKAGE_NAME} \

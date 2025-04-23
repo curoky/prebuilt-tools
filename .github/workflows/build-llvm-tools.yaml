@@ -13,8 +13,8 @@ on:
   workflow_dispatch:
     inputs:
       name:
-        description: 'package name'
-        default: ''
+        description: "package name"
+        default: ""
         required: false
         type: string
   # schedule:
@@ -32,13 +32,15 @@ jobs:
     steps:
       - run: echo "skip_steps=true" >> $GITHUB_ENV
       - run: echo "skip_steps=false" >> $GITHUB_ENV
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.name == 'clang-tools') || (github.event_name == 'push' && github.ref == 'refs/heads/master') }}
+        if: ${{ (github.event_name == 'workflow_dispatch') || (github.event_name == 'push' && github.ref == 'refs/heads/master') }}
 
       - uses: actions/checkout@v4
         if: ${{ env.skip_steps != 'true' }}
 
       - run: ./docker/build.sh llvm_18 linux-x86_64
         if: ${{ env.skip_steps != 'true' }}
+
+      - run: docker system prune -a --force
 
       - name: pack clang-format
         run: |
@@ -57,7 +59,7 @@ jobs:
         with:
           file: llvm_18.linux-x86_64.tar.gz
           asset_name: llvm_18.linux-x86_64.tar.gz
-          tag: 'v1.0'
+          tag: "v1.0"
           overwrite: true
 
       - uses: svenstaro/upload-release-action@v2
@@ -65,7 +67,7 @@ jobs:
         with:
           file: clang-format_18.linux-x86_64.tar.gz
           asset_name: clang-format_18.linux-x86_64.tar.gz
-          tag: 'v1.0'
+          tag: "v1.0"
           overwrite: true
 
       - uses: svenstaro/upload-release-action@v2
@@ -73,7 +75,7 @@ jobs:
         with:
           file: lld_18.linux-x86_64.tar.gz
           asset_name: lld_18.linux-x86_64.tar.gz
-          tag: 'v1.0'
+          tag: "v1.0"
           overwrite: true
 
       - uses: mxschmitt/action-tmate@v3
