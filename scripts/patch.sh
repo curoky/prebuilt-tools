@@ -17,7 +17,16 @@
 # limitations under the License.
 set -xeuo pipefail
 
-prefix="$1"
+name=$1
+prefix="$2"
+
+skip_list=(
+  nsight-systems
+)
+
+if [[ " ${skip_list[@]} " =~ " ${name} " ]]; then
+  exit 0
+fi
 
 # remove path which contain nix
 for f in $(find $prefix -type f); do

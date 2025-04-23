@@ -112,6 +112,7 @@ tasks:
   # zsh: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh_static
   cacert: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix cacert
   coreutils: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix coreutils_static
+  nsight-systems: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix nsight-systems
 
   vim-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix vim-bundle
   zsh-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh-bundle

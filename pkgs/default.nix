@@ -202,6 +202,8 @@ in
     allLocales = false;
   };
 
+  nsight-systems = pkgs.callPackage ./nsight-systems.nix { };
+
   cacert = pkgs.callPackage ./cacert.nix { };
 
   curl = pkgs.pkgsStatic.callPackage ./curl.nix { };

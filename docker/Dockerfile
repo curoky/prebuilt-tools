@@ -20,7 +20,7 @@ COPY . .
 RUN task -t tasks/${ARCH_NAME}/Taskfile.yaml setup
 RUN task -t tasks/${ARCH_NAME}/Taskfile.yaml ${PACKAGE_NAME}
 RUN ./scripts/pack.py
-RUN ./scripts/patch.sh tmp/output
+RUN ./scripts/patch.sh ${PACKAGE_NAME} tmp/output
 RUN ./scripts/wrap.sh ${PACKAGE_NAME} tmp/output
 RUN cd tmp \
   && mv output ${PACKAGE_NAME} \

@@ -97,6 +97,7 @@ jobs:
           - name: ninja
           - name: nixfmt-rfc-style
           - name: nixpkgs-fmt
+          - name: nsight-systems
           - name: numactl
           - name: openssh_gssapi
           - name: openssl
