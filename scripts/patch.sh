@@ -37,6 +37,10 @@ done
 # clean up unnecessary files
 find $prefix -name "*.a" -delete
 find $prefix -name "*.pyc" -delete
+find $prefix -type d -name man -exec rm -rf {} +
+find $prefix -type d -name fish -exec rm -rf {} +
+find $prefix -type d -name bash-completion -exec rm -rf {} +
+find $prefix -type d -name nix-support -exec rm -rf {} +
 
 # remove invalid link
 find $prefix -type l -exec test ! -e {} \; -print | while read -r file; do
