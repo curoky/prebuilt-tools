@@ -16,14 +16,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -xeuo pipefail
+set -euo pipefail
+
+# layout
+# install_path
+#   - profile/default
+#   - store
+#     - curl
+#     - wget
+#   - downloads
+
+function link() {
+  local src_dir=$1
+  local dst_dir=$2
+  find "$src_dir" \( -type f -o -type l \) | while read -r file; do
+    rel_path="${file#$src_dir/}"
+    dest_file="$dst_dir/$rel_path"
+    mkdir -p "$(dirname "$dest_file")"
+    if [[ -L $dest_file ]] || [[ -f $dest_file ]]; then
+      rm "$dest_file"
+    fi
+    ln -s -r "$file" "$dest_file"
+  done
+}
 
 arch=$(echo $(uname -s)-$(uname -m) | tr '[:upper:]' '[:lower:]') # linux_amd64/darwin_arm64
 
-download_path=tmp
+# download_path=tmp
 install_path=tmp
+is_link=false
+link_path=-
 
-while getopts "i:d:n:a:" opt; do
+while getopts "i:n:a:lp:" opt; do
   case "$opt" in
     n)
       name="$OPTARG"
@@ -31,11 +55,14 @@ while getopts "i:d:n:a:" opt; do
     i)
       install_path="$OPTARG"
       ;;
-    d)
-      download_path="$OPTARG"
-      ;;
     a)
       arch="$OPTARG"
+      ;;
+    l)
+      is_link=true
+      ;;
+    p)
+      link_path="$OPTARG"
       ;;
     \?)
       echo "Usage: $0 [-n name] [-i install_path] [-d download_path] [-a arch]"
@@ -44,8 +71,20 @@ while getopts "i:d:n:a:" opt; do
   esac
 done
 
-mkdir -p $install_path
-mkdir -p $download_path
+download_path=$install_path/downloads
+store_path=$install_path/store
+profile_path=$install_path/profile
+profile=default
+
+mkdir -p $download_path $store_path/$name $profile_path/$profile
 curl -sSL https://github.com/curoky/prebuilt-tools/releases/download/v1.0/${name}.${arch}.tar.gz \
   -o $download_path/${name}.tar.gz
-tar -x --gunzip -f $download_path/${name}.tar.gz -C $install_path --strip-components=1
+tar -x --gunzip -f $download_path/${name}.tar.gz -C $store_path/${name} --strip-components=1
+
+if [[ $is_link == true ]]; then
+  if [[ $link_path == "-" ]]; then
+    link $store_path/$name $profile_path/$profile
+  else
+    link $store_path/$name $link_path
+  fi
+fi
