@@ -1,4 +1,15 @@
-{ lib, stdenv, fetchurl, wget }:
+{ lib, stdenv, fetchurl, wget, writeText}:
+
+let
+  wrapperScript = writeText "wrapper.sh" ''
+    #!/usr/bin/env bash
+
+    script_path="$(readlink -f "$0")"
+    root=$(cd "$(dirname "$script_path")" && pwd)/..
+
+    exec -a "$0" "$root/bin/_wget" --ca-certificate $root/etc/ssl/certs/ca-certificates.crt "$@"
+  '';
+in
 
 stdenv.mkDerivation rec {
   pname = "wget";
@@ -11,7 +22,7 @@ stdenv.mkDerivation rec {
 
   unpackPhase = ":";
 
-  buildInputs = [ wget ];
+  nativeBuildInputs = [ wget ];
 
   installPhase = ''
     mkdir -p $out
@@ -22,5 +33,10 @@ stdenv.mkDerivation rec {
     chmod +w $out/etc/
     mkdir -p $out/etc/ssl/certs/
     cp ${src} $out/etc/ssl/certs/ca-certificates.crt
+
+    chmod +w $out/bin/
+    mv $out/bin/wget $out/bin/_wget
+    cp ${wrapperScript} $out/bin/wget
+    chmod +x $out/bin/wget
   '';
 }

@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-
-script_path="$(readlink -f "$0")"
-root=$(cd "$(dirname "$script_path")" && pwd)/..
-
-exec -a "$0" "$root/bin/_scp" -S $root/bin/ssh "$@"

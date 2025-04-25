@@ -34,21 +34,19 @@ tasks:
   aria2: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.aria2
   autoconf: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.autoconf
   automake: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.automake
-  gawk: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gawk
-  getopt: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.getopt
   bash: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bash
   binutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.binutils-unwrapped
   bison: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bison
   buildifier: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.buildifier
   bzip2: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bzip2
   connect: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.connect
-  # coreutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.coreutils
-  # curl: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.curl
   ethtool: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ethtool
-  file: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.file
+  exiftool: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.exiftool
   findutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.findutils
   flex: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.flex
+  gawk: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gawk
   gdb: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gdb
+  getopt: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.getopt
   gettext: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gettext
   git-extras: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.git-extras
   gnugrep: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnugrep
@@ -79,8 +77,8 @@ tasks:
   nixfmt-rfc-style: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.nixfmt-rfc-style
   nixpkgs-fmt: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.nixpkgs-fmt
   numactl: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.numactl
-  openssh_gssapi: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.openssh_gssapi
   openssl: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.openssl.bin
+  parallel: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.parallel
   patchelf: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.patchelf
   perl: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.perl
   pkg-config: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.pkg-config-unwrapped
@@ -90,6 +88,7 @@ tasks:
   protobuf_25: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.protobuf_25
   protobuf_28: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.protobuf_28
   rsync: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.rsync
+  smartmontools: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.smartmontools
   snappy: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.snappy
   strace: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.strace
   tmux: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.tmux
@@ -97,28 +96,28 @@ tasks:
   tzdata: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.tzdata.out
   unzip: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.unzip
   util-linux: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.util-linux
-  vim: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.vim
   xxd: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.unixtools.xxd
   xz: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.xz
   zip: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zip
   zlib-ng: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zlib-ng
   zlib: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zlib
   zstd: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zstd
-  smartmontools: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.smartmontools
-  exiftool: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.exiftool
-  makeself: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.makeself
-  parallel: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.parallel
 
-  # zsh: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh_static
   cacert: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix cacert
   coreutils: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix coreutils_static
+  file: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix file
+  makeself: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix makeself
   nsight-systems: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix nsight-systems
-
-  vim-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix vim-bundle
-  zsh-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh-bundle
+  openssh_gssapi: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix openssh_gssapi
   rime-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix rime-bundle
   tmux-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix tmux-bundle
+  vim-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix vim-bundle
+  vim: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix vim
+  zsh-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh-bundle
+  dool: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix dool
+  netron: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix netron
+  git-filter-repo: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix git-filter-repo
 
   zsh:
     - task: setup-old
-    - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh_static
+    - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh

@@ -91,7 +91,7 @@ jobs:
     steps:
       - run: echo "skip_steps=true" >> $GITHUB_ENV
       - run: echo "skip_steps=false" >> $GITHUB_ENV
-        if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.name== matrix.name || inputs.name == '*')) || (github.event_name == 'push' && github.ref == 'refs/heads/master') }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.name == matrix.name || inputs.name == '*')) || (github.event_name == 'push' && github.ref == 'refs/heads/master') }}
 
       - uses: Homebrew/actions/setup-homebrew@master
         if: ${{ env.skip_steps != 'true' }}
@@ -149,8 +149,7 @@ jobs:
           task -t tasks/common/Taskfile.yaml setup
           task -t tasks/darwin-arm64/Taskfile.yaml ${{ matrix.name }}
           ./scripts/pack.py
-          ./scripts/patch.sh tmp/output
-          ./scripts/wrap.sh ${{ matrix.name }} tmp/output
+          ./scripts/patch.sh ${{ matrix.name }} tmp/output
           cd tmp
           mv output ${{ matrix.name }}
           tar -czvf ${{ matrix.name }}.darwin-arm64.tar.gz ${{ matrix.name }}

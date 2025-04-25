@@ -9,7 +9,7 @@ stdenv.mkDerivation rec {
     sha256 = "sha256-XILhK7PisdyVJSowqzoXno+xwGV/tO9COuEnlFzd62A=";
   };
 
-  buildInputs = [ perl ];
+  nativeBuildInputs = [ perl ];
   unpackPhase = ''
     cp $src nsightsystems_linux.run
   '';

@@ -32,7 +32,7 @@ tasks:
   diffutils: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix diffutils_static
   gnupg-minimal: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix gnupg_minimal_static
 
-  python311: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix python311_static
+  python311: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix python311
 
   glibcLocales: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix glibcLocales
 
