@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 
 includes:
   lib:
@@ -6,6 +6,10 @@ includes:
     flatten: true
 
 tasks:
+  aria2: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.aria2
+  ruff: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ruff
+  git: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.git
+
   starship: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.starship
   eza: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.eza
   fd: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.fd
@@ -39,7 +43,7 @@ tasks:
 
   curl: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix curl
 
-  ruff: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix ruff_static
+  # ruff: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix ruff_static
 
   silver-searcher:
     - task: setup-old
@@ -66,6 +70,6 @@ tasks:
   #   - task: setup-unstable
   #   - nix-env -I nixpkgs=$HOME/.nix-defexpr/channels/unstable -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnupg
 
-  git:
-    - task: setup-extra
-    - nix-env -p ~/nix/profiles/prebuilt -iA git_fix.pkgsStatic.git
+  # git:
+  #   - task: setup-extra
+  #   - nix-env -p ~/nix/profiles/prebuilt -iA git_fix.pkgsStatic.git

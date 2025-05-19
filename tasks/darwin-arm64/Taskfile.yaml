@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 
 includes:
   lib:
@@ -29,3 +29,7 @@ tasks:
   # ruff: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.ruff
   fd: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.fd
   git-absorb: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.git-absorb
+
+  aria2:
+    - task: setup-old
+    - nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.aria2

@@ -31,7 +31,6 @@ tasks:
   #   - nix-channel --add https://github.com/tobim/nixpkgs/archive/refs/heads/pkgs/git-static.tar.gz nixpkgs
   #   - nix-channel --update
 
-  aria2: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.aria2
   autoconf: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.autoconf
   automake: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.automake
   bash: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bash
