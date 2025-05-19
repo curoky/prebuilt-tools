@@ -15,6 +15,9 @@ tasks:
     # - nix-channel --add https://github.com/NixOS/nixpkgs/archive/staging.tar.gz staging
     - nix-channel --add https://github.com/tobim/nixpkgs/archive/refs/heads/pkgs/git-static.tar.gz git_fix
     - nix-channel --update
+  setup-old-2411:
+    - nix-channel --add https://nixos.org/channels/nixos-24.11 old
+    - nix-channel --update
   setup-old:
     - nix-channel --add https://nixos.org/channels/nixos-24.05 old
     - nix-channel --update

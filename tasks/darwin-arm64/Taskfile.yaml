@@ -31,5 +31,5 @@ tasks:
   git-absorb: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.git-absorb
 
   aria2:
-    - task: setup-old
-    - nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.aria2
+    - task: setup-old-2411
+    - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA old.pkgsStatic.aria2
