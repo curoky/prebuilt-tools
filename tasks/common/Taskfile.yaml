@@ -1,9 +1,9 @@
-version: '3'
+version: "3"
 
 tasks:
   setup:
     cmds:
-      - nix-channel --add https://nixos.org/channels/nixos-24.11 nixpkgs
+      - nix-channel --add https://nixos.org/channels/nixos-25.05 nixpkgs
       - nix-channel --update
       - nix-channel --list
       - mkdir -p ~/nix/profiles
