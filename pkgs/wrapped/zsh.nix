@@ -17,9 +17,20 @@ zsh.overrideAttrs (oldAttrs: rec {
     echo "link=either" >> Src/Modules/system.mdd
     echo "link=either" >> Src/Modules/regex.mdd
     echo "link=either" >> Src/Modules/mathfunc.mdd
+    substituteInPlace Src/Modules/termcap.c \
+      --replace '#ifndef HAVE_BOOLCODES' '#if 0'
+    # --replace 'char *boolcodes[]' 'const char * const boolcodes[]'
   '';
 
-  postInstall = (oldAttrs.postInstall or "") + ''
+  outputs = [
+    "out"
+    "man"
+  ];
+
+  # nativeBuildInputs = builtins.filter (dep: dep.pname or "" != "yodl") oldAttrs.nativeBuildInputs;
+
+  # postInstall = (oldAttrs.postInstall or "") + ''
+  postInstall = ''
     mv $out/bin/zsh $out/bin/_zsh
     cp ${wrapperScript} $out/bin/zsh
     chmod +x $out/bin/zsh

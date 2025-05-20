@@ -15,7 +15,7 @@ let
 in
 
 stdenv.mkDerivation rec {
-  pname = "vim-bundle";
+  pname = "vim-extra";
   version = "1.0.0";
 
   nativeBuildInputs = [];

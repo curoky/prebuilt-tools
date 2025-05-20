@@ -9,6 +9,9 @@ let
 
     exec -a "$0" "$root/bin/_wget" --ca-certificate $root/etc/ssl/certs/ca-certificates.crt "$@"
   '';
+  wget_static = wget.overrideAttrs (oldAttrs: rec {
+    doCheck = false;
+  });
 in
 
 stdenv.mkDerivation rec {
@@ -26,9 +29,9 @@ stdenv.mkDerivation rec {
 
   installPhase = ''
     mkdir -p $out
-    cp -r ${wget}/bin $out/bin
-    cp -r ${wget}/etc $out/etc
-    cp -r ${wget}/share $out/share
+    cp -r ${wget_static}/bin $out/bin
+    cp -r ${wget_static}/etc $out/etc
+    cp -r ${wget_static}/share $out/share
 
     chmod +w $out/etc/
     mkdir -p $out/etc/ssl/certs/

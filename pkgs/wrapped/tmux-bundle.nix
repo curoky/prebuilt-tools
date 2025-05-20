@@ -1,7 +1,7 @@
-{ lib, stdenv, fetchFromGitHub}:
+{ lib, stdenv, fetchFromGitHub, tmux}:
 
 stdenv.mkDerivation rec {
-  pname = "tmux-conf";
+  pname = "tmux-bundle";
   version = "1.0.0";
 
   src = fetchFromGitHub {
@@ -12,7 +12,9 @@ stdenv.mkDerivation rec {
   };
 
   installPhase = ''
+    cp -r ${tmux.out} $out/
     mkdir -p $out/share/
+    chmod +w $out/share/
     cp ${src}/.tmux.conf $out/share/tmux.conf
   '';
 

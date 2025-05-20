@@ -6,12 +6,6 @@ includes:
     flatten: true
 
 tasks:
-  silver-searcher: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.silver-searcher
-
-  llvmPackages_18.clang-unwrapped: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.llvmPackages_18.clang-unwrapped
-
-  ruff: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ruff
-
   # go pkgs
   fzf: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.fzf
   gdu: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.gdu
@@ -22,6 +16,7 @@ tasks:
   buildifier: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.buildifier
 
   # rust pkgs
+  ripgrep: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.starship
   starship: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.starship
   eza: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.eza
   bat: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.bat
@@ -29,6 +24,10 @@ tasks:
   # ruff: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.ruff
   fd: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.fd
   git-absorb: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.git-absorb
+  silver-searcher: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.silver-searcher
+
+  # others
+  llvmPackages_18.clang-unwrapped: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.llvmPackages_18.clang-unwrapped
 
   aria2:
     - task: setup-old-2411

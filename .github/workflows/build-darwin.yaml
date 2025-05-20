@@ -13,8 +13,8 @@ on:
   workflow_dispatch:
     inputs:
       name:
-        description: 'package name'
-        default: ''
+        description: "package name"
+        default: ""
         required: false
         type: string
   # schedule:
@@ -31,6 +31,7 @@ jobs:
           - name: aria2
           - name: atuin
           - name: bat
+          - name: buildifier
           - name: bzip2
           - name: connect
           - name: coreutils
@@ -58,20 +59,21 @@ jobs:
           - name: ncdu_1
           - name: netcat
           - name: openssl
-          - name: rime-bundle
+          - name: rime-extra
+          - name: ripgrep
           - name: rsync
           - name: shfmt
-          - name: silver-searcher
           - name: starship
           - name: unzip
-          - name: vim
-          - name: vim-bundle
           - name: xz
           - name: zip
-          - name: zsh
-          - name: zsh-bundle
+          - name: zsh-extra
           - name: zstd
-          - name: buildifier
+          - name: vim
+          - name: vim-extra
+
+          # - name: silver-searcher
+          # - name: zsh
 
           # > meson.build:6:0: ERROR: 'objc' compiler binary not defined in cross file [binaries] section
           # - name: parallel
@@ -107,7 +109,7 @@ jobs:
       - uses: actions/setup-python@v5
         if: ${{ env.skip_steps != 'true' }}
         with:
-          python-version: '3'
+          python-version: "3"
 
       - uses: nixbuild/nix-quick-install-action@v30
         if: ${{ env.skip_steps != 'true' }}
@@ -161,7 +163,7 @@ jobs:
         with:
           file: tmp/${{ matrix.name }}.darwin-arm64.tar.gz
           asset_name: ${{ matrix.name }}.darwin-arm64.tar.gz
-          tag: 'v1.0'
+          tag: "v1.0"
           overwrite: true
 
       - uses: fawazahmed0/action-debug-vscode@main

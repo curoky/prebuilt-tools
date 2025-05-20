@@ -30,9 +30,6 @@ tasks:
   setup-staging:
     - nix-channel --add https://github.com/NixOS/nixpkgs/archive/staging.tar.gz staging
     - nix-channel --update
-  # setup-git_fix:
-  #   - nix-channel --add https://github.com/tobim/nixpkgs/archive/refs/heads/pkgs/git-static.tar.gz nixpkgs
-  #   - nix-channel --update
 
   autoconf: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.autoconf
   automake: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.automake
@@ -50,9 +47,11 @@ tasks:
   getopt: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.getopt
   gettext: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gettext
   git-extras: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.git-extras
+  git: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.git
   gnugrep: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnugrep
   gnumake: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnumake
   gnupatch: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnupatch
+  gnupg: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnupg
   gnused: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnused
   gnutar: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnutar
   gzip: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gzip
@@ -70,7 +69,6 @@ tasks:
   lsof: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.lsof
   m4: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.m4
   man: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.man
-  miniserve: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.miniserve
   ncdu_1: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ncdu_1
   netcat: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.netcat
   nettools: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.nettools
@@ -105,20 +103,34 @@ tasks:
   zstd: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zstd
 
   cacert: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix cacert
-  coreutils: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix coreutils_static
+  coreutils: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix coreutils
+  curl: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix curl
+  diffutils: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix diffutils
+  dool: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix dool
   file: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix file
+  git-filter-repo: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix git-filter-repo
+  glibcLocales: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix glibcLocales
   makeself: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix makeself
+  miniserve: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix miniserve
+  netron: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix netron
   nsight-systems: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix nsight-systems
   openssh_gssapi: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix openssh_gssapi
-  rime-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix rime-bundle
+  python311: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix python311
+  rime-extra: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix rime-extra
   tmux-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix tmux-bundle
+  tmux-extra: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix tmux-extra
   vim-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix vim-bundle
+  vim-extra: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix vim-extra
   vim: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix vim
+  wget: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix wget
   zsh-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh-bundle
-  dool: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix dool
-  netron: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix netron
-  git-filter-repo: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix git-filter-repo
+  zsh-extra: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh-extra
+  zsh: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh
 
-  zsh:
+  protobuf_3_8_0:
     - task: setup-old
-    - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh
+    - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix protobuf_3_8_0
+
+  protobuf_3_9_2:
+    - task: setup-old
+    - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix protobuf_3_9_2

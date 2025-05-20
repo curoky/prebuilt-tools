@@ -1,41 +1,13 @@
-{ lib, stdenv, fetchFromGitHub, writeText,
-  zsh,
-  oh-my-zsh,
+{ lib, stdenv, fetchFromGitHub, oh-my-zsh,
   zsh-syntax-highlighting,
   zsh-autosuggestions,
   zsh-completions,
   zsh-fast-syntax-highlighting,
 }:
 
-let
-  wrapperScript = writeText "wrapper.sh" ''
-    #!/usr/bin/env bash
-
-    script_path="$(readlink -f "$0")"
-    root=$(cd "$(dirname "$script_path")" && pwd)/..
-    export FPATH=$FPATH:$root/share/zsh/5.9/functions:$root/share/oh-my-zsh/custom/plugins/zsh-completions/src:$root/share/oh-my-zsh/custom/plugins/conda-zsh-completion
-
-    exec -a "$0" "$root/bin/_zsh" "$@"
-  '';
-
-  zsh_static = zsh.overrideAttrs (oldAttrs: rec {
-    patchPhase = oldAttrs.patchPhase or "" + ''
-      echo "link=either" >> Src/Modules/system.mdd
-      echo "link=either" >> Src/Modules/regex.mdd
-      echo "link=either" >> Src/Modules/mathfunc.mdd
-    '';
-
-    postInstall = (oldAttrs.postInstall or "") + ''
-      mv $out/bin/zsh $out/bin/_zsh
-      cp ${wrapperScript} $out/bin/zsh
-      chmod +x $out/bin/zsh
-    '';
-  });
-in
-
 stdenv.mkDerivation rec {
   version = "1.0.0";
-  pname = "zsh-bundle";
+  pname = "zsh-extra";
 
   srcs = [
     (fetchFromGitHub {
@@ -53,9 +25,7 @@ stdenv.mkDerivation rec {
   ];
 
   installPhase = ''
-    cp -r ${zsh_static.out} $out/
-    chmod +w $out/share/
-    cp -r ${oh-my-zsh.out}/share/oh-my-zsh $out/share/oh-my-zsh
+    cp -r ${oh-my-zsh.out} $out/
     chmod +w $out/share/oh-my-zsh/custom/plugins/
     cp -r ${zsh-autosuggestions.src}/ $out/share/oh-my-zsh/custom/plugins/zsh-autosuggestions
     cp -r ${zsh-syntax-highlighting.src}/ $out/share/oh-my-zsh/custom/plugins/zsh-syntax-highlighting

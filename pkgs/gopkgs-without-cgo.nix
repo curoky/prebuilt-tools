@@ -9,50 +9,50 @@
 { pkgs ? import <nixpkgs> { } }:
 
 let
-  gdu_static = pkgs.gdu.overrideAttrs (oldAttrs: rec {
+  gdu = pkgs.gdu.overrideAttrs (oldAttrs: rec {
     CGO_ENABLED = "0";
   });
-  gh_static = pkgs.gh.overrideAttrs (oldAttrs: rec {
+  gh = pkgs.gh.overrideAttrs (oldAttrs: rec {
     CGO_ENABLED = "0";
   });
-  bazelisk_static = pkgs.bazelisk.overrideAttrs (oldAttrs: rec {
+  bazelisk = pkgs.bazelisk.overrideAttrs (oldAttrs: rec {
     CGO_ENABLED = "0";
   });
-  croc_static = pkgs.croc.overrideAttrs (oldAttrs: rec {
+  croc = pkgs.croc.overrideAttrs (oldAttrs: rec {
     CGO_ENABLED = "0";
   });
-  go_task_static = pkgs.go-task.overrideAttrs (oldAttrs: rec {
+  go_task = pkgs.go-task.overrideAttrs (oldAttrs: rec {
     CGO_ENABLED = "0";
   });
-  git_lfs_static = pkgs.git-lfs.overrideAttrs (oldAttrs: rec {
+  git_lfs = pkgs.git-lfs.overrideAttrs (oldAttrs: rec {
     CGO_ENABLED = "0";
   });
-  gost_static = pkgs.gost.overrideAttrs (oldAttrs: rec {
+  gost = pkgs.gost.overrideAttrs (oldAttrs: rec {
     CGO_ENABLED = "0";
   });
-  shfmt_static = pkgs.shfmt.overrideAttrs (oldAttrs: rec {
+  shfmt = pkgs.shfmt.overrideAttrs (oldAttrs: rec {
     CGO_ENABLED = "0";
   });
-  fzf_static = pkgs.fzf.overrideAttrs (oldAttrs: rec {
+  fzf = pkgs.fzf.overrideAttrs (oldAttrs: rec {
     CGO_ENABLED = "0";
   });
-  dive_static = pkgs.dive.overrideAttrs (oldAttrs: rec {
+  dive = pkgs.dive.overrideAttrs (oldAttrs: rec {
     CGO_ENABLED = "0";
   });
-  scc_static = pkgs.scc.overrideAttrs (oldAttrs: rec {
+  scc = pkgs.scc.overrideAttrs (oldAttrs: rec {
     CGO_ENABLED = "0";
   });
 in
 {
-  inherit shfmt_static;
-  inherit fzf_static;
-  inherit bazelisk_static;
-  inherit croc_static;
-  inherit gdu_static;
-  inherit gh_static;
-  inherit git_lfs_static;
-  inherit go_task_static;
-  inherit gost_static;
-  inherit dive_static;
-  inherit scc_static;
+  inherit shfmt;
+  inherit fzf;
+  inherit bazelisk;
+  inherit croc;
+  inherit gdu;
+  inherit gh;
+  inherit git_lfs;
+  inherit go_task;
+  inherit gost;
+  inherit dive;
+  inherit scc;
 }

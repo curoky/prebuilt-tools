@@ -6,70 +6,32 @@ includes:
     flatten: true
 
 tasks:
-  aria2: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.aria2
-  ruff: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ruff
-  git: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.git
+  # go pkgs
+  bazelisk: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix bazelisk
+  croc: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix croc
+  fzf: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix fzf
+  gdu: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix gdu
+  gh: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix gh
+  git-lfs: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix git_lfs
+  go-task: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix go_task
+  gost: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix gost
+  shfmt: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix shfmt
+  scc: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix scc
+  dive: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix dive
+  buildifier: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.buildifier
 
+  # rust pkgs
   starship: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.starship
   eza: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.eza
   fd: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.fd
   atuin: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.atuin
   bat: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bat
   git-absorb: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.git-absorb
-  buildifier: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.buildifier
+  ruff: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ruff
+  ripgrep: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ripgrep
 
+  # others
+  aria2: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.aria2
   llvmPackages_18.clang-unwrapped: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.llvmPackages_18.clang-unwrapped
   lld_18: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.lld_18
   llvm_18: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.llvmPackages_18.clang-unwrapped nixpkgs.pkgsStatic.lld_18
-
-  bazelisk: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix bazelisk_static
-  croc: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix croc_static
-  fzf: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix fzf_static
-  gdu: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix gdu_static
-  gh: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix gh_static
-  git-lfs: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix git_lfs_static
-  go-task: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix go_task_static
-  gost: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix gost_static
-  shfmt: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix shfmt_static
-  scc: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix scc_static
-  dive: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix dive_static
-
-  diffutils: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix diffutils_static
-  gnupg-minimal: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix gnupg_minimal_static
-
-  python311: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix python311
-
-  glibcLocales: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix glibcLocales
-
-  curl: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix curl
-
-  # ruff: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix ruff_static
-
-  silver-searcher:
-    - task: setup-old
-    - nix-env -I old=$HOME/.nix-defexpr/channels/staging -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix silver_searcher_static
-
-  protobuf_3_8_0:
-    - task: setup-old
-    - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix protobuf_3_8_0_static
-
-  protobuf_3_9_2:
-    - task: setup-old
-    - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix protobuf_3_9_2_static
-
-  wget:
-    - task: setup-old
-    # - nix-env -p ~/nix/profiles/prebuilt -iA old.pkgsStatic.wget
-    - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix wget
-
-  # ruff:
-  #   - task: setup-unstable
-  #   - nix-env -I nixpkgs=$HOME/.nix-defexpr/channels/unstable -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.ruff
-
-  # gnupg:
-  #   - task: setup-unstable
-  #   - nix-env -I nixpkgs=$HOME/.nix-defexpr/channels/unstable -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.gnupg
-
-  # git:
-  #   - task: setup-extra
-  #   - nix-env -p ~/nix/profiles/prebuilt -iA git_fix.pkgsStatic.git

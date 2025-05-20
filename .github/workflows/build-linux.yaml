@@ -13,8 +13,8 @@ on:
   workflow_dispatch:
     inputs:
       name:
-        description: 'package name'
-        default: ''
+        description: "package name"
+        default: ""
         required: false
         type: string
   # schedule:
@@ -47,6 +47,7 @@ jobs:
           - name: curl
           - name: diffutils
           - name: dive
+          - name: dool
           - name: ethtool
           - name: exiftool
           - name: eza
@@ -64,12 +65,13 @@ jobs:
           - name: git
           - name: git-absorb
           - name: git-extras
+          - name: git-filter-repo
           - name: git-lfs
           - name: glibcLocales
           - name: gnugrep
           - name: gnumake
           - name: gnupatch
-          - name: gnupg-minimal
+          - name: gnupg
           - name: gnused
           - name: gnutar
           - name: go-task
@@ -93,10 +95,9 @@ jobs:
           - name: miniserve
           - name: ncdu_1
           - name: netcat
+          - name: netron
           - name: nettools
           - name: ninja
-          - name: nixfmt-rfc-style
-          - name: nixpkgs-fmt
           - name: nsight-systems
           - name: numactl
           - name: openssh_gssapi
@@ -113,11 +114,11 @@ jobs:
           - name: protobuf_3_9_2
           - name: python311
           - name: rime-bundle
+          - name: ripgrep
           - name: rsync
           - name: ruff
           - name: scc
           - name: shfmt
-          - name: silver-searcher
           - name: snappy
           - name: starship
           - name: strace
@@ -127,8 +128,6 @@ jobs:
           - name: tzdata
           - name: unzip
           - name: util-linux
-          - name: vim
-          - name: vim-bundle
           - name: wget
           - name: xxd
           - name: xz
@@ -138,9 +137,12 @@ jobs:
           - name: zsh
           - name: zsh-bundle
           - name: zstd
-          - name: netron
-          - name: dool
-          - name: git-filter-repo
+          - name: vim
+          - name: vim-extra
+
+          # - name: nixfmt-rfc-style
+          # - name: nixpkgs-fmt
+          # - name: silver-searcher
 
     steps:
       - run: echo "skip_steps=true" >> $GITHUB_ENV
@@ -158,7 +160,7 @@ jobs:
         with:
           file: ${{ matrix.name }}.linux-x86_64.tar.gz
           asset_name: ${{ matrix.name }}.linux-x86_64.tar.gz
-          tag: 'v1.0'
+          tag: "v1.0"
           overwrite: true
 
       - uses: mxschmitt/action-tmate@v3

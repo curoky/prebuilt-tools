@@ -1,7 +1,7 @@
 { lib, stdenv, fetchurl, opencc, unzip}:
 
 stdenv.mkDerivation rec {
-  pname = "rime-bundle";
+  pname = "rime-extra";
   version = "0.15.2";
 
   src = fetchurl {
