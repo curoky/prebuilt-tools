@@ -10,37 +10,37 @@
 
 let
   gdu = pkgs.gdu.overrideAttrs (oldAttrs: rec {
-    CGO_ENABLED = "0";
+    env.CGO_ENABLED = "0";
   });
   gh = pkgs.gh.overrideAttrs (oldAttrs: rec {
-    CGO_ENABLED = "0";
+    env.CGO_ENABLED = "0";
   });
   bazelisk = pkgs.bazelisk.overrideAttrs (oldAttrs: rec {
-    CGO_ENABLED = "0";
+    env.CGO_ENABLED = "0";
   });
   croc = pkgs.croc.overrideAttrs (oldAttrs: rec {
-    CGO_ENABLED = "0";
+    env.CGO_ENABLED = "0";
   });
   go_task = pkgs.go-task.overrideAttrs (oldAttrs: rec {
-    CGO_ENABLED = "0";
+    env.CGO_ENABLED = "0";
   });
   git_lfs = pkgs.git-lfs.overrideAttrs (oldAttrs: rec {
-    CGO_ENABLED = "0";
+    env.CGO_ENABLED = "0";
   });
   gost = pkgs.gost.overrideAttrs (oldAttrs: rec {
-    CGO_ENABLED = "0";
+    env.CGO_ENABLED = "0";
   });
   shfmt = pkgs.shfmt.overrideAttrs (oldAttrs: rec {
-    CGO_ENABLED = "0";
+    env.CGO_ENABLED = "0";
   });
   fzf = pkgs.fzf.overrideAttrs (oldAttrs: rec {
-    CGO_ENABLED = "0";
+    env.CGO_ENABLED = "0";
   });
   dive = pkgs.dive.overrideAttrs (oldAttrs: rec {
-    CGO_ENABLED = "0";
+    env.CGO_ENABLED = "0";
   });
   scc = pkgs.scc.overrideAttrs (oldAttrs: rec {
-    CGO_ENABLED = "0";
+    env.CGO_ENABLED = "0";
   });
 in
 {
