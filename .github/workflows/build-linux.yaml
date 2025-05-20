@@ -113,7 +113,7 @@ jobs:
           - name: protobuf_3_8_0
           - name: protobuf_3_9_2
           - name: python311
-          - name: rime-bundle
+          - name: rime-extra
           - name: ripgrep
           - name: rsync
           - name: ruff

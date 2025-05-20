@@ -68,22 +68,22 @@ in
   # wrapped
   # bat = pkgs.pkgsStatic.callPackage ./wrapped/bat.nix { };
   vim = pkgs.pkgsStatic.callPackage ./wrapped/vim.nix { };
-  vim-bundle = pkgs.pkgsStatic.callPackage ./wrapped/vim-bundle.nix { };
+  # vim-bundle = pkgs.pkgsStatic.callPackage ./wrapped/vim-bundle.nix { };
   curl = pkgs.pkgsStatic.callPackage ./wrapped/curl.nix { };
   file = pkgs.pkgsStatic.callPackage ./wrapped/file.nix { };
   makeself = pkgs.pkgsStatic.callPackage ./wrapped/makeself.nix { };
   miniserve = pkgs.pkgsStatic.callPackage ./wrapped/miniserve.nix { };
   openssh_gssapi = pkgs.pkgsStatic.callPackage ./wrapped/openssh_gssapi.nix { };
-  tmux-bundle = pkgs.pkgsStatic.callPackage ./wrapped/tmux-bundle.nix { };
+  # tmux-bundle = pkgs.pkgsStatic.callPackage ./wrapped/tmux-bundle.nix { };
   wget = pkgs.pkgsStatic.callPackage ./wrapped/wget.nix { };
   zsh = pkgs.pkgsStatic.callPackage ./wrapped/zsh.nix { };
   zsh-bundle = pkgs.pkgsStatic.callPackage ./wrapped/zsh-bundle.nix { };
 
-  # tmux-extra = pkgs.pkgsStatic.callPackage ./tmux-extra.nix { };
-  vim-extra = pkgs.callPackage ./vim-extra.nix { };
   cacert = pkgs.pkgsStatic.callPackage ./cacert.nix { };
   nsight-systems = pkgs.pkgsStatic.callPackage ./nsight-systems.nix { };
   python311 = pkgs.pkgsStatic.callPackage ./python311.nix { };
   rime-extra = pkgs.pkgsStatic.callPackage ./rime-extra.nix { };
+  tmux-extra = pkgs.pkgsStatic.callPackage ./tmux-extra.nix { };
+  vim-extra = pkgs.callPackage ./vim-extra.nix { };
   zsh-extra = pkgs.pkgsStatic.callPackage ./zsh-extra.nix { };
 }

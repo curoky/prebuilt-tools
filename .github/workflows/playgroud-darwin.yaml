@@ -1,4 +1,4 @@
-name: build darwin
+name: playgroud darwin
 
 on:
   workflow_dispatch:
