@@ -59,6 +59,7 @@ in
 
   # patched
   diffutils = pkgs.pkgsStatic.callPackage ./patched/diffutils.nix { };
+  zellij = pkgs.pkgsStatic.callPackage ./patched/zellij.nix { };
 
   # pypkgs
   dool = pkgs.pkgsStatic.callPackage ./pypkgs/dool.nix { };

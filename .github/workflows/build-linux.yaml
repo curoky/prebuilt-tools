@@ -123,22 +123,23 @@ jobs:
           - name: starship
           - name: strace
           - name: tmux
-          - name: tmux-bundle
+          - name: tmux-extra
           - name: tree
           - name: tzdata
           - name: unzip
           - name: util-linux
+          - name: vim
+          - name: vim-extra
           - name: wget
           - name: xxd
           - name: xz
+          - name: zellij
           - name: zip
           - name: zlib
           - name: zlib-ng
           - name: zsh
           - name: zsh-bundle
           - name: zstd
-          - name: vim
-          - name: vim-extra
 
           # - name: nixfmt-rfc-style
           # - name: nixpkgs-fmt

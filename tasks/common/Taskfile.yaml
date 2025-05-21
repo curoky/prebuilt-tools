@@ -126,6 +126,7 @@ tasks:
   zsh-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh-bundle
   zsh-extra: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh-extra
   zsh: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh
+  zellij: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zellij
 
   protobuf_3_8_0:
     - task: setup-old

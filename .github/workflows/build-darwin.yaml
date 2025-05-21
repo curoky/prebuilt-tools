@@ -64,13 +64,15 @@ jobs:
           - name: rsync
           - name: shfmt
           - name: starship
+          # - name: tmux
+          - name: tmux-extra
           - name: unzip
+          - name: vim
+          - name: vim-extra
           - name: xz
           - name: zip
           - name: zsh-extra
           - name: zstd
-          - name: vim
-          - name: vim-extra
 
           # - name: silver-searcher
           # - name: zsh
