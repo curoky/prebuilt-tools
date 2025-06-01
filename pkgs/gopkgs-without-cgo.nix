@@ -42,6 +42,9 @@ let
   scc = pkgs.scc.overrideAttrs (oldAttrs: rec {
     env.CGO_ENABLED = "0";
   });
+  buildifier = pkgs.buildifier.overrideAttrs (oldAttrs: rec {
+    env.CGO_ENABLED = "0";
+  });
 in
 {
   inherit shfmt;
@@ -55,4 +58,5 @@ in
   inherit gost;
   inherit dive;
   inherit scc;
+  inherit buildifier;
 }
