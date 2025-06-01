@@ -135,3 +135,17 @@ tasks:
   protobuf_3_9_2:
     - task: setup-old
     - nix-env -I old=$HOME/.nix-defexpr/channels/old -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix protobuf_3_9_2
+
+  # go pkgs
+  bazelisk: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix bazelisk
+  croc: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix croc
+  fzf: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix fzf
+  gdu: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix gdu
+  gh: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix gh
+  git-lfs: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix git_lfs
+  go-task: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix go_task
+  gost: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix gost
+  shfmt: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix shfmt
+  scc: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix scc
+  dive: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/gopkgs-without-cgo.nix dive
+  buildifier: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.buildifier

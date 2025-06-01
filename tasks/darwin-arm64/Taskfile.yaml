@@ -6,15 +6,6 @@ includes:
     flatten: true
 
 tasks:
-  # go pkgs
-  fzf: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.fzf
-  gdu: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.gdu
-  git-lfs: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.git-lfs
-  go-task: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.go-task
-  gost: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.gost
-  shfmt: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.shfmt
-  buildifier: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.buildifier
-
   # rust pkgs
   ripgrep: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.ripgrep
   starship: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.starship
