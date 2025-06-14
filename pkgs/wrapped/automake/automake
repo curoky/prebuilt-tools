@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+script_path="$(readlink -f "$0")"
+root=$(cd "$(dirname "$script_path")" && pwd)/..
+
+export PERL5LIB=$root/share/automake-1.16
+export AUTOMAKE_LIBDIR=$root/share/automake-1.16
+
+exec -a "$0" "$root/bin/_automake" "$@"

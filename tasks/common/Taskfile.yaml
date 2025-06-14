@@ -31,8 +31,6 @@ tasks:
     - nix-channel --add https://github.com/NixOS/nixpkgs/archive/staging.tar.gz staging
     - nix-channel --update
 
-  autoconf: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.autoconf
-  automake: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.automake
   bash: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bash
   binutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.binutils-unwrapped
   bison: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bison
@@ -64,7 +62,6 @@ tasks:
   krb5: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.krb5
   less: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.less
   libcap: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.libcap
-  libtool: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.libtool
   lsb-release: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.lsb-release
   lsof: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.lsof
   m4: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.m4
@@ -127,6 +124,9 @@ tasks:
   zsh-extra: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh-extra
   zsh: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh
   zellij: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zellij
+  autoconf: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix autoconf
+  automake: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix automake
+  libtool: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix libtool
 
   protobuf_3_8_0:
     - task: setup-old

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+script_path="$(readlink -f "$0")"
+root=$(cd "$(dirname "$script_path")" && pwd)/..
+
+export autom4te_perllibdir=$root/share/autoconf
+export trailer_m4=$root/share/autoconf/autoconf/trailer.m4
+
+exec -a "$0" "$root/bin/_autoconf" "$@"

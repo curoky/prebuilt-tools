@@ -79,6 +79,9 @@ in
   wget = pkgs.pkgsStatic.callPackage ./wrapped/wget.nix { };
   zsh = pkgs.pkgsStatic.callPackage ./wrapped/zsh.nix { };
   zsh-bundle = pkgs.pkgsStatic.callPackage ./wrapped/zsh-bundle.nix { };
+  autoconf = pkgs.pkgsStatic.callPackage ./wrapped/autoconf.nix { };
+  automake = pkgs.pkgsStatic.callPackage ./wrapped/automake.nix { };
+  libtool = pkgs.pkgsStatic.callPackage ./wrapped/libtool.nix { };
 
   cacert = pkgs.pkgsStatic.callPackage ./cacert.nix { };
   nsight-systems = pkgs.pkgsStatic.callPackage ./nsight-systems.nix { };
