@@ -140,6 +140,7 @@ jobs:
           - name: zsh
           - name: zsh-bundle
           - name: zstd
+          - name: lua
 
           # - name: nixfmt-rfc-style
           # - name: nixpkgs-fmt

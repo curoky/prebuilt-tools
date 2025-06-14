@@ -31,6 +31,7 @@ tasks:
     - nix-channel --add https://github.com/NixOS/nixpkgs/archive/staging.tar.gz staging
     - nix-channel --update
 
+  lua: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.lua
   bash: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bash
   binutils: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.binutils-unwrapped
   bison: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.bison
