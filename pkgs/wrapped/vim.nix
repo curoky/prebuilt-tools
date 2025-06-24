@@ -22,5 +22,6 @@ vim.overrideAttrs (oldAttrs: {
     mv $out/bin/vim $out/bin/_vim
     cp ${wrapperScript} $out/bin/vim
     chmod +x $out/bin/vim
+    ln -s $out/bin/vim $out/bin/vi
   '';
 })
