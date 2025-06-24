@@ -122,6 +122,7 @@ def pack(output_path: Path, nix_paths: list[Path]):
 
 if __name__ == "__main__":
     logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
+    shutil.rmtree("tmp/output/", ignore_errors=True)
     os.makedirs("tmp/output/")
     pack(
         output_path=Path("tmp/output"),
