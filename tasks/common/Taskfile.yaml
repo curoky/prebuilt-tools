@@ -100,34 +100,42 @@ tasks:
   zlib: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zlib
   zstd: nix-env -p ~/nix/profiles/prebuilt -iA nixpkgs.pkgsStatic.zstd
 
-  cacert: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix cacert
+  # wrapped
+  autoconf: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix autoconf
+  automake: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix automake
   coreutils: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix coreutils
   curl: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix curl
-  diffutils: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix diffutils
-  dool: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix dool
   file: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix file
-  git-filter-repo: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix git-filter-repo
   glibcLocales: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix glibcLocales
+  libtool: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix libtool
   makeself: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix makeself
   miniserve: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix miniserve
-  netron: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix netron
-  nsight-systems: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix nsight-systems
   openssh_gssapi: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix openssh_gssapi
-  python311: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix python311
   rime-extra: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix rime-extra
   tmux-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix tmux-bundle
-  tmux-extra: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix tmux-extra
   vim-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix vim-bundle
-  vim-extra: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix vim-extra
   vim: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix vim
   wget: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix wget
   zsh-bundle: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh-bundle
-  zsh-extra: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh-extra
   zsh: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh
+
+  # pypkgs
+  dool: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix dool
+  git-filter-repo: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix git-filter-repo
+  netron: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix netron
+
+  # patched
+  diffutils: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix diffutils
+  zsh-extra: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh-extra
   zellij: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zellij
-  autoconf: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix autoconf
-  automake: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix automake
-  libtool: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix libtool
+  cmake: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix cmake
+
+  # new
+  nsight-systems: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix nsight-systems
+  cacert: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix cacert
+  python311: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix python311
+  tmux-extra: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix tmux-extra
+  vim-extra: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix vim-extra
 
   protobuf_3_8_0:
     - task: setup-old

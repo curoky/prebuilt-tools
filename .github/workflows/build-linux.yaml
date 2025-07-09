@@ -141,6 +141,7 @@ jobs:
           - name: zsh-bundle
           - name: zstd
           - name: lua
+          - name: cmake
 
           # - name: nixfmt-rfc-style
           # - name: nixpkgs-fmt
