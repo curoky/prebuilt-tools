@@ -77,7 +77,7 @@ profile_path=$install_path/profile
 profile=default
 
 mkdir -p $download_path $store_path/$name $profile_path/$profile
-curl -sSL https://github.com/curoky/prebuilt-tools/releases/download/v1.0/${name}.${arch}.tar.gz \
+curl -sSL https://github.com/curoky/static-binaries/releases/download/v1.0/${name}.${arch}.tar.gz \
   -o $download_path/${name}.tar.gz
 tar -x --gunzip -f $download_path/${name}.tar.gz -C $store_path/${name} --strip-components=1
 

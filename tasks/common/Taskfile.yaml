@@ -127,8 +127,8 @@ tasks:
   diffutils: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix diffutils
   zellij: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zellij
   cmake: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix cmake
-  git: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix git --keep-failed
-  # gettext: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix gettext --keep-failed
+  git: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix git
+  # gettext: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix gettext
 
   # new
   zsh-extra: nix-env -p ~/nix/profiles/prebuilt -iA -f ../../pkgs/default.nix zsh-extra

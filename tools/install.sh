@@ -21,7 +21,7 @@ set -euo pipefail
 name=${1}
 arch=$(echo $(uname -s)-$(uname -m) | tr '[:upper:]' '[:lower:]') # linux_amd64/darwin_arm64
 
-curl -sSL https://github.com/curoky/prebuilt-tools/releases/download/v1.0/${name}.${arch}.tar.gz \
+curl -sSL https://github.com/curoky/static-binaries/releases/download/v1.0/${name}.${arch}.tar.gz \
   -o ${name}.tar.gz
 
 tar -x --gunzip -f ./${name}.tar.gz
