@@ -14,7 +14,7 @@
 //   - Independent packages. Every package is treated as fully self-contained;
 //     sb performs no dependency resolution.
 //
-// Commands: install | remove | upgrade | info | list | outdated
+// Commands: install | remove | upgrade | info | list | outdated | sync
 //
 // `install` accepts multiple packages and runs in three phases:
 //  1. resolve every package's remote layer digest in parallel (a missing
@@ -46,6 +46,7 @@ import (
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 	"golang.org/x/sync/errgroup"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -623,6 +624,80 @@ func cmdUpgrade(prefix, arch string, names []string) error {
 	return nil
 }
 
+// ---------------------------------------------------------------------------
+// Declarative manifest (sb.yaml) and `sync`.
+// ---------------------------------------------------------------------------
+
+// defaultManifest is the manifest filename resolved in the current directory
+// when `sync` is invoked without an explicit path.
+const defaultManifest = "sb.yaml"
+
+// manifest is a declarative list of packages to install, with optional
+// defaults mirroring the install flags. It is the sb equivalent of a Brewfile
+// / pyproject file. Link is a pointer so an unset field is distinguishable
+// from an explicit false.
+type manifest struct {
+	Arch     string   `yaml:"arch"`
+	Link     *bool    `yaml:"link"`
+	Packages []string `yaml:"packages"`
+}
+
+// loadManifest reads and parses a YAML manifest, requiring a non-empty
+// packages list.
+func loadManifest(path string) (manifest, error) {
+	var m manifest
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return m, err
+	}
+	if err := yaml.Unmarshal(data, &m); err != nil {
+		return m, fmt.Errorf("%s: %w", path, err)
+	}
+	if len(m.Packages) == 0 {
+		return m, fmt.Errorf("%s: no packages listed", path)
+	}
+	return m, nil
+}
+
+// cmdSync reconciles the installed set against a manifest. It installs/refreshes
+// every listed package (reusing installPackages), and when prune is set it also
+// removes installed packages that are not listed in the manifest. Manifest
+// fields provide defaults; the explicit CLI flag/auto-detected arch wins.
+func cmdSync(prefix, arch, file string, link, force, prune bool) error {
+	m, err := loadManifest(file)
+	if err != nil {
+		return err
+	}
+	if m.Arch != "" {
+		arch = m.Arch
+	}
+	if m.Link != nil {
+		link = *m.Link
+	}
+	logger.Info("sync started", "file", file, "packages", m.Packages, "prune", prune)
+	fmt.Printf("> Syncing %d package(s) from %s...\n", len(m.Packages), file)
+	if err := installPackages(m.Packages, installOpts{prefix: prefix, arch: arch, linked: link, force: force}); err != nil {
+		return err
+	}
+	if !prune {
+		return nil
+	}
+	want := make(map[string]bool, len(m.Packages))
+	for _, name := range m.Packages {
+		want[name] = true
+	}
+	for _, name := range installedNames(prefix) {
+		if want[name] {
+			continue
+		}
+		logger.Info("prune removing package not in manifest", "package", name)
+		if err := cmdRemove(prefix, name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func short(digest string) string {
 	if len(digest) > 19 {
 		return digest[:19]
@@ -739,7 +814,28 @@ func main() {
 		RunE:  func(cmd *cobra.Command, args []string) error { return cmdOutdated(prefix) },
 	}
 
-	root.AddCommand(install, remove, upgrade, info, list, outdated)
+	var prune bool
+	sync := &cobra.Command{
+		Use:   "sync [file]",
+		Short: "Install packages declared in a YAML manifest (default: sb.yaml)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := resolveArch()
+			if err != nil {
+				return err
+			}
+			file := defaultManifest
+			if len(args) == 1 {
+				file = args[0]
+			}
+			return cmdSync(prefix, a, file, link, force, prune)
+		},
+	}
+	sync.Flags().BoolVar(&link, "link", true, "expose binaries via relative symlinks")
+	sync.Flags().BoolVar(&force, "force", false, "reinstall even if the digest already matches")
+	sync.Flags().BoolVar(&prune, "prune", false, "remove installed packages not listed in the manifest")
+
+	root.AddCommand(install, remove, upgrade, info, list, outdated, sync)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)

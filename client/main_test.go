@@ -229,3 +229,88 @@ func TestInstallMultiOneMissingAbortsAll(t *testing.T) {
 		t.Errorf("ripgrep should NOT be installed when a sibling is missing")
 	}
 }
+
+func TestLoadManifest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sb.yaml")
+	body := "arch: linux-x86_64\nlink: false\npackages:\n  - ripgrep\n  - fd\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := loadManifest(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Arch != "linux-x86_64" {
+		t.Errorf("arch=%q want linux-x86_64", m.Arch)
+	}
+	if m.Link == nil || *m.Link != false {
+		t.Errorf("link=%v want explicit false", m.Link)
+	}
+	if len(m.Packages) != 2 || m.Packages[0] != "ripgrep" || m.Packages[1] != "fd" {
+		t.Errorf("packages=%v want [ripgrep fd]", m.Packages)
+	}
+
+	// An empty packages list is an error.
+	empty := filepath.Join(dir, "empty.yaml")
+	if err := os.WriteFile(empty, []byte("arch: linux-x86_64\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadManifest(empty); err == nil {
+		t.Error("expected error for manifest with no packages")
+	}
+}
+
+func TestSyncInstalls(t *testing.T) {
+	arch := "linux-x86_64"
+	startRegistry(t, arch, "ripgrep", "fd")
+	prefix := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	file := filepath.Join(t.TempDir(), "sb.yaml")
+	if err := os.WriteFile(file, []byte("packages:\n  - ripgrep\n  - fd\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdSync(prefix, arch, file, true, false, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"ripgrep", "fd"} {
+		if _, err := os.Stat(filepath.Join(prefix, "bin", name)); err != nil {
+			t.Errorf("%s not installed/linked: %v", name, err)
+		}
+		if _, err := readMeta(prefix, name); err != nil {
+			t.Errorf("%s metadata missing: %v", name, err)
+		}
+	}
+}
+
+func TestSyncPrune(t *testing.T) {
+	arch := "linux-x86_64"
+	startRegistry(t, arch, "ripgrep", "fd", "bat")
+	prefix := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	// Pre-install bat; it is intentionally absent from the manifest below.
+	if err := installPackages([]string{"bat"}, installOpts{prefix: prefix, arch: arch, linked: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	file := filepath.Join(t.TempDir(), "sb.yaml")
+	if err := os.WriteFile(file, []byte("packages:\n  - ripgrep\n  - fd\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdSync(prefix, arch, file, true, false, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"ripgrep", "fd"} {
+		if _, err := os.Stat(filepath.Join(prefix, "bin", name)); err != nil {
+			t.Errorf("%s not installed by sync: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(storePath(prefix, "bat")); !os.IsNotExist(err) {
+		t.Errorf("bat should have been pruned")
+	}
+	if _, err := os.Lstat(filepath.Join(prefix, "bin", "bat")); !os.IsNotExist(err) {
+		t.Errorf("bat bin link should have been removed by prune")
+	}
+}

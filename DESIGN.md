@@ -201,6 +201,7 @@ There is no human-readable version embedded in the OCI tag (`<name>-<arch>`), so
 - `info <pkg>`: show a package's recorded metadata (or its registry coordinates if not installed) and whether it is up to date vs. the remote digest.
 - `list`: list installed packages and their recorded digests by reading each `store/*/.sb-meta`.
 - `outdated`: report installed packages whose remote digest has changed.
+- `sync [file]`: install/refresh every package declared in a **YAML manifest** (default filename `sb.yaml`, or an explicit path argument) — the sb equivalent of a Brewfile / pyproject file. The manifest is a `packages:` name list plus optional `arch:` / `link:` defaults (an explicit `--arch` flag still wins). It reuses the `install` digest-skip logic, so re-running is idempotent. With `--prune` it additionally removes installed packages **not** listed in the manifest (via the normal `remove` path), making the installed set match the manifest exactly.
 
 Common options: `--prefix PATH|--prefix=PATH` and `--arch ARCH|--arch=ARCH` (both `--opt value` and `--opt=value` forms accepted; options may appear before or after the package names). `--verbose` additionally mirrors the detailed log to stderr.
 
