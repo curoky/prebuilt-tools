@@ -233,7 +233,7 @@ func TestInstallMultiOneMissingAbortsAll(t *testing.T) {
 func TestLoadManifest(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sb.yaml")
-	body := "arch: linux-x86_64\nlink: false\npackages:\n  - ripgrep\n  - fd\n"
+	body := "arch: linux-x86_64\npackages:\n  link:\n    - ripgrep\n    - fd\n  unlink:\n    - python311\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -244,11 +244,11 @@ func TestLoadManifest(t *testing.T) {
 	if m.Arch != "linux-x86_64" {
 		t.Errorf("arch=%q want linux-x86_64", m.Arch)
 	}
-	if m.Link == nil || *m.Link != false {
-		t.Errorf("link=%v want explicit false", m.Link)
+	if len(m.Packages.Link) != 2 || m.Packages.Link[0] != "ripgrep" || m.Packages.Link[1] != "fd" {
+		t.Errorf("packages.link=%v want [ripgrep fd]", m.Packages.Link)
 	}
-	if len(m.Packages) != 2 || m.Packages[0] != "ripgrep" || m.Packages[1] != "fd" {
-		t.Errorf("packages=%v want [ripgrep fd]", m.Packages)
+	if len(m.Packages.Unlink) != 1 || m.Packages.Unlink[0] != "python311" {
+		t.Errorf("packages.unlink=%v want [python311]", m.Packages.Unlink)
 	}
 
 	// An empty packages list is an error.
@@ -268,7 +268,7 @@ func TestSyncInstalls(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
 	file := filepath.Join(t.TempDir(), "sb.yaml")
-	if err := os.WriteFile(file, []byte("packages:\n  - ripgrep\n  - fd\n"), 0o644); err != nil {
+	if err := os.WriteFile(file, []byte("packages:\n  link:\n    - ripgrep\n    - fd\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := cmdSync(prefix, arch, file, true, false, false); err != nil {
@@ -284,6 +284,39 @@ func TestSyncInstalls(t *testing.T) {
 	}
 }
 
+func TestSyncManifestPrefix(t *testing.T) {
+	arch := "linux-x86_64"
+	startRegistry(t, arch, "ripgrep")
+	root := t.TempDir()
+	manifestPrefix := filepath.Join(root, "opt", "sb")
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	file := filepath.Join(t.TempDir(), "sb.yaml")
+	body := "prefix: " + manifestPrefix + "\npackages:\n  link:\n    - ripgrep\n"
+	if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// prefixSet=false: the flag prefix is a throwaway; the manifest's prefix wins.
+	if err := cmdSync(filepath.Join(root, "ignored"), arch, file, false, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(manifestPrefix, "bin", "ripgrep")); err != nil {
+		t.Errorf("ripgrep not installed under manifest prefix: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "ignored", "bin", "ripgrep")); !os.IsNotExist(err) {
+		t.Errorf("nothing should be installed under the flag prefix when manifest prefix is set")
+	}
+
+	// prefixSet=true: an explicit --prefix overrides the manifest.
+	flagPrefix := filepath.Join(root, "flag", "sb")
+	if err := cmdSync(flagPrefix, arch, file, true, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(flagPrefix, "bin", "ripgrep")); err != nil {
+		t.Errorf("explicit --prefix should override manifest prefix: %v", err)
+	}
+}
+
 func TestSyncPrune(t *testing.T) {
 	arch := "linux-x86_64"
 	startRegistry(t, arch, "ripgrep", "fd", "bat")
@@ -296,7 +329,7 @@ func TestSyncPrune(t *testing.T) {
 	}
 
 	file := filepath.Join(t.TempDir(), "sb.yaml")
-	if err := os.WriteFile(file, []byte("packages:\n  - ripgrep\n  - fd\n"), 0o644); err != nil {
+	if err := os.WriteFile(file, []byte("packages:\n  link:\n    - ripgrep\n    - fd\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := cmdSync(prefix, arch, file, true, false, true); err != nil {
@@ -312,5 +345,74 @@ func TestSyncPrune(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(prefix, "bin", "bat")); !os.IsNotExist(err) {
 		t.Errorf("bat bin link should have been removed by prune")
+	}
+}
+
+func TestSyncUnlinked(t *testing.T) {
+	arch := "linux-x86_64"
+	startRegistry(t, arch, "ripgrep", "python311")
+	prefix := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	file := filepath.Join(t.TempDir(), "sb.yaml")
+	body := "packages:\n  link:\n    - ripgrep\n  unlink:\n    - python311\n"
+	if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdSync(prefix, arch, file, true, false, false); err != nil {
+		t.Fatal(err)
+	}
+	// Regular package is linked into the prefix root.
+	if _, err := os.Stat(filepath.Join(prefix, "bin", "ripgrep")); err != nil {
+		t.Errorf("ripgrep not linked into prefix root: %v", err)
+	}
+	// Unlinked package lands in the store but is NOT linked into the root.
+	if _, err := os.Stat(storePath(prefix, "python311")); err != nil {
+		t.Errorf("python311 not installed into store: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(prefix, "bin", "python311")); !os.IsNotExist(err) {
+		t.Errorf("python311 should NOT be linked into prefix root")
+	}
+}
+
+func TestSyncProfiles(t *testing.T) {
+	arch := "linux-x86_64"
+	startRegistry(t, arch, "ripgrep", "gopls", "delve")
+	prefix := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	file := filepath.Join(t.TempDir(), "sb.yaml")
+	body := "packages:\n  link:\n    - ripgrep\nprofiles:\n  go:\n    - gopls\n    - delve\n"
+	if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdSync(prefix, arch, file, true, false, false); err != nil {
+		t.Fatal(err)
+	}
+
+	// The regular package is linked into the prefix root.
+	if _, err := os.Stat(filepath.Join(prefix, "bin", "ripgrep")); err != nil {
+		t.Errorf("ripgrep not linked into prefix root: %v", err)
+	}
+	// Profile packages are installed into the store but NOT linked into root.
+	for _, name := range []string{"gopls", "delve"} {
+		if _, err := os.Stat(storePath(prefix, name)); err != nil {
+			t.Errorf("%s not installed into store: %v", name, err)
+		}
+		if _, err := os.Lstat(filepath.Join(prefix, "bin", name)); !os.IsNotExist(err) {
+			t.Errorf("%s should NOT be linked into prefix root", name)
+		}
+		// ... they are exposed under the profile directory instead.
+		link := filepath.Join(prefix, "profile", "go", "bin", name)
+		if _, err := os.Stat(link); err != nil {
+			t.Errorf("%s not linked into profile go: %v", name, err)
+		}
+		target, err := os.Readlink(link)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if filepath.IsAbs(target) {
+			t.Errorf("profile link target is absolute: %q", target)
+		}
 	}
 }
