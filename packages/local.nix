@@ -147,7 +147,7 @@ in
       inherit execline;
     };
     s6-linux-init = pkgsStatic.callPackage ./s6-linux-init {
-      inherit s6;
+      inherit s6 execline;
     };
     s6-rc = pkgsStatic.callPackage ./s6-rc {
       inherit s6 execline;

@@ -16,8 +16,14 @@ execline.overrideAttrs (oldAttrs: {
   # into <execline/config.h> and used by s6-rc-compile to emit "#!<prefix>execlineb"
   # shebang lines. A shebang must be an absolute path (the kernel does not search
   # $PATH), so point it at /usr/bin/env and let env resolve execlineb via $PATH.
+  #
+  # Use "-S" so env splits the interpreter and its options: s6-rc-compile emits
+  # "#!<prefix>execlineb -P", and Debian 10's /usr/bin/env does not split the
+  # shebang argument, so without -S it looks for a program literally named
+  # "execlineb -P" and fails. Baking -S here means the generated run scripts are
+  # correct at build time (no post-compile shebang rewrite needed).
   postConfigure = ''
-    sed -i 's|^#define EXECLINE_SHEBANGPREFIX .*|#define EXECLINE_SHEBANGPREFIX "/usr/bin/env "|' \
+    sed -i 's|^#define EXECLINE_SHEBANGPREFIX .*|#define EXECLINE_SHEBANGPREFIX "/usr/bin/env -S "|' \
       src/include/execline/config.h
   '';
 })
