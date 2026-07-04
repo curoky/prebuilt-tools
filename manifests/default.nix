@@ -244,6 +244,12 @@
   };
 
   # go pkgs
+  age = {
+    platforms = [ "x86_64-linux" ];
+  };
+  sops = {
+    platforms = [ "x86_64-linux" ];
+  };
   bazelisk = {
     platforms = [ "x86_64-linux" ];
   };
