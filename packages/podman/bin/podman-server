@@ -23,9 +23,10 @@ export CONTAINERS_POLICY_JSON=$root/../conf/policy.json
 # export HTTPS_PROXY=http://127.0.0.1:7890
 
 mkdir -p /opt/podmanx/data/tmpdir
+mkdir -p /run/podman
 
 # --out=$root/../podman.log \
 exec -a "$0" "$root/_podman" \
   --log-level=debug \
-  system service --time=0 unix:///tmp/podmanxd.sock \
+  system service --time=0 unix:///run/podman/podman.sock \
   "$@" >>"$root/../podman.log" 2>&1

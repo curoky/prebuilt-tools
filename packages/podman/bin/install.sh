@@ -17,6 +17,4 @@ systemctl enable podmanxd.service
 systemctl start podmanxd.service
 systemctl status podmanxd.service
 
-chmod +777 /tmp/podmanxd.sock
-
 # echo 'nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml'

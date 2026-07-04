@@ -9,6 +9,6 @@ export CONTAINERS_STORAGE_CONF=$root/../conf/storage.conf
 export CONTAINERS_REGISTRIES_CONF=$root/../conf/registries.conf
 export CONTAINERS_POLICY_JSON=$root/../conf/policy.json
 
-export CONTAINER_HOST=unix:///tmp/podmanxd.sock
+export CONTAINER_HOST=unix:///run/podman/podman.sock
 
 exec -a "$0" "$root/_podman" --remote "$@"
