@@ -15,7 +15,7 @@ let
     root=$(cd "$(dirname "$script_path")" && pwd)/..
     store=$root/..
 
-    exec -a "$0" $store/perl/bin/perl "$root/bin/_cloc" "$@"
+    exec -a "$0" $store/perl/bin/perl -I "$root/lib/perl5" "$root/bin/_cloc" "$@"
   '';
 in
 
