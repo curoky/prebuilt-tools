@@ -15,7 +15,11 @@ let
     root=$(cd "$(dirname "$script_path")" && pwd)/..
     store=$root/..
 
-    exec -a "$0" $store/perl/bin/perl -I "$root/lib/perl5" "$root/bin/_cloc" "$@"
+    export PERL5LIB=$root/lib/perl5:$PERL5LIB
+    for d in "$root"/lib/perl5/site_perl/*/; do
+      [ -d "$d" ] && export PERL5LIB=$d:$PERL5LIB
+    done
+    exec -a "$0" $store/perl/bin/perl "$root/bin/_cloc" "$@"
   '';
 in
 
