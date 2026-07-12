@@ -60,6 +60,8 @@ in
     };
     curl = pkgsStatic.callPackage ./curl { };
     diffutils = pkgsStatic.callPackage ./diffutils { };
+    # ls-compatible front-end backed by eza (ships its own `ls` binary + eza).
+    eza-ls = pkgsStatic.callPackage ./eza-ls { };
     file = pkgsStatic.callPackage ./file { };
     gettext = pkgsStatic.callPackage ./gettext { };
     gnupg = pkgsStatic.gnupg.override {
