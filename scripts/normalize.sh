@@ -48,7 +48,7 @@ find "$prefix" -type f -print0 | while IFS= read -r -d '' f; do
   fi
 done
 
-# Portability check (the hard rule from DESIGN.md): the shipped binary must not
+# Portability check (the hard rule from CLAUDE.md): the shipped binary must not
 # depend on any dynamic library under /nix. Walk every ELF (Linux) / Mach-O
 # (Darwin) file and print its dynamic dependencies via `patchelf --print-needed`
 # + rpath / `otool -L`; fail the build if any dependency resolves under /nix.

@@ -3,7 +3,7 @@
 # A standalone Node.js 26 runtime for macOS built through `pkgsStatic`, so every
 # nixpkgs dependency is linked as a static archive (.a) and the only remaining
 # dynamic dependencies are the macOS system libraries (/usr/lib/libSystem,
-# libc++, CoreFoundation, Security). This follows DESIGN.md's darwin portability
+# libc++, CoreFoundation, Security). This follows CLAUDE.md's darwin portability
 # rule: the shipped binary must not depend on any dynamic library under /nix.
 #
 # A fully static Mach-O is impossible on macOS (Apple ships no static libSystem),

@@ -1,7 +1,7 @@
 // Command sb is a tiny package manager for the standalone-binaries
 // published at ghcr.io/curoky/standalone-binaries.
 //
-// Design goals (see DESIGN.md "Client Install / Upgrade Model"):
+// Design goals (see CLAUDE.md "Client Install / Upgrade Model"):
 //
 //   - Single static binary. sb is one statically-linked binary (built with
 //     CGO_ENABLED=0), cross-compiled for linux-x86_64 and darwin-arm64. OCI

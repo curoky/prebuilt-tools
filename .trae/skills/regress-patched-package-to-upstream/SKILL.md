@@ -11,7 +11,7 @@ Once upstream nixpkgs fixes that problem, the patch is dead weight: it should be
 removed and the package regressed to the plain upstream build. Use this skill to
 verify a patch is obsolete and to perform the regression cleanly.
 
-Read `DESIGN.md` first — the patch policy and package-selection model live there.
+Read `CLAUDE.md` first — the patch policy and package-selection model live there.
 This skill is the inverse of `patch-nixpkgs-standalone`: that one adds a patch
 when the stock static build fails; this one removes it when the stock build works
 again.
@@ -125,7 +125,7 @@ Only the workaround part is regressable; keep the packaging part. See step 4's
 6. **Rebuild the final standalone output** for the affected package(s) and re-run
    the verification checks to confirm the regressed build is still portable.
 
-7. **Update `DESIGN.md`** in the same change if the regression alters the package
+7. **Update `CLAUDE.md`** in the same change if the regression alters the package
    selection model (e.g. a package moves from a `packages/` local override to a
    manifest entry, or a documented per-platform strategy no longer applies).
 

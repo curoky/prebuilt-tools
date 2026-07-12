@@ -3,7 +3,7 @@
 # Bundle a derivation into a single self-extracting executable for tools that
 # genuinely cannot be statically compiled (e.g. Node.js based tools such as
 # prettier / pnpm). This is the "nix bundle" last-resort strategy from
-# DESIGN.md.
+# CLAUDE.md.
 #
 # Implementation: matthewbauer/nix-bundle. `nix-bootstrap-nix` produces an
 # `arx` archive (the whole runtime closure, bzip2-compressed) prefixed with a

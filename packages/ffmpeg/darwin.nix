@@ -1,4 +1,4 @@
-# macOS ffmpeg (headless), `pkgsStatic` "partial static" route — DESIGN.md
+# macOS ffmpeg (headless), `pkgsStatic` "partial static" route — CLAUDE.md
 # darwin portability strategy 2: link every nix dependency statically (.a) and
 # let only the macOS system libraries (/usr/lib/*, /System/Library/Frameworks/*)
 # stay dynamic. A fully-static ffmpeg is impossible on darwin (no static

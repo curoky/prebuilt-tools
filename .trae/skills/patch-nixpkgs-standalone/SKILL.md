@@ -6,7 +6,7 @@ description: "Patch a nixpkgs package into a portable standalone build with no /
 # Patch a nixpkgs Package for Standalone Portability
 
 Use this when adding or fixing a package in this repo so the shipped artifact is
-portable. Read `DESIGN.md` first — it is the source of truth; this skill is the
+portable. Read `CLAUDE.md` first — it is the source of truth; this skill is the
 actionable procedure derived from it.
 
 ## Prime directive: patch ONLY when the stock static build fails
@@ -161,5 +161,5 @@ confirmation — copy the dylib).
   fixes runtime paths. Don't refactor unrelated code.
 - Match existing package style (`overrideAttrs`, `postInstall`, wrapper scripts).
 - If your change affects architecture, build/package selection, or artifact
-  format, update `DESIGN.md` in the same change (repo rule).
+  format, update `CLAUDE.md` in the same change (repo rule).
 - **Never** copy a `/nix` dylib on macOS without explicit user confirmation.

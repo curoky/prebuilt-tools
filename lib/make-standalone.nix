@@ -7,7 +7,7 @@
 #     Nix store references, drop docs/manpages, and inline external symlinks
 #
 # This is purely a post-processing/normalization step; it does not change how
-# the underlying package is built (static vs dynamic). See DESIGN.md.
+# the underlying package is built (static vs dynamic). See CLAUDE.md.
 {
   pkgs,
   normalizeScript,

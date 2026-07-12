@@ -12,7 +12,7 @@ let
   # swap each of its non-system dynamic dependencies for the matching
   # `pkgsStatic` archive (.a) so the linker embeds them statically, leaving wget
   # depending only on /usr/lib system libs and the macOS frameworks. This mirrors
-  # the darwin portability ladder (DESIGN.md strategy 2): every nix dependency
+  # the darwin portability ladder (CLAUDE.md strategy 2): every nix dependency
   # linked statically, only system libraries stay dynamic. On Linux wget is built
   # from the fully-static `pkgsStatic` set instead (see ./linux.nix).
   #

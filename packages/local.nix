@@ -225,7 +225,7 @@ in
   darwin = goWithoutCgo // rec {
     # C (partial-static via pkgsStatic; only system libs stay dynamic on macOS)
     # macOS ffmpeg (headless): partial-static via pkgsStatic — every nix dep
-    # linked statically, only /usr/lib + system frameworks stay dynamic (DESIGN.md
+    # linked statically, only /usr/lib + system frameworks stay dynamic (CLAUDE.md
     # darwin strategy 2). See ./ffmpeg/darwin.nix for the disabled features and
     # their root causes (meson arm64 cross-file bug, openmp/llvm-static libatomic,
     # liboapv dylib-only, network/TLS static configure link failures) and the

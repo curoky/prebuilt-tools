@@ -47,7 +47,7 @@ let
         # The bundled core XS module Compress::Raw::Zlib links zlib dynamically
         # from /nix (the only /nix Mach-O dependency perl ships). zlib is a
         # macOS system library, so repoint that load command at the system
-        # /usr/lib/libz.1.dylib, leaving only /usr/lib deps (DESIGN.md rule).
+        # /usr/lib/libz.1.dylib, leaving only /usr/lib deps (CLAUDE.md rule).
         zbundle=$(find "$out/lib" -name Zlib.bundle -print -quit)
         if [ -n "$zbundle" ]; then
           oldZ=$(${stdenv.cc.targetPrefix}otool -L "$zbundle" | awk '/\/nix\/.*libz/ {print $1; exit}')
