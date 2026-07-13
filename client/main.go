@@ -54,7 +54,7 @@ const (
 	metaFile        = ".sb-meta"
 	defaultPrefix   = "/opt/sb"
 	logFile         = "sb.log"
-	maxParallel     = 8 // cap concurrent registry requests / downloads
+	maxParallel     = 16 // cap concurrent registry requests / downloads
 )
 
 // logger carries the detailed, structured log. It always writes to
@@ -363,36 +363,58 @@ type installOpts struct {
 	force  bool
 }
 
-// installPackages runs the three-phase multi-package install.
+// installTarget is one package's desired end state after installation.
+type installTarget struct {
+	name   string
+	linked bool
+}
+
+// installPackages runs the three-phase multi-package install for packages that
+// all share the same root-link setting.
 func installPackages(names []string, o installOpts) error {
+	plan := make([]installTarget, 0, len(names))
+	for _, name := range names {
+		plan = append(plan, installTarget{name: name, linked: o.linked})
+	}
+	return installPackagePlan(plan, o.prefix, o.arch, o.force)
+}
+
+// installPackagePlan runs the three-phase multi-package install with a
+// per-package link plan. Downloads are still shared in one bounded-parallel
+// batch; phase 3 then reconciles each package's final root-link state.
+func installPackagePlan(plan []installTarget, prefix, arch string, force bool) error {
 	start := time.Now()
-	logger.Info("install started", "packages", names, "arch", o.arch,
-		"prefix", o.prefix, "linked", o.linked, "force", o.force)
-	fmt.Printf("> Resolving %d package(s) for %s...\n", len(names), o.arch)
+	names := make([]string, len(plan))
+	for i, pkg := range plan {
+		names[i] = pkg.name
+	}
+	logger.Info("install started", "packages", names, "arch", arch,
+		"prefix", prefix, "force", force)
+	fmt.Printf("> Resolving %d package(s) for %s...\n", len(plan), arch)
 
 	// Phase 1: resolve every package's layer digest in parallel. errgroup
 	// collects the first error per goroutine; we gather *all* missing packages
 	// so the user sees the complete list before anything is installed.
 	phase1 := time.Now()
-	digests := make([]string, len(names))
-	errs := make([]error, len(names))
+	digests := make([]string, len(plan))
+	errs := make([]error, len(plan))
 	var g errgroup.Group
 	g.SetLimit(maxParallel)
-	for i, name := range names {
-		i, name := i, name
+	for i, pkg := range plan {
+		i, pkg := i, pkg
 		g.Go(func() error {
-			d, err := remoteDigest(name, o.arch)
+			d, err := remoteDigest(pkg.name, arch)
 			digests[i], errs[i] = d, err
 			if err != nil {
-				logger.Error("resolve failed", "package", name, "arch", o.arch, "err", err)
+				logger.Error("resolve failed", "package", pkg.name, "arch", arch, "err", err)
 			} else {
-				logger.Debug("resolved digest", "package", name, "digest", d)
+				logger.Debug("resolved digest", "package", pkg.name, "digest", d)
 			}
 			return nil
 		})
 	}
 	_ = g.Wait()
-	logger.Info("phase 1 (resolve) done", "count", len(names), "took", time.Since(phase1).String())
+	logger.Info("phase 1 (resolve) done", "count", len(plan), "took", time.Since(phase1).String())
 	if joined := errors.Join(errs...); joined != nil {
 		logger.Error("install aborted: unresolved packages", "err", joined)
 		return fmt.Errorf("aborting, some packages could not be resolved:\n%w", joined)
@@ -400,20 +422,23 @@ func installPackages(names []string, o installOpts) error {
 
 	// Decide which packages actually need downloading (skip up-to-date unless
 	// --force).
-	digestOf := make(map[string]string, len(names))
-	var toFetch []string
+	metas := make([]meta, len(plan))
+	haveMeta := make([]bool, len(plan))
+	toFetch := make([]bool, len(plan))
+	var fetchNames []string
 	var skipped int
-	for i, name := range names {
-		digestOf[name] = digests[i]
-		if !o.force {
-			if m, err := readMeta(o.prefix, name); err == nil && m.Digest == digests[i] {
-				skipped++
-				logger.Info("skip up-to-date", "package", name, "digest", digests[i])
-				fmt.Printf("> %s (%s) is already up to date, skipping. Use --force to reinstall.\n", name, o.arch)
-				continue
-			}
+	for i, pkg := range plan {
+		if m, err := readMeta(prefix, pkg.name); err == nil {
+			metas[i], haveMeta[i] = m, true
 		}
-		toFetch = append(toFetch, name)
+		if !force && haveMeta[i] && metas[i].Digest == digests[i] {
+				skipped++
+			logger.Info("skip up-to-date", "package", pkg.name, "digest", digests[i])
+			fmt.Printf("> %s (%s) is already up to date, skipping download. Use --force to reinstall.\n", pkg.name, arch)
+			continue
+		}
+		toFetch[i] = true
+		fetchNames = append(fetchNames, pkg.name)
 	}
 
 	// Phase 2: download the needed layers in parallel into the cache, each
@@ -421,10 +446,10 @@ func installPackages(names []string, o installOpts) error {
 	phase2 := time.Now()
 	var dg errgroup.Group
 	dg.SetLimit(maxParallel)
-	if len(toFetch) > 0 {
-		fmt.Printf("> Downloading %d package(s)...\n", len(toFetch))
+	if len(fetchNames) > 0 {
+		fmt.Printf("> Downloading %d package(s)...\n", len(fetchNames))
 		p := mpb.New(mpb.WithWidth(64))
-		for _, name := range toFetch {
+		for _, name := range fetchNames {
 			name := name
 			dg.Go(func() error {
 				logger.Debug("download started", "package", name)
@@ -443,7 +468,7 @@ func installPackages(names []string, o installOpts) error {
 					)
 					return bar.ProxyReader(rc)
 				}
-				err := downloadLayer(name, o.arch, cachePath(o.arch, name), wrap)
+				err := downloadLayer(name, arch, cachePath(arch, name), wrap)
 				if err != nil {
 					logger.Error("download failed", "package", name, "err", err)
 				} else {
@@ -458,41 +483,54 @@ func installPackages(names []string, o installOpts) error {
 			return fmt.Errorf("download failed: %w", werr)
 		}
 	}
-	logger.Info("phase 2 (download) done", "count", len(toFetch), "took", time.Since(phase2).String())
+	logger.Info("phase 2 (download) done", "count", len(fetchNames), "took", time.Since(phase2).String())
 
-	// Phase 3: extract + link serially.
+	// Phase 3: extract + reconcile root-link state serially.
 	phase3 := time.Now()
-	for _, name := range toFetch {
-		store := storePath(o.prefix, name)
-		fmt.Printf("> Installing %s (%s) -> %s (linked=%t)\n", name, o.arch, store, o.linked)
-		logger.Info("extract started", "package", name, "store", store, "linked", o.linked)
-		if err := os.RemoveAll(store); err != nil {
-			return err
-		}
-		if err := os.MkdirAll(store, 0o755); err != nil {
-			return err
-		}
-		if err := extractTarGz(cachePath(o.arch, name), store); err != nil {
-			logger.Error("extract failed", "package", name, "err", err)
-			return fmt.Errorf("%s: extract failed: %w", name, err)
-		}
-		if err := writeMeta(o.prefix, meta{Name: name, Arch: o.arch, Digest: digestOf[name], Linked: o.linked}); err != nil {
-			return err
-		}
-		if o.linked {
-			if err := linkPkg(o.prefix, name); err != nil {
-				logger.Error("link failed", "package", name, "err", err)
-				return fmt.Errorf("%s: link failed: %w", name, err)
+	for i, pkg := range plan {
+		store := storePath(prefix, pkg.name)
+		currentLinked := haveMeta[i] && metas[i].Linked
+		if currentLinked && (toFetch[i] || !pkg.linked) {
+			if err := unlinkPkg(prefix, pkg.name); err != nil {
+				logger.Error("unlink failed", "package", pkg.name, "err", err)
+				return fmt.Errorf("%s: unlink failed: %w", pkg.name, err)
 			}
 		}
-		logger.Info("package installed", "package", name, "digest", digestOf[name])
-		fmt.Printf("> Installed %s.\n", name)
+		if toFetch[i] {
+			fmt.Printf("> Installing %s (%s) -> %s (linked=%t)\n", pkg.name, arch, store, pkg.linked)
+			logger.Info("extract started", "package", pkg.name, "store", store, "linked", pkg.linked)
+			if err := os.RemoveAll(store); err != nil {
+				return err
+			}
+			if err := os.MkdirAll(store, 0o755); err != nil {
+				return err
+			}
+			if err := extractTarGz(cachePath(arch, pkg.name), store); err != nil {
+				logger.Error("extract failed", "package", pkg.name, "err", err)
+				return fmt.Errorf("%s: extract failed: %w", pkg.name, err)
+			}
+		}
+		if toFetch[i] || !haveMeta[i] || metas[i].Arch != arch || metas[i].Digest != digests[i] || metas[i].Linked != pkg.linked {
+			if err := writeMeta(prefix, meta{Name: pkg.name, Arch: arch, Digest: digests[i], Linked: pkg.linked}); err != nil {
+				return err
+			}
+		}
+		if pkg.linked {
+			if err := linkPkg(prefix, pkg.name); err != nil {
+				logger.Error("link failed", "package", pkg.name, "err", err)
+				return fmt.Errorf("%s: link failed: %w", pkg.name, err)
+			}
+		}
+		if toFetch[i] {
+			logger.Info("package installed", "package", pkg.name, "digest", digests[i])
+			fmt.Printf("> Installed %s.\n", pkg.name)
+		}
 	}
-	logger.Info("phase 3 (extract+link) done", "count", len(toFetch), "took", time.Since(phase3).String())
+	logger.Info("phase 3 (extract+reconcile) done", "count", len(plan), "took", time.Since(phase3).String())
 
 	total := time.Since(start)
-	logger.Info("install finished", "installed", len(toFetch), "skipped", skipped, "took", total.String())
-	fmt.Printf("> Done: %d installed, %d up-to-date in %s.\n", len(toFetch), skipped, total.Round(time.Millisecond))
+	logger.Info("install finished", "installed", len(fetchNames), "skipped", skipped, "took", total.String())
+	fmt.Printf("> Done: %d installed, %d up-to-date in %s.\n", len(fetchNames), skipped, total.Round(time.Millisecond))
 
 	return nil
 }
@@ -699,13 +737,41 @@ func (m manifest) profilePackages() []string {
 	return names
 }
 
+// installPlan returns the ordered, de-duplicated install set for a sync run.
+// Root-linked packages win if a name is referenced in multiple manifest
+// sections; profile packages are included only once in the shared install plan.
+func (m manifest) installPlan(profilePkgs []string) []installTarget {
+	var plan []installTarget
+	seen := make(map[string]int)
+	add := func(name string, linked bool) {
+		if idx, ok := seen[name]; ok {
+			if linked {
+				plan[idx].linked = true
+			}
+			return
+		}
+		seen[name] = len(plan)
+		plan = append(plan, installTarget{name: name, linked: linked})
+	}
+	for _, name := range m.Packages.Link {
+		add(name, true)
+	}
+	for _, name := range m.Packages.Unlink {
+		add(name, false)
+	}
+	for _, name := range profilePkgs {
+		add(name, false)
+	}
+	return plan
+}
+
 // cmdSync reconciles the installed set against a manifest. It installs/refreshes
-// every listed package (reusing installPackages), links each profile's packages
-// under <prefix>/profile/<name>/, and when prune is set removes installed
-// packages that the manifest no longer references. The manifest's prefix/arch
-// (if set) are used unless overridden: an explicit --arch always wins for arch;
-// the manifest prefix is used only when --prefix was not passed explicitly
-// (prefixSet is false). Note the log file still lives under the flag's prefix.
+// every distinct listed package in one shared batch, then applies the desired
+// root/profile links, and when prune is set removes installed packages that the
+// manifest no longer references. The manifest's prefix/arch (if set) are used
+// unless overridden: an explicit --arch always wins for arch; the manifest
+// prefix is used only when --prefix was not passed explicitly (prefixSet is
+// false). Note the log file still lives under the flag's prefix.
 func cmdSync(prefix, arch, file string, prefixSet, force, prune bool) error {
 	m, err := loadManifest(file)
 	if err != nil {
@@ -718,29 +784,19 @@ func cmdSync(prefix, arch, file string, prefixSet, force, prune bool) error {
 		prefix = m.Prefix
 	}
 	profilePkgs := m.profilePackages()
+	plan := m.installPlan(profilePkgs)
 	logger.Info("sync started", "file", file, "prefix", prefix, "link", m.Packages.Link,
 		"unlink", m.Packages.Unlink, "profiles", len(m.Profiles), "prune", prune)
-	fmt.Printf("> Syncing %d package(s)", len(m.Packages.Link)+len(m.Packages.Unlink))
+	fmt.Printf("> Syncing %d unique package(s)", len(plan))
 	if len(m.Profiles) > 0 {
-		fmt.Printf(" + %d profile package(s)", len(profilePkgs))
+		fmt.Printf(" including %d unique profile package(s)", len(profilePkgs))
 	}
 	fmt.Printf(" from %s...\n", file)
 
-	if len(m.Packages.Link) > 0 {
-		if err := installPackages(m.Packages.Link, installOpts{prefix: prefix, arch: arch, linked: true, force: force}); err != nil {
-			return err
-		}
-	}
-	// Unlinked packages and profile packages are installed into the store only
-	// (not linked into the prefix root); profile packages are additionally
-	// exposed through their profile directories below.
-	if len(m.Packages.Unlink) > 0 {
-		if err := installPackages(m.Packages.Unlink, installOpts{prefix: prefix, arch: arch, linked: false, force: force}); err != nil {
-			return err
-		}
-	}
-	if len(profilePkgs) > 0 {
-		if err := installPackages(profilePkgs, installOpts{prefix: prefix, arch: arch, linked: false, force: force}); err != nil {
+	// Unlinked packages and profile packages still land in the store only; the
+	// shared install plan simply lets sync resolve/download them once.
+	if len(plan) > 0 {
+		if err := installPackagePlan(plan, prefix, arch, force); err != nil {
 			return err
 		}
 	}
@@ -758,15 +814,9 @@ func cmdSync(prefix, arch, file string, prefixSet, force, prune bool) error {
 	if !prune {
 		return nil
 	}
-	want := make(map[string]bool, len(m.Packages.Link)+len(m.Packages.Unlink)+len(profilePkgs))
-	for _, name := range m.Packages.Link {
-		want[name] = true
-	}
-	for _, name := range m.Packages.Unlink {
-		want[name] = true
-	}
-	for _, name := range profilePkgs {
-		want[name] = true
+	want := make(map[string]bool, len(plan))
+	for _, pkg := range plan {
+		want[pkg.name] = true
 	}
 	for _, name := range installedNames(prefix) {
 		if want[name] {

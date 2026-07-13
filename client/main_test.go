@@ -416,3 +416,66 @@ func TestSyncProfiles(t *testing.T) {
 		}
 	}
 }
+
+func TestManifestInstallPlan(t *testing.T) {
+	m := manifest{
+		Packages: packageSet{
+			Link:   []string{"ripgrep", "fd"},
+			Unlink: []string{"python311", "ripgrep"},
+		},
+		Profiles: map[string][]string{
+			"go": {"gopls", "fd"},
+			"js": {"nodejs", "python311"},
+		},
+	}
+
+	got := m.installPlan(m.profilePackages())
+	want := []installTarget{
+		{name: "ripgrep", linked: true},
+		{name: "fd", linked: true},
+		{name: "python311", linked: false},
+		{name: "gopls", linked: false},
+		{name: "nodejs", linked: false},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("plan length=%d want %d: %#v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("plan[%d]=%#v want %#v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestSyncSharedBatchKeepsLinkedPackagesLinked(t *testing.T) {
+	arch := "linux-x86_64"
+	startRegistry(t, arch, "ripgrep")
+	prefix := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	file := filepath.Join(t.TempDir(), "sb.yaml")
+	body := "packages:\n  link:\n    - ripgrep\n  unlink:\n    - ripgrep\nprofiles:\n  tools:\n    - ripgrep\n"
+	if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdSync(prefix, arch, file, true, false, false); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(storePath(prefix, "ripgrep")); err != nil {
+		t.Fatalf("ripgrep not installed into store: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(prefix, "bin", "ripgrep")); err != nil {
+		t.Fatalf("ripgrep not linked into prefix root: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(prefix, "profile", "tools", "bin", "ripgrep")); err != nil {
+		t.Fatalf("ripgrep not linked into profile root: %v", err)
+	}
+	m, err := readMeta(prefix, "ripgrep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.Linked {
+		t.Fatalf("ripgrep metadata should record linked=true, got %#v", m)
+	}
+}
