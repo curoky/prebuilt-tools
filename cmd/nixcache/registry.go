@@ -24,6 +24,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/credentials"
+	"oras.land/oras-go/v2/registry/remote/errcode"
 )
 
 type registryClient struct {
@@ -63,7 +64,7 @@ func newRegistryClient(repository string, insecure bool) (*registryClient, error
 func (client *registryClient) listSegments() ([]segment, error) {
 	tags, err := registry.Tags(context.Background(), client.repo)
 	if err != nil {
-		if errors.Is(err, errdef.ErrNotFound) {
+		if errors.Is(err, errdef.ErrNotFound) || isNameUnknown(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("list cache segments: %w", err)
@@ -84,6 +85,19 @@ func (client *registryClient) listSegments() ([]segment, error) {
 		return segments[i].CreatedAt.Before(segments[j].CreatedAt)
 	})
 	return segments, nil
+}
+
+func isNameUnknown(err error) bool {
+	var response *errcode.ErrorResponse
+	if !errors.As(err, &response) {
+		return false
+	}
+	for _, item := range response.Errors {
+		if item.Code == errcode.ErrorCodeNameUnknown {
+			return true
+		}
+	}
+	return false
 }
 
 func (client *registryClient) getSegment(tag string) (segment, error) {

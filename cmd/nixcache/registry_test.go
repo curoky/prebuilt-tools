@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -11,6 +12,31 @@ import (
 	"github.com/google/go-containerregistry/pkg/registry"
 	"oras.land/oras-go/v2/content"
 )
+
+func TestMissingRepositoryIsEmpty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v2/cache/tags/list" {
+			http.NotFound(writer, request)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusNotFound)
+		_, _ = writer.Write([]byte(`{"errors":[{"code":"NAME_UNKNOWN","message":"repository name not known to registry"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := newRegistryClient(server.Listener.Addr().String()+"/cache", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := client.loadEntries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("entries=%v", entries)
+	}
+}
 
 func testRegistryClient(t *testing.T) *registryClient {
 	t.Helper()
