@@ -26,7 +26,6 @@
   binutils-unwrapped = {
     alias = "binutils";
   };
-  lark-cli = { };
   bison = { };
   bzip2 = {
     output = [ "bin" ];
@@ -330,6 +329,9 @@
     platforms = [ "x86_64-linux" ];
   };
   shfmt = {
+    platforms = [ "x86_64-linux" ];
+  };
+  lark-cli = {
     platforms = [ "x86_64-linux" ];
   };
 

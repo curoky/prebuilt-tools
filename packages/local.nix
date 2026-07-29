@@ -34,6 +34,7 @@ let
         "buildifier"
         "lefthook"
         "oras"
+        "lark-cli"
       ]
       (
         name:
