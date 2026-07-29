@@ -1,7 +1,7 @@
 # Go 构建案例
 
 Linux 上普通 Go 包直接使用 manifest 的 `pkgsStatic`，无需在本文列出。这里仅记录 podman 容器栈和
-macOS 无 CGO 重建。容器栈的 C 组件见 [C / autotools](c-autotools.md)。
+macOS native Go 选择。容器栈的 C 组件见 [C / autotools](c-autotools.md)。
 
 ## podman
 
@@ -20,13 +20,16 @@ podman 的 `helpersBin` 已复制静态入口。
 `rm-podman-mac-helper-msg.patch`；`env.HELPER_BINARIES_DIR2`、LDFLAGS 注入 `-X
 ...adminOverrideConfigPath=/opt/podmanx/conf/`。
 
-## macOS `CGO_ENABLED=0`
+## macOS native Go
 
-`packages/local.nix` 的 `goWithoutCgo` 从 native `pkgs2511` 选择一组 Go 工具，并设置
-`CGO_ENABLED=0`。这样产物不再链接 Nix dylib。当前列表以 `local.nix` 为准，不在文档复制。
+一组跨平台 Go 工具在 `manifests/default.nix` 的 `aarch64-darwin` 配置中 pin 到 `25.11`，并设置
+`isStatic = false`。这会选择 native pkgs、保留 CGO；它们的上游 CGO build 已只链接 `/usr/lib`
+和系统 frameworks，不包含 Nix dylib。Linux 仍使用 unstable `pkgsStatic` 的 musl-static 产物。
 
-`lark-cli` 是例外：它来自 unstable，且上游 CGO build 已只链接系统库。强制关闭 CGO 会让纯 Go
-二进制保留 Go compiler store path，并触发 `disallowedReferences`，因此不加入 `goWithoutCgo`。
+不要恢复旧的 `CGO_ENABLED=0` override：纯 Go 二进制会保留 Go compiler store path，并触发
+`buildGoModule` 的 `disallowedReferences`。`lark-cli` 使用同一 native CGO 原则，但来自 unstable，
+因此只有 `isStatic = false`，没有版本 pin。
 
-`pkgs2511` pin 和列表中的每个 CGO override 都需要定期对 unstable 重新验证。若上游默认产物已无
-`/nix` dylib，应回归 manifest 或普通包。
+这些 `25.11` pin 都需要按根 `TODO.md` 对 unstable native 构建定期回归。若 unstable 产物仍只依赖
+系统 dylib，就删除对应平台的 version pin；`isStatic = false` 只有在 unstable `pkgsStatic` 也能满足
+macOS portability 时才一起删除。
