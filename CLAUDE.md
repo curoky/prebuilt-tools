@@ -141,7 +141,12 @@ Mach-O load command 改为 `@loader_path` 或 `@rpath` 相对路径。
 - macOS 检查每个 Mach-O 的 load command，只允许 `/usr/lib`、
   `/System/Library/Frameworks`、`@loader_path` 和 `@rpath` 依赖，并拒绝任何 `/nix`
   引用；
-- 无法解析 ELF 或 Mach-O 依赖时按校验失败处理，不静默跳过。
+- 只校验宿主平台原生格式（Linux 校验 ELF、macOS 校验 Mach-O）；另一平台格式的二进制
+  （如 Linux 上构建的 npm 包携带的 darwin/windows 预编译 `.node` addon）是永不加载的
+  跨平台负载，直接跳过；
+- 无法解析 ELF 或 Mach-O 依赖时按校验失败处理，不静默跳过；
+- 例外：路径含 `openssl` 的文件当前被整体跳过校验（`c_rehash` 是引用 `/nix` 的动态
+  ELF 的临时 workaround），是待清理的现状缺口。
 
 Normalization 不会把动态程序变成静态程序，也不能可靠修复任意二进制硬编码路径。此类问题必须在
 derivation 或 wrapper 中解决。修改 normalization 会影响几乎全部包，应优先考虑包级修复。
@@ -200,6 +205,7 @@ GHCR 权限、签名和 cleanup 验证前仍使用 Cachix。其二进制中的 `
 
 ```bash
 nix flake check
+bash scripts/normalize_test.sh
 nix build .#<name>
 file result/bin/*
 ldd result/bin/<binary>       # Linux

@@ -2,6 +2,15 @@
 set -euo pipefail
 
 prefix="$1"
+artifact_name=${2:-unknown}
+allow_dynamic_elf=${3:-0}
+# Native binary format of the build/host platform: "elf" on Linux, "macho" on
+# Darwin. The portability check only inspects binaries of this format; binaries
+# in the other platform's format (e.g. prebuilt darwin/windows .node addons
+# bundled by an npm package built on Linux) are inert cross-platform payloads
+# that never load on the target, and the tools to inspect them (otool on Linux,
+# patchelf on Darwin) are not available anyway.
+host_format=${4:-elf}
 
 # find "$prefix" -type d \( -name "man" -o -name "fish" -o -name "bash-completion" -o -name "nix-support" \) -exec rm -rf {} +
 rm -rf "$prefix/nix-support"
@@ -70,10 +79,12 @@ for i in "${!files[@]}"; do
   fi
 done
 
-# Portability check (the hard rule from CLAUDE.md): the shipped binary must not
-# depend on any dynamic library under /nix. Walk every ELF (Linux) / Mach-O
-# (Darwin) file and print its dynamic dependencies via `patchelf --print-needed`
-# + rpath / `otool -L`; fail the build if any dependency resolves under /nix.
+# Portability check (the hard rules from CLAUDE.md):
+#   - Linux ELF files must be statically linked unless the artifact is an
+#     explicitly recorded dynamic exception.
+#   - Darwin Mach-O files may only load system libraries or package-relative
+#     libraries.
+#   - No runtime path or load command may refer to /nix.
 # File types are reused from the `ftype` cache computed above.
 bad=0
 for f in "${files[@]}"; do
@@ -84,31 +95,107 @@ for f in "${files[@]}"; do
   fi
   FTYPE=${ftype["$f"]:-}
   if [[ $FTYPE == *ELF* ]]; then
-    echo "==> deps: $f"
-    deps=$(patchelf --print-needed "$f" 2>/dev/null || true)
-    rpath=$(patchelf --print-rpath "$f" 2>/dev/null || true)
-    echo "$deps"
-    [[ -n $rpath ]] && echo "rpath: $rpath"
-    if [[ $rpath == *"/nix"* ]]; then
-      echo "ERROR: $f has an rpath under /nix: $rpath" >&2
-      bad=1
+    if [[ $host_format != elf ]]; then
+      echo "==> skip (non-host-format ELF): $f"
+      continue
+    fi
+    echo "==> ELF: $f"
+    echo "$FTYPE"
+
+    if [[ $FTYPE == *"dynamically linked"* ]]; then
+      if [[ $allow_dynamic_elf != 1 ]]; then
+        echo "ERROR: $f is dynamically linked; Linux artifact $artifact_name must contain only statically linked ELF files" >&2
+        bad=1
+      fi
+
+      if ! deps=$(patchelf --print-needed "$f" 2>/dev/null); then
+        echo "ERROR: cannot inspect dynamic dependencies of $f" >&2
+        bad=1
+        continue
+      fi
+      if ! rpath=$(patchelf --print-rpath "$f" 2>/dev/null); then
+        echo "ERROR: cannot inspect rpath of $f" >&2
+        bad=1
+        continue
+      fi
+
+      echo "$deps"
+      [[ -n $rpath ]] && echo "rpath: $rpath"
+      if [[ $deps == *"/nix"* ]]; then
+        echo "ERROR: $f has a dynamic dependency under /nix" >&2
+        bad=1
+      fi
+      if [[ $rpath == *"/nix"* ]]; then
+        echo "ERROR: $f has an rpath under /nix: $rpath" >&2
+        bad=1
+      fi
+
+      if [[ $FTYPE == *executable* ]]; then
+        if ! interpreter=$(patchelf --print-interpreter "$f" 2>/dev/null); then
+          echo "ERROR: cannot inspect interpreter of $f" >&2
+          bad=1
+          continue
+        fi
+        echo "interpreter: $interpreter"
+        if [[ $interpreter == *"/nix"* ]]; then
+          echo "ERROR: $f has an interpreter under /nix: $interpreter" >&2
+          bad=1
+        fi
+      fi
     fi
   elif [[ $FTYPE == *Mach-O* ]]; then
+    if [[ $host_format != macho ]]; then
+      echo "==> skip (non-host-format Mach-O): $f"
+      continue
+    fi
     echo "==> deps: $f"
-    deps=$(otool -L "$f" 2>/dev/null || true)
+    if ! deps=$(otool -L "$f" 2>/dev/null); then
+      echo "ERROR: cannot inspect dynamic dependencies of $f" >&2
+      bad=1
+      continue
+    fi
     echo "$deps"
-    # otool -L prints the file's own path as the first line (which lives under
-    # the /nix/store build output dir); only the indented dependency lines that
-    # follow matter, so drop the header before matching.
-    if echo "$deps" | tail -n +2 | grep -q '/nix'; then
-      echo "ERROR: $f links a dynamic library under /nix" >&2
+
+    while IFS= read -r dependency_line; do
+      dependency_line=${dependency_line#"${dependency_line%%[![:space:]]*}"}
+      dependency=${dependency_line%% *}
+      [[ -z $dependency ]] && continue
+
+      case "$dependency" in
+        /usr/lib/* | /System/Library/Frameworks/* | @loader_path/* | @rpath/*) ;;
+        *)
+          echo "ERROR: $f has a non-portable dynamic dependency: $dependency" >&2
+          bad=1
+          ;;
+      esac
+    done < <(printf '%s\n' "$deps" | tail -n +2)
+
+    if ! load_commands=$(otool -l "$f" 2>/dev/null); then
+      echo "ERROR: cannot inspect load commands of $f" >&2
+      bad=1
+      continue
+    fi
+    load_commands_body=${load_commands#*$'\n'}
+    if [[ $load_commands_body == *"/nix"* ]]; then
+      echo "ERROR: $f has a Mach-O load command under /nix" >&2
       bad=1
     fi
+    while IFS= read -r rpath_line; do
+      rpath=${rpath_line#* path }
+      rpath=${rpath% \(offset *}
+      case "$rpath" in
+        @loader_path | @loader_path/*) ;;
+        *)
+          echo "ERROR: $f has a non-portable LC_RPATH: $rpath" >&2
+          bad=1
+          ;;
+      esac
+    done < <(printf '%s\n' "$load_commands" | sed -n 's/^[[:space:]]*path / path /p')
   fi
 done
 
 if [[ $bad -ne 0 ]]; then
-  echo "ERROR: portability check failed: one or more binaries depend on /nix" >&2
+  echo "ERROR: portability check failed: artifact $artifact_name does not satisfy standalone binary requirements" >&2
   exit 1
 fi
 

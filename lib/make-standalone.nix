@@ -13,6 +13,12 @@
   normalizeScript,
 }:
 name: drv:
+let
+  allowDynamicElf = pkgs.lib.elem name [
+    "music-decrypto"
+    "nsight-systems"
+  ];
+in
 pkgs.runCommand "${name}-standalone"
   {
     nativeBuildInputs = [
@@ -20,9 +26,9 @@ pkgs.runCommand "${name}-standalone"
       pkgs.buildPackages.file
       pkgs.buildPackages.nukeReferences
     ]
-    # `otool -L` (Darwin) / `patchelf --print-needed` (Linux) are used by the
-    # final portability check in normalize.sh to reject any binary that still
-    # links a dynamic library under /nix.
+    # The final portability check in normalize.sh uses these tools to enforce
+    # static Linux ELF files, portable Darwin load commands, and no /nix
+    # runtime references.
     ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isDarwin pkgs.darwin.cctools
     ++ pkgs.lib.optional (!pkgs.stdenv.hostPlatform.isDarwin) pkgs.buildPackages.patchelf;
     builderScript = normalizeScript;
@@ -32,5 +38,5 @@ pkgs.runCommand "${name}-standalone"
     cp -pRP ${drv}/* $out/ 2>/dev/null || true
     chmod -R u+w $out
 
-    bash $builderScript $out
+    bash $builderScript $out ${pkgs.lib.escapeShellArg name} ${if allowDynamicElf then "1" else "0"} ${if pkgs.stdenv.hostPlatform.isDarwin then "macho" else "elf"}
   ''
