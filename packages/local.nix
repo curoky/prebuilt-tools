@@ -49,29 +49,23 @@
     vim = pkgsStatic.callPackage ./vim { };
     zsh = pkgsStatic.callPackage ./zsh { };
 
-    # Python (sibling-wrapper against the static python314)
+    # Python (sibling-wrapper against the static python314; see docs/package-strategies/python.md)
     git-filter-repo = pkgs.callPackage ./git-filter-repo { };
     netron = pkgs.callPackage ./netron { };
 
-    # Perl (sibling-wrapper against the static perl)
-    # cloc is a perl script; its wrapper runs against the sibling `perl` package
-    # at deploy time (falling back to a system perl), so it ships cross-platform.
-    # The `perl` package itself is defined per-platform in the linux/darwin sets
-    # below (./perl/linux.nix on Linux, ./perl/darwin.nix on macOS). cloc needs
-    # no static linking (and the fully-static perl/perlPackages it would pull in
-    # fail to build on darwin), so build it from the native pkgs on both
-    # platforms.
+    # Perl (sibling-wrapper against the static perl; see docs/package-strategies/perl.md)
     cloc = pkgs.callPackage ./cloc { };
     parallel = pkgs.callPackage ./parallel { };
 
-    # .NET
+    # .NET (glibc-dynamic AOT exception; see docs/package-strategies/special-cases.md)
     music-decrypto = pkgs.callPackage ./music-decrypto { };
   };
 
   # Linux-only local packages (patched tooling, container stack, multiple
   # clang-tools versions, static Python variants, extra wrapped tools).
   linux = rec {
-    # unclassified (repackaged prebuilt native binary, perl installer)
+    # unclassified (repackaged prebuilt native binary; glibc-dynamic prebuilt
+    # exception, see docs/package-strategies/special-cases.md)
     nsight-systems = pkgsStatic.callPackage ./nsight-systems { };
 
     # C / autotools (stdenv)
@@ -79,38 +73,36 @@
     cmake_3_27_9 = pkgsStatic.callPackage ./cmake/3_27_9 { };
     cmake_4_1_2 = pkgsStatic.callPackage ./cmake/4_1_2 { };
     git = pkgsStatic.callPackage ./git { };
-    # gnutar: fully-static musl build fails to link against static libacl with a
-    # duplicate `*xattrat` symbol collision; ./gnutar adds the linker workaround.
+    # gnutar: linker workaround for a duplicate `*xattrat` symbol collision
+    # against static libacl; see docs/package-strategies/special-cases.md.
     gnutar = pkgsStatic.callPackage ./gnutar { };
     openssh_gssapi = pkgsStatic.callPackage ./openssh_gssapi { };
-    # postgresql: only the PostgreSQL client (psql), fully-static musl.
-    # pkgsStatic.postgresql fails here (its gcc->clang switch hits a broken
-    # clang in the musl-cross set); see ./postgresql/default.nix for the
-    # gcc-kept + libpq-static-only build.
+    # postgresql: psql client + static libpq only (gccAsClang workaround); see
+    # docs/package-strategies/special-cases.md.
     postgresql = pkgsStatic.callPackage ./postgresql { };
     wget = pkgsStatic.callPackage ./wget/linux.nix { };
 
-    # Rust
+    # Rust (see docs/package-strategies/rust.md)
     miniserve = pkgsStatic.callPackage ./miniserve { };
 
-    # Perl (static perl interpreter, sibling-wrapper base)
+    # Perl (static perl interpreter, sibling-wrapper base; see
+    # docs/package-strategies/perl.md)
     perl = pkgsStatic.callPackage ./perl/linux.nix { };
-    # exiftool is a perl tool like cloc: it runs against the sibling static
-    # `perl` at deploy time. That perl (-Uusedl) cannot dlopen XS .so, so its
-    # optional compression XS modules are compiled into the interpreter itself
-    # (see ./perl/linux.nix). This package therefore ships only the pure-Perl
-    # pieces (script, Image::ExifTool, Archive::Zip) and needs no static linking,
-    # so it builds from the native pkgs.perlPackages.
+    # exiftool: ships only the pure-Perl pieces because the sibling static perl
+    # (-Uusedl) has the XS compression modules compiled in; see
+    # docs/package-strategies/perl.md.
     exiftool = pkgs.callPackage ./exiftool/linux.nix { };
 
-    # LLVM / clang tooling
+    # LLVM / clang tooling (only clang-format extracted; see
+    # docs/package-strategies/c-autotools.md)
     clang-tools-18 = pkgsStatic.callPackage ./clang-tools/18 { };
     clang-tools-19 = pkgsStatic.callPackage ./clang-tools/19 { };
     clang-tools-20 = pkgsStatic.callPackage ./clang-tools/20 { };
     clang-tools-21 = pkgsStatic.callPackage ./clang-tools/21 { };
     clang-tools-22 = pkgsStatic.callPackage ./clang-tools/22 { };
 
-    # Python (static interpreters + sibling-wrapper tools)
+    # Python (static interpreters + sibling-wrapper tools; see
+    # docs/package-strategies/python.md)
     python311 = pkgsStatic.callPackage ./python/311 { };
     python312 = pkgsStatic.callPackage ./python/312 { };
     python313 = pkgsStatic.callPackage ./python/313 { };
@@ -118,7 +110,7 @@
     python315 = pkgsStatic.callPackage ./python/315 { };
     dool = pkgs.callPackage ./dool { };
 
-    # s6 stack
+    # s6 stack (baked /nix path removal; see docs/package-strategies/c-autotools.md)
     execline = pkgsStatic.callPackage ./execline { };
     s6 = pkgsStatic.callPackage ./s6 {
       inherit execline;
@@ -130,7 +122,8 @@
       inherit s6 execline;
     };
 
-    # podman / container stack (podman is Go; crun/conmon/catatonit/gpgme are C)
+    # podman / container stack (podman is Go, see docs/package-strategies/go.md;
+    # crun/conmon/catatonit/gpgme are C, see docs/package-strategies/c-autotools.md)
     catatonit = pkgsStatic.callPackage ./catatonit { };
     conmon = pkgsStatic.callPackage ./conmon { };
     crun = pkgsStatic.callPackage ./crun { };
@@ -144,36 +137,20 @@
         ;
     };
 
-    # Node.js stack: standalone fully-static (musl) Node.js runtimes plus a set
-    # of Node CLI tools that run on them. Each runtime is shipped as its own
-    # package (deploy dirs `nodejs-slim24` / `nodejs-slim26`) so the tools can
-    # reference it as a sibling directory at deploy time — the same convention
-    # dool/netron use for `python311`. Each ./<tool> wrapper reuses the tool's JS
-    # distribution and ships a relative-path wrapper that invokes the sibling
-    # `nodejs-slim26` package ($store/nodejs-slim26/bin/node) explicitly, so the
-    # static node travels with the deployed tool instead of depending on a node
-    # on the host PATH after the standalone normalize pass. This supersedes the
-    # previous `bundle = true` manifest entries.
-    #
-    # pnpm/prettier additionally build against our static node by overriding the
-    # upstream interpreter (pnpm only unpacks JS; prettier uses pnpm to fetch
-    # deps), which exercises the static runtime end-to-end. markdownlint-cli2 and
-    # opencommit are npm-based buildNpmPackage tools whose build needs `npm`
-    # (absent from nodejs-slim), so they are *built* with the regular node and
-    # only switch to the sibling static node at runtime via the wrapper. Their
-    # wrapper derivations add an installCheck that runs the shipped JS under
-    # `nodejs-slim26` to confirm the tool actually works on the static runtime.
-    #
-    # nodejs-slim24 is retained as a standalone runtime package; the CLI tools
-    # above now target nodejs-slim26.
+    # Node.js stack: standalone static Node.js runtimes plus Node CLI tools that
+    # run on them via a sibling relative-path wrapper (invoking
+    # $store/nodejs-slim26/bin/node). pnpm/prettier build against the static node;
+    # markdownlint-cli2/opencommit build with the regular node (they need npm) and
+    # switch to the static node at runtime. See docs/package-strategies/nodejs.md.
+    # nodejs-slim24 is retained as a standalone runtime; the CLI tools target
+    # nodejs-slim26.
     nodejs-slim24 = pkgsStatic.callPackage ./nodejs/24 {
       inherit (pkgs) python3;
     };
-    # node 26 links temporal_capi (a Rust dep). Under a native-static set this
-    # rebuilds the whole musl LLVM + rustc toolchain from source. On Linux the
-    # `pkgsStatic` passed in here is the musl64 *cross* set (see flake.nix /
-    # mkEnv), which instead reuses the cached glibc rustc/LLVM via rust's
-    # `fastCross` path. The node output is still a fully-static musl binary.
+    # node 26 links temporal_capi (a Rust dep); on Linux the `pkgsStatic` here is
+    # the musl64 *cross* set (see flake.nix / mkEnv) which reuses the cached glibc
+    # rustc/LLVM via rust's `fastCross` path, so it doesn't rebuild the toolchain.
+    # The node output is still a fully-static musl binary.
     nodejs-slim26 = pkgsStatic.callPackage ./nodejs/26/linux.nix {
       inherit (pkgs) python3;
     };
@@ -192,7 +169,7 @@
       inherit (pkgs) opencommit;
     };
 
-    # Rust (26.05 pinned static env)
+    # Rust (26.05 pinned static env; see docs/package-strategies/rust.md)
     zellij = pkgs2605Static.callPackage ./zellij { };
 
     # C (native pkgs, non-static)
@@ -204,21 +181,16 @@
   # Darwin-only local packages.
   darwin = rec {
     # C (partial-static via pkgsStatic; only system libs stay dynamic on macOS)
-    # macOS ffmpeg (headless): partial-static via pkgsStatic — every nix dep
-    # linked statically, only /usr/lib + system frameworks stay dynamic (CLAUDE.md
-    # darwin strategy 2). See ./ffmpeg/darwin.nix for the disabled features and
-    # their root causes (meson arm64 cross-file bug, openmp/llvm-static libatomic,
-    # liboapv dylib-only, network/TLS static configure link failures) and the
-    # x265 static-link fixes (kept: 8-bit HEVC encode).
+    # macOS ffmpeg (headless): feature reduction over pkgsStatic.ffmpeg-headless;
+    # see docs/package-strategies/special-cases.md.
     ffmpeg = pkgsStatic.callPackage ./ffmpeg/darwin.nix { };
-    # macOS krb5: fully static via pkgsStatic, with two upstream darwin
-    # static-link defects patched (USE_CCAPI_MACOS / mit_des_zeroblock — see
-    # ./krb5/darwin.nix). On Linux krb5 comes straight from the manifest.
+    # macOS krb5: fully-static pkgsStatic with two darwin static-link defects
+    # patched; see docs/package-strategies/special-cases.md. On Linux krb5 comes
+    # straight from the manifest.
     krb5 = pkgsStatic.callPackage ./krb5/darwin.nix { };
-    # macOS wget: take the fully-static `pkgsStatic.wget` (same set as Linux) and
-    # only override its build-time perl to the native one — the darwin static
-    # perl fails to build (see ./wget/darwin-static.nix). The resulting binary
-    # links every nix dep statically, leaving only /usr/lib system libs dynamic.
+    # macOS wget: fully-static pkgsStatic.wget with only its build-time perl
+    # overridden to native (darwin static perl fails to build); see
+    # docs/package-strategies/special-cases.md.
     wget = pkgsStatic.callPackage ./wget/darwin-static.nix {
       inherit (pkgs) perlPackages;
     };
@@ -228,36 +200,23 @@
     #   inherit pkgsStatic;
     # };
 
-    # Perl (native perl; the darwin static perl fails to build)
+    # Perl (native perl; darwin static perl fails to build; see
+    # docs/package-strategies/perl.md)
     perl = pkgs.callPackage ./perl/darwin.nix {
       libxcryptStatic = pkgsStatic.libxcrypt;
     };
-    # macOS exiftool: unlike Linux, the darwin sibling perl can dlopen XS
-    # modules, so the optional compression modules are shipped as .bundle files
-    # with their compression libs statically linked (only /usr/lib system libs
-    # stay dynamic). See ./exiftool/darwin.nix.
+    # macOS exiftool: darwin sibling perl can dlopen XS, so compression modules
+    # ship as .bundle with statically-linked compression libs; see
+    # docs/package-strategies/perl.md.
     exiftool = pkgs.callPackage ./exiftool/darwin.nix {
       inherit pkgsStatic;
     };
 
-    # Node.js stack
-    # macOS counterpart of the Linux nodejs-slim26 (./nodejs/26/linux.nix): a standalone
-    # Node.js 26 built via pkgsStatic so every nix dependency links as a static
-    # archive, leaving only macOS system libs dynamic (full static is
-    # impossible on macOS). Exposed under the same deploy dir name so consumers
-    # reference it identically.
+    # Node.js stack (macOS partial-static counterpart of the Linux runtime + CLI
+    # tools; see docs/package-strategies/nodejs.md)
     nodejs-slim26 = pkgsStatic.callPackage ./nodejs/26/darwin.nix {
       inherit (pkgs) python3 cctools;
     };
-
-    # macOS counterparts of the Linux Node.js CLI tools: the wrapper derivations
-    # (packages/{pnpm,prettier,markdownlint-cli2,opencommit}) are platform-
-    # agnostic — they reuse the upstream nixpkgs JS distribution and ship a
-    # relative-path wrapper that invokes the sibling `nodejs-slim26` — so they
-    # are reused verbatim here against the darwin `nodejs-slim26` above. pnpm/
-    # prettier build against the static node by overriding the upstream
-    # interpreter; markdownlint-cli2/opencommit are built with the regular node
-    # (they need npm) and only switch to the sibling static node at runtime.
     pnpm = pkgsStatic.callPackage ./pnpm {
       pnpm = pkgs.pnpm.override { nodejs-slim = nodejs-slim26; };
     };
