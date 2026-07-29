@@ -31,7 +31,39 @@ let
     };
   };
 in
-(postgresql.override { stdenv = gccAsClang; }).overrideAttrs (old: {
+(postgresql.override {
+  stdenv = gccAsClang;
+  # JIT (`--with-llvm`) is on by default for a native build, but it needs a
+  # working clang, which this musl-cross static set lacks (`clang not found`).
+  # We only ship libpq + psql (no server backend), so JIT is irrelevant.
+  jitSupport = false;
+  # PL/Perl is a server-side extension we don't build; its configure step also
+  # fails against the static (non-shared) perl ("libperl is not a shared
+  # library"). PL/Python and PL/Tcl are likewise server-side and fail the same
+  # way (no shared libpython under static musl). We only ship libpq + psql, so
+  # disable all the procedural languages.
+  perlSupport = false;
+  pythonSupport = false;
+  tclSupport = false;
+  # libcurl support (OAuth device flow) is new in PostgreSQL 18 and on by
+  # default, but the static curl link test fails here ("library 'curl' does not
+  # provide curl_multi_init"). psql/libpq worked fine without it before 18, so
+  # disable it.
+  curlSupport = false;
+  # GSSAPI (Kerberos) auth fails the static configure link test here
+  # ("could not find function 'gss_store_cred_into'": the static libkrb5 archive
+  # doesn't resolve). It is an optional psql auth method, so disable it to keep
+  # the fully-static build linking.
+  gssSupport = false;
+}).overrideAttrs (old: {
+  # Upstream marks the whole derivation broken under `stdenv.hostPlatform.isStatic`
+  # (generic.nix) because the *server* can't dlopen shared modules in static musl.
+  # We build only libpq's static archive + psql, which nixpkgs itself notes does
+  # work in pkgsStatic, so clear the flag for this scoped build.
+  meta = (old.meta or { }) // {
+    broken = false;
+  };
+
   # Only ship a single self-contained output (the psql client). The stock
   # multi-output split (out/lib/dev/...) creates a reference cycle here since we
   # don't build the server/pg_config that normally separates them.
