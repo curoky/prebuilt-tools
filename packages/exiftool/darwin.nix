@@ -30,8 +30,8 @@ let
     preConfigure = ''
       cat > config.in <<EOC
         BUILD_ZLIB   = False
-        INCLUDE      = ${pkgsStatic.zlib.dev}/include
-        LIB          = ${pkgsStatic.zlib.out}/lib
+        ZLIB_INCLUDE = ${pkgsStatic.zlib.dev}/include
+        ZLIB_LIB     = ${pkgsStatic.zlib.out}/lib
         OLD_ZLIB     = False
         GZIP_OS_CODE = AUTO_DETECT
         USE_ZLIB_NG  = False
