@@ -108,6 +108,9 @@ in
     cmake_3_27_9 = pkgsStatic.callPackage ./cmake/3_27_9 { };
     cmake_4_1_2 = pkgsStatic.callPackage ./cmake/4_1_2 { };
     git = pkgsStatic.callPackage ./git { };
+    # gnutar: fully-static musl build fails to link against static libacl with a
+    # duplicate `*xattrat` symbol collision; ./gnutar adds the linker workaround.
+    gnutar = pkgsStatic.callPackage ./gnutar { };
     openssh_gssapi = pkgsStatic.callPackage ./openssh_gssapi { };
     # postgresql: only the PostgreSQL client (psql), fully-static musl.
     # pkgsStatic.postgresql fails here (its gcc->clang switch hits a broken
@@ -141,7 +144,7 @@ in
     python312 = pkgsStatic.callPackage ./python/312 { };
     python313 = pkgsStatic.callPackage ./python/313 { };
     python314 = pkgsStatic.callPackage ./python/314 { };
-    python315 = pkgsStatic.callPackage ./python/315 { };
+    # python315 = pkgsStatic.callPackage ./python/315 { };
     dool = pkgs.callPackage ./dool { };
 
     # s6 stack
@@ -192,7 +195,7 @@ in
     #
     # nodejs-slim24 is retained as a standalone runtime package; the CLI tools
     # above now target nodejs-slim26.
-    nodejs-slim24 = pkgsStatic.callPackage ./nodejs/24 { };
+    # nodejs-slim24 = pkgsStatic.callPackage ./nodejs/24 { };
     # node 26 links temporal_capi (a Rust dep). Under a native-static set this
     # rebuilds the whole musl LLVM + rustc toolchain from source. On Linux the
     # `pkgsStatic` passed in here is the musl64 *cross* set (see flake.nix /

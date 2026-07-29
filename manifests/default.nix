@@ -47,7 +47,13 @@
   gnumake = { };
   gnupatch = { };
   gnused = { };
-  gnutar = { };
+  # Linux gnutar is a local package (packages/gnutar): the fully-static musl
+  # build hits a duplicate-symbol link error against static libacl and needs a
+  # linker workaround. Darwin has no static libacl collision, so it stays on the
+  # stock manifest build.
+  gnutar = {
+    platforms = [ "aarch64-darwin" ];
+  };
   gzip = { };
   inetutils = { };
   jq = {
