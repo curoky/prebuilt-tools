@@ -338,7 +338,14 @@
     platforms = [ "x86_64-linux" ];
   };
   lark-cli = {
-    platforms = [ "x86_64-linux" ];
+    # Linux: default isStatic = true -> pkgsStatic musl static.
+    # darwin: native pkgs (CGO on). The upstream CGO build already links only
+    # /usr/lib + system frameworks (no /nix dylib); forcing CGO_ENABLED=0 would
+    # make the pure-Go binary retain a reference to the go compiler's store path
+    # and trip buildGoModule's disallowedReferences check.
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
   };
 
   # llvm pkgs
