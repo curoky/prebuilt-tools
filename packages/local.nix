@@ -13,35 +13,7 @@
   pkgs,
   pkgsStatic,
   pkgs2605Static,
-  pkgs2511,
 }:
-let
-  # Darwin: build a subset of Go tools with CGO disabled to reduce dynamic
-  # library dependence (standalone-friendly without a fully static toolchain).
-  goWithoutCgo =
-    lib.genAttrs
-      [
-        "gdu"
-        "gh"
-        "bazelisk"
-        "croc"
-        "go-task"
-        "git-lfs"
-        "shfmt"
-        "fzf"
-        "dive"
-        "scc"
-        "buildifier"
-        "lefthook"
-        "oras"
-      ]
-      (
-        name:
-        pkgs2511.${name}.overrideAttrs (oldAttrs: {
-          env.CGO_ENABLED = "0";
-        })
-      );
-in
 {
   # Cross-platform local packages.
   common = {
@@ -230,8 +202,7 @@ in
   };
 
   # Darwin-only local packages.
-  # Go: the `goWithoutCgo` set (built with CGO disabled) is merged in below.
-  darwin = goWithoutCgo // rec {
+  darwin = rec {
     # C (partial-static via pkgsStatic; only system libs stay dynamic on macOS)
     # macOS ffmpeg (headless): partial-static via pkgsStatic — every nix dep
     # linked statically, only /usr/lib + system frameworks stay dynamic (CLAUDE.md

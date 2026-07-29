@@ -102,7 +102,6 @@
           localPackages = import ./packages/local.nix {
             inherit lib pkgs pkgsStatic;
             pkgs2605Static = envs."26.05".pkgsStatic;
-            pkgs2511 = envs."25.11".pkgs;
           };
 
           allPackages =

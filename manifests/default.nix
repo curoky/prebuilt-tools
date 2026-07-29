@@ -250,6 +250,15 @@
   };
 
   # go pkgs
+  #
+  # Cross-platform Go tools below carry an `aarch64-darwin` override pinning
+  # version 25.11 with `isStatic = false` (native pkgs, CGO on). Their upstream
+  # CGO build already links only /usr/lib + system frameworks (no /nix dylib),
+  # so no CGO_ENABLED=0 override is needed on macOS; forcing it off would only
+  # make the pure-Go binary retain a go-compiler store path and trip
+  # buildGoModule's disallowedReferences check. Linux keeps the default
+  # (unstable, pkgsStatic musl static). Go tools that stay Linux-only (age,
+  # sops, delve, gopls, ...) keep their `platforms = [ "x86_64-linux" ]`.
   age = {
     platforms = [ "x86_64-linux" ];
   };
@@ -257,43 +266,70 @@
     platforms = [ "x86_64-linux" ];
   };
   bazelisk = {
-    platforms = [ "x86_64-linux" ];
+    "aarch64-darwin" = {
+      version = "25.11";
+      isStatic = false;
+    };
   };
   buildifier = {
-    platforms = [ "x86_64-linux" ];
+    "aarch64-darwin" = {
+      version = "25.11";
+      isStatic = false;
+    };
   };
   croc = {
-    platforms = [ "x86_64-linux" ];
+    "aarch64-darwin" = {
+      version = "25.11";
+      isStatic = false;
+    };
   };
   delve = {
     platforms = [ "x86_64-linux" ];
   };
   dive = {
-    platforms = [ "x86_64-linux" ];
     "x86_64-linux" = {
       version = "25.11";
     };
+    "aarch64-darwin" = {
+      version = "25.11";
+      isStatic = false;
+    };
   };
   fzf = {
-    platforms = [ "x86_64-linux" ];
+    "aarch64-darwin" = {
+      version = "25.11";
+      isStatic = false;
+    };
   };
   gdu = {
-    platforms = [ "x86_64-linux" ];
+    "aarch64-darwin" = {
+      version = "25.11";
+      isStatic = false;
+    };
   };
   gh = {
-    platforms = [ "x86_64-linux" ];
+    "aarch64-darwin" = {
+      version = "25.11";
+      isStatic = false;
+    };
   };
   git-lfs = {
-    platforms = [ "x86_64-linux" ];
     "x86_64-linux" = {
       version = "25.11";
+    };
+    "aarch64-darwin" = {
+      version = "25.11";
+      isStatic = false;
     };
   };
   go-outline = {
     platforms = [ "x86_64-linux" ];
   };
   go-task = {
-    platforms = [ "x86_64-linux" ];
+    "aarch64-darwin" = {
+      version = "25.11";
+      isStatic = false;
+    };
   };
   go-tools = {
     platforms = [ "x86_64-linux" ];
@@ -323,19 +359,31 @@
     platforms = [ "x86_64-linux" ];
   };
   lefthook = {
-    platforms = [ "x86_64-linux" ];
+    "aarch64-darwin" = {
+      version = "25.11";
+      isStatic = false;
+    };
   };
   oras = {
-    platforms = [ "x86_64-linux" ];
+    "aarch64-darwin" = {
+      version = "25.11";
+      isStatic = false;
+    };
   };
   runc = {
     platforms = [ "x86_64-linux" ];
   };
   scc = {
-    platforms = [ "x86_64-linux" ];
+    "aarch64-darwin" = {
+      version = "25.11";
+      isStatic = false;
+    };
   };
   shfmt = {
-    platforms = [ "x86_64-linux" ];
+    "aarch64-darwin" = {
+      version = "25.11";
+      isStatic = false;
+    };
   };
   lark-cli = {
     # Linux: default isStatic = true -> pkgsStatic musl static.
