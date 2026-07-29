@@ -4,7 +4,7 @@
 OCI artifact 发布。本文是构建端设计、约束和改动流程的 agent source of truth。
 
 修改具体生态前，再阅读[包构建策略](docs/package-strategies.md)及对应 case study。修改
-`client/` 时同时遵守 [`client/CLAUDE.md`](client/CLAUDE.md)。
+`cmd/binman/` 时同时遵守 [`cmd/binman/CLAUDE.md`](cmd/binman/CLAUDE.md)。
 
 ## 产物不变量
 
@@ -20,7 +20,7 @@ OCI artifact 发布。本文是构建端设计、约束和改动流程的 agent 
    都是待定期回归的临时状态；所有 pin、patch 和本地 packaging 必须登记到
    [`TODO.md`](TODO.md) 总表。
 5. **每个包必须可搬运。** 不依赖宿主包管理器；需要 runtime 的脚本工具优先通过同级
-   runtime wrapper 解决。`sb` 不做包依赖解析。
+   runtime wrapper 解决。`bm` 不做包依赖解析。
 
 纯脚本、字体和数据包没有静态链接要求，但仍需移除 Nix store 路径。当前有两个明确记录的
 Linux 动态例外：
@@ -151,9 +151,11 @@ derivation 或 wrapper 中解决。修改 normalization 会影响几乎全部包
    `<name>.darwin-arm64.tar.gz`；
 5. 发布到 `ghcr.io/curoky/standalone-binaries:<name>-<arch>`。
 
-LLVM 工具由专用 workflow 构建。`sb` client 以 `sb-<arch>` 发布。每个 artifact 当前只有一个
-tar.gz layer，client 使用 layer digest 判断升级。修改 tag、layer 数量或归档布局时，必须同步修改
-所有 build workflow、`client/main.go`、`client/install.sh` 和 `client/CLAUDE.md`。
+LLVM 工具由专用 workflow 构建。`bm` client 以 `binman-<arch>` 发布，归档布局为
+`binman/bm`。每个 artifact 当前只有一个 tar.gz layer，client 使用 layer digest 判断升级。
+修改 tag、layer 数量或归档布局时，必须同步修改所有 build workflow、
+`cmd/binman/main.go`、`cmd/binman/install.sh` 和
+`cmd/binman/CLAUDE.md`。
 
 ## 改动入口
 
@@ -166,7 +168,7 @@ tar.gz layer，client 使用 layer digest 判断升级。修改 tag、layer 数�
 | 回归本地 patch | manifest、`packages/local.nix`，并删除孤儿目录 |
 | 修改通用后处理 | `scripts/normalize.sh` |
 | 修改包选择或 outputs | `lib/`、`flake.nix` |
-| 修改 client | `client/`，并遵守 `client/CLAUDE.md` |
+| 修改 client | `cmd/binman/`，并遵守 `cmd/binman/CLAUDE.md` |
 
 添加上游包时不要显式填写默认字段。添加本地包前先区分编译、链接、硬编码路径和资源定位问题，
 只修 root cause。上游修复可用后，一次性删除本地 patch、pin、聚合条目、无用资源和过时文档，
@@ -187,7 +189,7 @@ nix build .#all-fast
 ```
 
 根据包补充 `--version` 或代表性命令 smoke test。wrapper、证书和同级 runtime 不能只靠构建成功判断。
-修改 `client/` 时运行其 `CLAUDE.md` 指定的 Go 与 shell 检查。
+修改 `cmd/binman/` 时运行其 `CLAUDE.md` 指定的 Go 与 shell 检查。
 
 不把 eval、dry-run、lint 或代码审查表述为实际构建通过。完整构建成本过高时，明确报告已执行和
 未执行的验证。
@@ -196,7 +198,7 @@ nix build .#all-fast
 
 - 本仓库不维护面向人的 README；agent 入口只有根和目录级 `CLAUDE.md`。
 - 根 `CLAUDE.md` 保存稳定架构、全局约束、改动入口和验证要求。
-- `client/CLAUDE.md` 保存 client 的公开契约、状态模型和专属约束。
+- `cmd/binman/CLAUDE.md` 保存 client 的公开契约、状态模型和专属约束。
 - `TODO.md` 是人和 agent 共用的 pin、patch 与本地 packaging 总表；批量回归只消费其中标为
   `✅` 或 `🟡` 的行。
 - `docs/package-strategies*.md` 只记录偏离默认构建路径的技术案例和诊断记录。

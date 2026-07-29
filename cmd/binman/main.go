@@ -1,9 +1,9 @@
-// Command sb is a tiny package manager for the standalone-binaries
+// Command bm is a tiny package manager for the standalone-binaries
 // published at ghcr.io/curoky/standalone-binaries.
 //
 // Design goals (see CLAUDE.md "Client Install / Upgrade Model"):
 //
-//   - Single static binary. sb is one statically-linked binary (built with
+//   - Single static binary. bm is one statically-linked binary (built with
 //     CGO_ENABLED=0), cross-compiled for linux-x86_64 and darwin-arm64. OCI
 //     access is delegated to go-containerregistry (crane), so neither curl,
 //     tar, oras nor jq is required on the target host.
@@ -12,7 +12,7 @@
 //     Because every link is relative, the whole prefix can be moved anywhere
 //     with zero repair.
 //   - Independent packages. Every package is treated as fully self-contained;
-//     sb performs no dependency resolution.
+//     bm performs no dependency resolution.
 //
 // Commands: install | remove | upgrade | info | list | outdated | sync
 //
@@ -51,18 +51,18 @@ import (
 
 const (
 	defaultRegistry = "ghcr.io/curoky/standalone-binaries"
-	metaFile        = ".sb-meta"
-	defaultPrefix   = "/opt/sb"
-	logFile         = "sb.log"
+	metaFile        = ".binman-meta"
+	defaultPrefix   = "/opt/binman"
+	logFile         = "binman.log"
 	maxParallel     = 16 // cap concurrent registry requests / downloads
 )
 
 // logger carries the detailed, structured log. It always writes to
-// <prefix>/sb.log; with --verbose it also mirrors to stderr. CLI key-step
+// <prefix>/binman.log; with --verbose it also mirrors to stderr. CLI key-step
 // output (the "> ..." lines) keeps going straight to stdout via fmt.
 var logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
-// setupLogger points logger at <prefix>/sb.log, creating the prefix if needed.
+// setupLogger points logger at <prefix>/binman.log, creating the prefix if needed.
 // When verbose is set, log records are also written to stderr. The returned
 // closer flushes/closes the underlying file.
 func setupLogger(prefix string, verbose bool) (io.Closer, error) {
@@ -114,7 +114,7 @@ func isNotFound(err error) bool {
 }
 
 // remoteLayer returns the single content layer of a package's image. The layer
-// digest is what we record in .sb-meta and compare for upgrades; the layer's
+// digest is what we record in .binman-meta and compare for upgrades; the layer's
 // Compressed() stream is the package tarball.
 func remoteLayer(name, arch string) (v1.Layer, error) {
 	img, err := crane.Pull(ref(name, arch))
@@ -188,7 +188,7 @@ func cachePath(arch, name string) string {
 	if base == "" {
 		base = filepath.Join(os.Getenv("HOME"), ".cache")
 	}
-	return filepath.Join(base, "sb", arch, name+".tar.gz")
+	return filepath.Join(base, "binman", arch, name+".tar.gz")
 }
 
 // ---------------------------------------------------------------------------
@@ -432,7 +432,7 @@ func installPackagePlan(plan []installTarget, prefix, arch string, force bool) e
 			metas[i], haveMeta[i] = m, true
 		}
 		if !force && haveMeta[i] && metas[i].Digest == digests[i] {
-				skipped++
+			skipped++
 			logger.Info("skip up-to-date", "package", pkg.name, "digest", digests[i])
 			fmt.Printf("> %s (%s) is already up to date, skipping download. Use --force to reinstall.\n", pkg.name, arch)
 			continue
@@ -670,14 +670,14 @@ func cmdUpgrade(prefix, arch string, names []string) error {
 }
 
 // ---------------------------------------------------------------------------
-// Declarative manifest (sb.yaml) and `sync`.
+// Declarative manifest (binman.yaml) and `sync`.
 // ---------------------------------------------------------------------------
 
 // defaultManifest is the manifest filename resolved in the current directory
 // when `sync` is invoked without an explicit path.
-const defaultManifest = "sb.yaml"
+const defaultManifest = "binman.yaml"
 
-// manifest is a declarative set of packages to install. It is the sb
+// manifest is a declarative set of packages to install. It is the binman
 // equivalent of a Brewfile / pyproject file.
 //
 //   - packages.link:   installed into the store and linked into the prefix root.
@@ -870,7 +870,7 @@ func main() {
 	}
 
 	root := &cobra.Command{
-		Use:           "sb",
+		Use:           "bm",
 		Short:         "package manager for ghcr.io/curoky/standalone-binaries",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -880,7 +880,7 @@ func main() {
 				return err
 			}
 			logCloser = c
-			logger.Info("sb invoked", "command", cmd.Name(), "args", args,
+			logger.Info("bm invoked", "command", cmd.Name(), "args", args,
 				"prefix", prefix, "arch", arch, "verbose", verbose)
 			return nil
 		},
@@ -959,7 +959,7 @@ func main() {
 	var prune bool
 	sync := &cobra.Command{
 		Use:   "sync [file]",
-		Short: "Install packages declared in a YAML manifest (default: sb.yaml)",
+		Short: "Install packages declared in a YAML manifest (default: binman.yaml)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a, err := resolveArch()

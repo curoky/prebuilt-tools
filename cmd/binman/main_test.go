@@ -48,7 +48,7 @@ func startRegistry(t *testing.T, arch string, packages ...string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repo := u.Host + "/sb"
+	repo := u.Host + "/binman"
 
 	for _, name := range packages {
 		layer, err := tarball.LayerFromReader(bytes.NewReader(pkgTarGz(t, name)))
@@ -83,9 +83,30 @@ func TestStripFirstComponent(t *testing.T) {
 	}
 }
 
+func TestBinmanNaming(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", "/tmp/cache")
+
+	if defaultPrefix != "/opt/binman" {
+		t.Fatalf("defaultPrefix=%q want /opt/binman", defaultPrefix)
+	}
+	if metaFile != ".binman-meta" {
+		t.Fatalf("metaFile=%q want .binman-meta", metaFile)
+	}
+	if logFile != "binman.log" {
+		t.Fatalf("logFile=%q want binman.log", logFile)
+	}
+	if defaultManifest != "binman.yaml" {
+		t.Fatalf("defaultManifest=%q want binman.yaml", defaultManifest)
+	}
+	wantCache := filepath.Join("/tmp/cache", "binman", "linux-x86_64", "ripgrep.tar.gz")
+	if got := cachePath("linux-x86_64", "ripgrep"); got != wantCache {
+		t.Fatalf("cachePath=%q want %q", got, wantCache)
+	}
+}
+
 func TestExtractLinkRelocate(t *testing.T) {
 	root := t.TempDir()
-	prefix := filepath.Join(root, "opt", "sb")
+	prefix := filepath.Join(root, "opt", "binman")
 	pkg := "ripgrep"
 
 	tgz := filepath.Join(root, "cache", pkg+".tar.gz")
@@ -124,11 +145,11 @@ func TestExtractLinkRelocate(t *testing.T) {
 		t.Fatalf("bin link does not resolve: %v", err)
 	}
 	if _, err := os.Lstat(filepath.Join(prefix, metaFile)); !os.IsNotExist(err) {
-		t.Fatalf(".sb-meta leaked into prefix")
+		t.Fatalf(".binman-meta leaked into prefix")
 	}
 
 	// Relocate the whole prefix; relative links must still resolve.
-	moved := filepath.Join(root, "moved", "sb")
+	moved := filepath.Join(root, "moved", "binman")
 	if err := os.MkdirAll(filepath.Dir(moved), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +253,7 @@ func TestInstallMultiOneMissingAbortsAll(t *testing.T) {
 
 func TestLoadManifest(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "sb.yaml")
+	path := filepath.Join(dir, "binman.yaml")
 	body := "arch: linux-x86_64\npackages:\n  link:\n    - ripgrep\n    - fd\n  unlink:\n    - python311\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
@@ -267,7 +288,7 @@ func TestSyncInstalls(t *testing.T) {
 	prefix := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
-	file := filepath.Join(t.TempDir(), "sb.yaml")
+	file := filepath.Join(t.TempDir(), "binman.yaml")
 	if err := os.WriteFile(file, []byte("packages:\n  link:\n    - ripgrep\n    - fd\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -288,10 +309,10 @@ func TestSyncManifestPrefix(t *testing.T) {
 	arch := "linux-x86_64"
 	startRegistry(t, arch, "ripgrep")
 	root := t.TempDir()
-	manifestPrefix := filepath.Join(root, "opt", "sb")
+	manifestPrefix := filepath.Join(root, "opt", "binman")
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
-	file := filepath.Join(t.TempDir(), "sb.yaml")
+	file := filepath.Join(t.TempDir(), "binman.yaml")
 	body := "prefix: " + manifestPrefix + "\npackages:\n  link:\n    - ripgrep\n"
 	if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
@@ -308,7 +329,7 @@ func TestSyncManifestPrefix(t *testing.T) {
 	}
 
 	// prefixSet=true: an explicit --prefix overrides the manifest.
-	flagPrefix := filepath.Join(root, "flag", "sb")
+	flagPrefix := filepath.Join(root, "flag", "binman")
 	if err := cmdSync(flagPrefix, arch, file, true, false, false); err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +349,7 @@ func TestSyncPrune(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	file := filepath.Join(t.TempDir(), "sb.yaml")
+	file := filepath.Join(t.TempDir(), "binman.yaml")
 	if err := os.WriteFile(file, []byte("packages:\n  link:\n    - ripgrep\n    - fd\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +375,7 @@ func TestSyncUnlinked(t *testing.T) {
 	prefix := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
-	file := filepath.Join(t.TempDir(), "sb.yaml")
+	file := filepath.Join(t.TempDir(), "binman.yaml")
 	body := "packages:\n  link:\n    - ripgrep\n  unlink:\n    - python311\n"
 	if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
@@ -381,7 +402,7 @@ func TestSyncProfiles(t *testing.T) {
 	prefix := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
-	file := filepath.Join(t.TempDir(), "sb.yaml")
+	file := filepath.Join(t.TempDir(), "binman.yaml")
 	body := "packages:\n  link:\n    - ripgrep\nprofiles:\n  go:\n    - gopls\n    - delve\n"
 	if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
@@ -453,7 +474,7 @@ func TestSyncSharedBatchKeepsLinkedPackagesLinked(t *testing.T) {
 	prefix := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
-	file := filepath.Join(t.TempDir(), "sb.yaml")
+	file := filepath.Join(t.TempDir(), "binman.yaml")
 	body := "packages:\n  link:\n    - ripgrep\n  unlink:\n    - ripgrep\nprofiles:\n  tools:\n    - ripgrep\n"
 	if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
 		t.Fatal(err)

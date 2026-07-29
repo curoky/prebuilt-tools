@@ -1,14 +1,16 @@
-name: build sb
+name: build binman
 
-# Builds the sb client itself (client/, Go) and publishes it to the same
+# Builds the bm client (cmd/binman/, Go) and publishes it to the same
 # ghcr registry as the packages, so it can be bootstrapped with a single curl
 # and later self-upgraded like any other package.
 
 on:
   push:
     paths:
-      - '.github/workflows/build-sb.yaml'
-      - 'client/**'
+      - '.github/workflows/build-binman.yaml'
+      - 'cmd/binman/**'
+      - 'go.mod'
+      - 'go.sum'
   workflow_dispatch:
 
 jobs:
@@ -29,10 +31,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
-          cache-dependency-path: client/go.sum
+          cache-dependency-path: go.sum
 
       # Statically-linked binary with no host runtime dependencies (CGO off).
-      - working-directory: client
+      - working-directory: cmd/binman
         env:
           CGO_ENABLED: '0'
           GOOS: ${{ matrix.goos }}
@@ -40,15 +42,15 @@ jobs:
         run: |
           go vet ./...
           go test ./...
-          mkdir -p ./sb
-          go build -trimpath -ldflags="-s -w" -o ./sb/sb .
-          tar -czvf ./sb.${{ matrix.tag }}.tar.gz ./sb
+          mkdir -p ./binman
+          go build -trimpath -ldflags="-s -w" -o ./binman/bm .
+          tar -czvf ./binman.${{ matrix.tag }}.tar.gz ./binman
 
       - uses: oras-project/setup-oras@v1
 
       - run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - working-directory: client
+      - working-directory: cmd/binman
         run: >
-          oras push ghcr.io/curoky/standalone-binaries:sb-${{ matrix.tag }}
-          ./sb.${{ matrix.tag }}.tar.gz:application/vnd.oci.image.layer.v1.tar+gzip
+          oras push ghcr.io/curoky/standalone-binaries:binman-${{ matrix.tag }}
+          ./binman.${{ matrix.tag }}.tar.gz:application/vnd.oci.image.layer.v1.tar+gzip

@@ -30,7 +30,7 @@
 Python、Perl 和 Node.js 工具把脚本与 runtime 分成独立 artifact。wrapper 从自身位置求出共同
 `store/` 目录，再显式执行同级 runtime。这样工具不依赖宿主解释器，也不依赖构建期 shebang。
 
-这类工具在单独下载时需要同时安装对应 runtime；`sb` 不做依赖解析。
+这类工具在单独下载时需要同时安装对应 runtime；`bm` 不做依赖解析。
 
 ### 平台拆分
 

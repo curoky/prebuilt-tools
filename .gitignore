@@ -2,5 +2,5 @@
 tmp
 *.tar.gz
 result
-client/sb
-client/client
+cmd/binman/binman
+/bm
