@@ -14,8 +14,8 @@
 | Rust | [rust.md](package-strategies/rust.md) | miniserve、zellij |
 | 特殊案例 | [special-cases.md](package-strategies/special-cases.md) | feature reduction、linker 修复、动态例外 |
 
-包集合以 `packages/local.nix` 和 `manifests/default.nix` 为准。case study 不复制完整 derivation，
-只解释为什么需要本地实现、关键约束是什么、何时可以删除。
+包集合以 `packages/local/`、其入口 `packages/local.nix` 和 `manifests/default.nix` 为准。case study
+不复制完整 derivation，只解释为什么需要本地实现、关键约束是什么、何时可以删除。
 
 ## 共用模式
 
@@ -34,8 +34,8 @@ Python、Perl 和 Node.js 工具把脚本与 runtime 分成独立 artifact。wra
 
 ### 平台拆分
 
-同名输出可在 `packages/local.nix` 的 `linux` 与 `darwin` 集合中使用不同 derivation。平台拆分优于在
-单个文件中堆叠大量条件，尤其适合解释器和 macOS 部分静态构建。
+同名输出可在 `packages/local/linux.nix` 与 `packages/local/darwin.nix` 中使用不同 derivation。
+平台拆分优于在单个文件中堆叠大量条件，尤其适合解释器和 macOS 部分静态构建。
 
 ### 临时修复
 

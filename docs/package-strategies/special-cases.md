@@ -68,7 +68,6 @@ rist）关掉是因为过不了 ffmpeg 的静态 configure 链接测试。
   禁掉了大部分 locale 支持：`-DNO_THREAD_SAFE_QUERYLOCALE` 等），在 "Updating 'mktables.lst'" 后
   exit code 2。wget 只把 perl 当 build tool，指向 native（cache-prebuilt）perl 即可绕过，wget 二进制
   本身仍每个 nix dep 静态链接，只剩 `/usr/lib` 动态。
-- 备选（保留未启用）：`wget/darwin.nix` 走 native `pkgs.wget` + 逐依赖换 `pkgsStatic` 归档的变体。
 
 ## gnutar（Linux，linker workaround）
 

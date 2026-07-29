@@ -3,20 +3,11 @@
 
   inputs = {
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
-    nixpkgs-master.url = "github:NixOS/nixpkgs/master";
-    nixpkgs-staging.url = "github:NixOS/nixpkgs/staging";
     nixpkgs-2605.url = "github:NixOS/nixpkgs/nixos-26.05";
     nixpkgs-2511.url = "github:NixOS/nixpkgs/nixos-25.11";
     nixpkgs-2505.url = "github:NixOS/nixpkgs/nixos-25.05";
     nixpkgs-2411.url = "github:NixOS/nixpkgs/nixos-24.11";
     nixpkgs-2405.url = "github:NixOS/nixpkgs/nixos-24.05";
-
-    # Used to bundle tools that cannot be statically compiled (e.g. Node.js
-    # based tools) into a single self-extracting executable. Linux only.
-    nix-bundle = {
-      url = "github:matthewbauer/nix-bundle";
-      inputs.nixpkgs.follows = "nixpkgs-unstable";
-    };
   };
 
   nixConfig = {
@@ -29,7 +20,7 @@
   };
 
   outputs =
-    { self, ... }@inputs:
+    inputs:
     let
       lib = inputs.nixpkgs-unstable.lib;
 
@@ -79,14 +70,8 @@
           pkgsStatic = envs.unstable.pkgsStatic;
 
           # --- helpers -----------------------------------------------------
-          makeBundle = import ./lib/make-bundle.nix {
-            inherit pkgs;
-            # The flake input's source tree; make-bundle.nix imports its
-            # default.nix to get the bundling functions bound to our pkgs.
-            nix-bundle = inputs.nix-bundle.outPath;
-          };
           makeManifestPackages = import ./lib/make-manifest-packages.nix {
-            inherit lib envs makeBundle;
+            inherit lib envs;
             allSystems = systems;
           };
           makeStandalone = import ./lib/make-standalone.nix {
@@ -100,7 +85,7 @@
 
           # --- local packages (patched / wrapped / pinned) -----------------
           localPackages = import ./packages/local.nix {
-            inherit lib pkgs pkgsStatic;
+            inherit pkgs pkgsStatic;
             pkgs2605Static = envs."26.05".pkgsStatic;
           };
 
@@ -110,11 +95,9 @@
             // lib.optionalAttrs isDarwin localPackages.darwin
             // lib.optionalAttrs (!isDarwin) localPackages.linux;
 
-          # Normalize every derivation into a standalone payload, except bundle
-          # outputs which are already self-contained single files.
+          # Normalize every derivation into a standalone payload.
           standalonePackages = lib.mapAttrs (
-            name: drv:
-            if lib.isDerivation drv && !(drv.__isBundle or false) then makeStandalone name drv else drv
+            name: drv: if lib.isDerivation drv then makeStandalone name drv else drv
           ) allPackages;
 
           # Slow-to-build LLVM toolchain packages (clang-tools / clang / lld).

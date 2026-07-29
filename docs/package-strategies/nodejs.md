@@ -109,8 +109,8 @@ cmakeFlags；ICU 去 `--with-intl=system-icu` 改 `--with-intl=small-icu`（英�
 `readlink -f "$0"` 定位自身 → 求 `root`（本包 deploy 目录）与 `store`（其父目录），**显式调用兄弟包
 `$store/nodejs-slim26/bin/node <entry> "$@"`**。这样 node 显式传入、bundle JS 的 shebang 无关紧要，
 解决了 normalize 后 `.mjs`/`.cjs` shebang 被改写为 `/usr/bin/env node` 会依赖 host PATH node 的问题。
-wrapper 是 shell 脚本无静态链接需求，平台无关，Linux/darwin 复用同一 derivation（各自对接本平台
-`nodejs-slim26`）。这套取代了此前的 `bundle = true` manifest 条目。
+wrapper 是 shell 脚本无静态链接需求，平台无关，Linux/darwin 通过
+`packages/local/node-tools.nix` 复用同一套接线（各自对接本平台 `nodejs-slim26`）。
 
 **build-vs-runtime node 是两类工具的关键差异：**
 

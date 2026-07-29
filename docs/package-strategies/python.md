@@ -3,13 +3,15 @@
 Python 生态分两层：**静态 CPython 解释器**（作为共享 runtime 独立成包）和**纯 Python 脚本工具**
 （用 shared-sibling wrapper 运行期绑定那个解释器）。工具本身不做任何静态链接。
 
-- 解释器：`packages/python/{311,312,313,314,315}`（Linux-only）。
+- 解释器 factory：`packages/python/default.nix`；版本资源：
+  `packages/python/{311,312,313,314,315}/Setup.local`（Linux-only）。
 - 工具：`packages/{git-filter-repo,netron}`（跨平台 common）、`packages/dool`（Linux-only）。
 
 ## Python 解释器（311 / 312 / 313 / 314 / 315）
 
-`packages/local.nix` 用 `pkgsStatic.callPackage ./python/<ver>` 接入五个 Linux-only 解释器，
-即对上游 musl-static `pythonNNN` 做 `overrideAttrs`。
+`packages/local/linux.nix` 通过 `packages/python/default.nix` 的共享 factory 接入五个 Linux-only
+解释器。factory 接收对应的上游 musl-static `pythonNNN` 和版本专属 `Setup.local`，统一执行
+`overrideAttrs`；Python 3.15 额外启用 musl `statx` patch。
 
 ### Linux：musl 纯静态
 

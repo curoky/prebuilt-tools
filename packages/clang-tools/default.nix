@@ -1,12 +1,13 @@
 {
-  lib,
   stdenv,
-  fetchurl,
   mold,
-  llvmPackages_22,
+}:
+{
+  llvmPackages,
+  version,
 }:
 let
-  clang = llvmPackages_22.clang-unwrapped.overrideAttrs (oldAttrs: rec {
+  clang = llvmPackages.clang-unwrapped.overrideAttrs (oldAttrs: {
     nativeBuildInputs = (oldAttrs.nativeBuildInputs or [ ]) ++ [ mold ];
     env = {
       NIX_CFLAGS_COMPILE =
@@ -20,10 +21,9 @@ let
     ];
   });
 in
-
-stdenv.mkDerivation rec {
+stdenv.mkDerivation {
   pname = "clang-tools";
-  version = "22.0.0";
+  inherit version;
 
   unpackPhase = ":";
   buildPhase = ":";

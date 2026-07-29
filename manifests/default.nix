@@ -120,7 +120,7 @@
   # rust pkgs
   atuin = { };
   bat = { };
-  # biome = { };
+  biome = { };
   dprint = { };
   eza = { };
   fd = { };

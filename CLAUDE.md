@@ -4,7 +4,9 @@
 OCI artifact 发布。本文是构建端设计、约束和改动流程的 agent source of truth。
 
 修改具体生态前，再阅读[包构建策略](docs/package-strategies.md)及对应 case study。修改
-`cmd/binman/` 时同时遵守 [`cmd/binman/CLAUDE.md`](cmd/binman/CLAUDE.md)。
+`cmd/binman/` 时同时遵守 [`cmd/binman/CLAUDE.md`](cmd/binman/CLAUDE.md)。修改
+`cmd/nixcache/` 时同时遵守 [`cmd/nixcache/CLAUDE.md`](cmd/nixcache/CLAUDE.md)并阅读
+[`docs/nix-cache-proxy-plan.md`](docs/nix-cache-proxy-plan.md)。
 
 ## 产物不变量
 
@@ -53,18 +55,16 @@ unstable 当前无法构建时才选择旧环境，并在代码附近记录具�
 ```text
 manifests/default.nix ─┐
                        ├─> platform package set ─> makeStandalone ─> flake outputs
-packages/local.nix ────┘                                  │
+packages/local/ ───────┘                                  │
                                                          └─> normalize.sh
 ```
 
 1. `manifests/default.nix` 声明可直接选择的 nixpkgs 包。
-2. `packages/local.nix` 显式聚合 patched、wrapped、pinned 和平台特定包。
+2. `packages/local.nix` 聚合 `packages/local/{common,linux,darwin}.nix` 中显式接入的
+   patched、wrapped、pinned 和平台特定包。
 3. `flake.nix` 按 `upstream // common // platform-specific` 合并，后者覆盖前者。
 4. `lib/make-standalone.nix` 复制 derivation output，并运行 `scripts/normalize.sh`。
 5. flake 暴露每个独立包，以及聚合输出 `all` 和跳过慢速 LLVM 包的 `all-fast`。
-
-manifest 中 `bundle = true` 的包改走 `lib/make-bundle.nix`，使用 `nix-bundle` 生成
-Linux-only 自解压可执行文件并跳过 normalization。它依赖 user namespace，是最后手段。
 
 ## Manifest Schema
 
@@ -77,14 +77,13 @@ Linux-only 自解压可执行文件并跳过 normalization。它依赖 user name
 | `isStatic` | `true` | 使用 `pkgsStatic`，否则使用普通 `pkgs` |
 | `output` | `[ "out" ]` | 合并并公开的 derivation outputs |
 | `alias` | 一级 key | flake output 名称 |
-| `bundle` | `false` | 使用 Linux `nix-bundle` |
 | `"<system>"` | `{ }` | 当前平台的字段覆盖 |
 
 平台配置覆盖包级配置。解析实现以 `lib/make-manifest-packages.nix` 为准。
 
 ## Local Packages
 
-`packages/local.nix` 返回：
+`packages/local.nix` 是稳定入口，返回：
 
 ```nix
 {
@@ -94,8 +93,10 @@ Linux-only 自解压可执行文件并跳过 normalization。它依赖 user name
 }
 ```
 
-本地包通过 `callPackage` 显式接入，不自动扫描目录。通常一个工具一个目录；同一应用的多版本放在
-一个父目录下，如 `packages/python/{311,312,313,314,315}`。
+通用、Linux 和 Darwin 接线分别位于 `packages/local/{common,linux,darwin}.nix`；共享 Node CLI
+接线位于 `packages/local/node-tools.nix`。本地包通过 `callPackage` 显式接入，不自动扫描目录。
+通常一个工具一个目录；同一应用的多版本资源放在一个父目录下，如
+`packages/python/{311,312,313,314,315}/Setup.local`。
 
 只有以下情况应创建本地包：
 
@@ -114,10 +115,9 @@ Linux-only 自解压可执行文件并跳过 normalization。它依赖 user name
 3. 只替换造成问题的依赖为静态版本。
 4. 关闭阻止静态链接的非必要 feature。
 5. 增加相对资源 wrapper 或同级 runtime wrapper。
-6. Linux 使用 `nix bundle`。
-7. 经用户确认建立显式动态例外。
+6. 经用户确认建立显式动态例外。
 
-macOS 不得静默复制 `/nix/store` dylib。确需 bundle 非系统 dylib 时，先确认设计变化，并把
+macOS 不得静默复制 `/nix/store` dylib。确需随包携带非系统 dylib 时，先确认设计变化，并把
 Mach-O load command 改为 `@loader_path` 或 `@rpath` 相对路径。
 
 处理新包或静态构建失败时，使用
@@ -127,7 +127,7 @@ Mach-O load command 改为 `@loader_path` 或 `@rpath` 相对路径。
 
 ## Normalization
 
-`scripts/normalize.sh` 是所有非 bundle 包共享的后处理层。它：
+`scripts/normalize.sh` 是所有包共享的后处理层。它：
 
 - 删除 `nix-support`、man page、文档和 bash completion；
 - 保留 output 内部 symlink，展开外部 symlink，删除 dangling symlink；
@@ -135,7 +135,13 @@ Mach-O load command 改为 `@loader_path` 或 `@rpath` 相对路径。
 - 对 ELF strip 并运行 `nuke-refs`；
 - 恢复 `.*-wrapped` 的公开文件名；
 - 删除 `.a` 和 `.pyc`；
-- 检查 ELF rpath 与 Mach-O 动态依赖，发现 `/nix` 引用就失败。
+- Linux 检查每个 ELF 的链接类型，动态 ELF 直接失败；仅
+  `music-decrypto`、`nsight-systems` 两个已记录例外允许动态 ELF，但仍检查 interpreter、
+  rpath 和动态依赖不得引用 `/nix`；
+- macOS 检查每个 Mach-O 的 load command，只允许 `/usr/lib`、
+  `/System/Library/Frameworks`、`@loader_path` 和 `@rpath` 依赖，并拒绝任何 `/nix`
+  引用；
+- 无法解析 ELF 或 Mach-O 依赖时按校验失败处理，不静默跳过。
 
 Normalization 不会把动态程序变成静态程序，也不能可靠修复任意二进制硬编码路径。此类问题必须在
 derivation 或 wrapper 中解决。修改 normalization 会影响几乎全部包，应优先考虑包级修复。
@@ -157,18 +163,31 @@ LLVM 工具由专用 workflow 构建。`bm` client 以 `binman-<arch>` 发布，
 `cmd/binman/main.go`、`cmd/binman/install.sh` 和
 `cmd/binman/CLAUDE.md`。
 
+`cmd/nixcache/` 是待接入 CI 的仓库专用 GHCR Nix cache，固定使用
+`ghcr.io/curoky/standalone-binaries-cache`。`push` 让 `nix copy` 生成临时 file binary
+cache，再用 `go-nix` 解析并上传完整 closure；`serve` 在 `127.0.0.1:37515` 提供
+substituter。cache metadata 按完整
+`flake.lock` snapshot 写入 immutable OCI segments，不能改回共享可变 index；现有 CI 在完成
+GHCR 权限、签名和 cleanup 验证前仍使用 Cachix。其二进制中的 `StoreDir: /nix/store`
+是 Nix binary cache 协议必需文本，不是运行期依赖，也不是 normalization 应删除的残留。
+`nixcache` 二进制由 `.github/workflows/build-nixcache.yaml` 以
+`nixcache-<arch>` tag 发布到普通工具 repository
+`ghcr.io/curoky/standalone-binaries`，归档布局为 `nixcache/nixcache`；不要把二进制
+发布到 cache repository。
+
 ## 改动入口
 
 | 需求 | 修改位置 |
 | --- | --- |
 | 添加可直接使用的 nixpkgs 包 | `manifests/default.nix` |
-| 添加 patch、wrapper 或平台拆分 | `packages/<name>/`、`packages/local.nix` |
+| 添加 patch、wrapper 或平台拆分 | `packages/<name>/`、`packages/local/<platform>.nix` |
 | 登记 pin、patch、packaging 与回归状态 | `TODO.md` |
 | 回归版本 pin | `manifests/default.nix` |
-| 回归本地 patch | manifest、`packages/local.nix`，并删除孤儿目录 |
+| 回归本地 patch | manifest、`packages/local/`，并删除孤儿目录 |
 | 修改通用后处理 | `scripts/normalize.sh` |
 | 修改包选择或 outputs | `lib/`、`flake.nix` |
 | 修改 client | `cmd/binman/`，并遵守 `cmd/binman/CLAUDE.md` |
+| 修改 Nix cache | `cmd/nixcache/`，并遵守 `cmd/nixcache/CLAUDE.md` |
 
 添加上游包时不要显式填写默认字段。添加本地包前先区分编译、链接、硬编码路径和资源定位问题，
 只修 root cause。上游修复可用后，一次性删除本地 patch、pin、聚合条目、无用资源和过时文档，
@@ -190,6 +209,9 @@ nix build .#all-fast
 
 根据包补充 `--version` 或代表性命令 smoke test。wrapper、证书和同级 runtime 不能只靠构建成功判断。
 修改 `cmd/binman/` 时运行其 `CLAUDE.md` 指定的 Go 与 shell 检查。
+修改 `cmd/nixcache/` 时运行 `CGO_ENABLED=0 go test ./cmd/nixcache`、
+`CGO_ENABLED=0 go vet ./cmd/nixcache` 和 Linux/Darwin 交叉构建；真实 Nix round-trip
+按设计文档中的 opt-in test 执行。
 
 不把 eval、dry-run、lint 或代码审查表述为实际构建通过。完整构建成本过高时，明确报告已执行和
 未执行的验证。
@@ -199,6 +221,7 @@ nix build .#all-fast
 - 本仓库不维护面向人的 README；agent 入口只有根和目录级 `CLAUDE.md`。
 - 根 `CLAUDE.md` 保存稳定架构、全局约束、改动入口和验证要求。
 - `cmd/binman/CLAUDE.md` 保存 client 的公开契约、状态模型和专属约束。
+- `cmd/nixcache/CLAUDE.md` 保存 Nix cache CLI、OCI schema、二进制发布协议和专属约束。
 - `TODO.md` 是人和 agent 共用的 pin、patch 与本地 packaging 总表；批量回归只消费其中标为
   `✅` 或 `🟡` 的行。
 - `docs/package-strategies*.md` 只记录偏离默认构建路径的技术案例和诊断记录。

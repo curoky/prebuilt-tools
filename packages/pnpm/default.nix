@@ -2,7 +2,7 @@
 #
 # pnpm running on our fully-static (musl) `nodejs-slim26` package.
 #
-# The interpreter selection is done upstream-style in packages/local.nix:
+# The interpreter selection is done upstream-style in packages/local/node-tools.nix:
 #   pnpm = pkgs.pnpm.override { nodejs-slim = nodejs-slim26; }
 # so the `pnpm` argument here is already the nixpkgs pnpm built against our
 # static node (its $out has libexec/pnpm + bin/{pnpm,pnpx}).

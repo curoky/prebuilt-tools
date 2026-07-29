@@ -27,21 +27,20 @@ unstable pin、本地 derivation、override、禁用检查或动态例外时，�
 | `autoconf` | 📦 本地 | 📦 本地 | ❌ | 相对路径 wrappers 定位配套脚本 | 上游入口无需 Nix store 路径时再评估 | `packages/autoconf/` |
 | `automake` | 📦 本地 | 📦 本地 | ❌ | 相对路径 wrappers 定位配套脚本 | 上游入口无需 Nix store 路径时再评估 | `packages/automake/` |
 | `bazelisk` | — | 📌 `25.11` native | ✅ | macOS pin 到 native pkgs；CGO build 已只依赖系统库，强关 CGO 会触发 disallowed reference | unstable native 产物只依赖系统 dylib | `manifests/default.nix` |
-| `biome` | ⏸️ 停用 | ⏸️ 停用 | 🟡 | manifest 条目被临时注释，提交说明为避免进入 build/deploy，具体失败未记录 | 查明阻塞并恢复 manifest 条目，随后验证两平台产物 | `manifests/default.nix` |
 | `buildifier` | — | 📌 `25.11` native | ✅ | macOS pin 到 native pkgs；CGO build 已只依赖系统库，强关 CGO 会触发 disallowed reference | unstable native 产物只依赖系统 dylib | `manifests/default.nix` |
 | `cacert` | 📦 本地 | 📦 本地 | ❌ | 独立发布 curl CA bundle | 这是仓库产品，不随 nixpkgs 构建修复消失 | `packages/cacert/` |
 | `catatonit` | 🩹 本地 | — | ✅ | 清空 stock `installCheckPhase`，原始失败未记录 | unstable install check 与最终静态验证通过 | `packages/catatonit/` |
-| `clang-tools-18` | 📦 本地 | — | ❌ | 固定 LLVM 18，只提取并瘦身 `clang-format` | 多版本单工具发布是产品决策 | `packages/clang-tools/18/` |
-| `clang-tools-19` | 📦 本地 | — | ❌ | 固定 LLVM 19，只提取并瘦身 `clang-format` | 多版本单工具发布是产品决策 | `packages/clang-tools/19/` |
-| `clang-tools-20` | 📦 本地 | — | ❌ | 固定 LLVM 20，只提取并瘦身 `clang-format` | 多版本单工具发布是产品决策 | `packages/clang-tools/20/` |
-| `clang-tools-21` | 📦 本地 | — | ❌ | 固定 LLVM 21，只提取并瘦身 `clang-format` | 多版本单工具发布是产品决策 | `packages/clang-tools/21/` |
-| `clang-tools-22` | 📦 本地 | — | ❌ | 固定 LLVM 22，只提取并瘦身 `clang-format` | 多版本单工具发布是产品决策 | `packages/clang-tools/22/` |
+| `clang-tools-18` | 📦 本地 | — | ❌ | 固定 LLVM 18，只提取并瘦身 `clang-format` | 多版本单工具发布是产品决策 | `packages/clang-tools/` |
+| `clang-tools-19` | 📦 本地 | — | ❌ | 固定 LLVM 19，只提取并瘦身 `clang-format` | 多版本单工具发布是产品决策 | `packages/clang-tools/` |
+| `clang-tools-20` | 📦 本地 | — | ❌ | 固定 LLVM 20，只提取并瘦身 `clang-format` | 多版本单工具发布是产品决策 | `packages/clang-tools/` |
+| `clang-tools-21` | 📦 本地 | — | ❌ | 固定 LLVM 21，只提取并瘦身 `clang-format` | 多版本单工具发布是产品决策 | `packages/clang-tools/` |
+| `clang-tools-22` | 📦 本地 | — | ❌ | 固定 LLVM 22，只提取并瘦身 `clang-format` | 多版本单工具发布是产品决策 | `packages/clang-tools/` |
 | `cloc` | 📦 本地 | 📦 本地 | 🟡 | sibling Perl wrapper 与模块 bundling 必须保留；install check 被禁用 | 只恢复可运行的 install check | `packages/cloc/` |
 | `cmake` | 🩹 本地 | — | 🟡 | 强制静态 bootstrap、内置依赖并禁用 checks | 逐项移除 stock 已不需要的 flags；保持 musl-static | `packages/cmake/default/` |
 | `cmake_3_27_9` | 📌 源码版本 + 🩹 | — | 🟡 | 固定 3.27.9；补 C++ header、cross bootstrap 并禁用 checks | 只回归构建补丁与 checks，保留版本化 output | `packages/cmake/3_27_9/` |
 | `cmake_4_1_2` | 📌 源码版本 + 🩹 | — | 🟡 | 固定 4.1.2；自定义 cross bootstrap 并禁用 checks | 只回归构建补丁与 checks，保留版本化 output | `packages/cmake/4_1_2/` |
 | `conmon` | 🩹 本地 | — | ✅ | 收窄 build inputs 并清空 propagated inputs；历史失败未记录 | stock unstable 直接构建为 musl-static | `packages/conmon/` |
-| `coreutils` | 📦 override | 📦 override | ❌ | 明确要求 `singleBinary = false` | 多二进制布局是产品决策 | `packages/local.nix` |
+| `coreutils` | 📦 override | 📦 override | ❌ | 明确要求 `singleBinary = false` | 多二进制布局是产品决策 | `packages/local/common.nix` |
 | `croc` | — | 📌 `25.11` native | ✅ | macOS pin 到 native pkgs；CGO build 已只依赖系统库，强关 CGO 会触发 disallowed reference | unstable native 产物只依赖系统 dylib | `manifests/default.nix` |
 | `crun` | 🩹 本地 | — | 🟡 | 强制全静态、关闭不可用 features 并禁用 checks | 逐项恢复 stock features/checks，保持 musl-static | `packages/crun/` |
 | `curl` | 📦 本地 | 📦 本地 | ❌ | 内置 CA bundle 与相对路径 wrapper | 自包含证书定位是 packaging | `packages/curl/` |
@@ -61,8 +60,8 @@ unstable pin、本地 derivation、override、禁用检查或动态例外时，�
 | `git` | 🩹 本地 | — | 🟡 | 静态传递依赖、`error` 符号冲突和 install check workaround；相对资源 wrapper 必须保留 | 逐项删除构建 workaround，保留 wrapper | `packages/git/` |
 | `git-filter-repo` | 📦 本地 | 📦 本地 | ❌ | Python sibling runtime；macOS 暂用宿主 Python | runtime packaging 不会因上游构建修复消失 | `packages/git-filter-repo/` |
 | `git-lfs` | 📌 `25.11` | 📌 `25.11` native | ✅ | 两平台都 pin `25.11`；macOS 使用已只依赖系统库的 native CGO build | 两个平台分别用 unstable 并满足 portability | `manifests/default.nix` |
-| `glibcLocales` | 📦 override | — | ❌ | 只发布裁剪后的 locale 数据 | 输出裁剪是产品决策 | `packages/local.nix` |
-| `gnupg` | 📦 override | 📦 override | ❌ | 明确启用 minimal 并关闭 GUI | feature selection 是产品决策 | `packages/local.nix` |
+| `glibcLocales` | 📦 override | — | ❌ | 只发布裁剪后的 locale 数据 | 输出裁剪是产品决策 | `packages/local/linux.nix` |
+| `gnupg` | 📦 override | 📦 override | ❌ | 明确启用 minimal 并关闭 GUI | feature selection 是产品决策 | `packages/local/common.nix` |
 | `gnutar` | 🩹 本地 | — | ✅ | gnutar 与 libacl 重复定义 `*xattrat`，需 linker workaround | stock unstable 无 flag 也能静态链接并保留 ACL/xattr | `packages/gnutar/` |
 | `go-task` | — | 📌 `25.11` native | ✅ | macOS pin 到 native pkgs；CGO build 已只依赖系统库，强关 CGO 会触发 disallowed reference | unstable native 产物只依赖系统 dylib | `manifests/default.nix` |
 | `gpgme` | 🩹 本地 | — | 🟡 | minimal GnuPG，禁用 gpg test 与 checks | 逐项恢复依赖与 checks，保持 musl-static | `packages/gpgme/` |
@@ -97,11 +96,11 @@ unstable pin、本地 derivation、override、禁用检查或动态例外时，�
 | `protobuf_28` | 📌 `25.05` | — | ✅ | 历史 pin，原始失败未记录 | unstable 构建为 musl-static standalone | `manifests/default.nix` |
 | `protobuf_3_8_0` | 📌 源码版本 | 📌 源码版本 | ❌ | 明确发布 legacy protobuf 3.8.0 | 版本化产品，不回到最新 upstream | `packages/protobuf/3_8_0/` |
 | `protobuf_3_9_2` | 📌 源码版本 | 📌 源码版本 | ❌ | 明确发布 legacy protobuf 3.9.2 | 版本化产品，不回到最新 upstream | `packages/protobuf/3_9_2/` |
-| `python311` | 📦 本地 | — | ❌ | 静态 CPython 与内建扩展模块 | 多版本静态 runtime 是产品决策 | `packages/python/311/` |
-| `python312` | 📦 本地 | — | ❌ | 静态 CPython 与内建扩展模块 | 多版本静态 runtime 是产品决策 | `packages/python/312/` |
-| `python313` | 📦 本地 | — | ❌ | 静态 CPython 与内建扩展模块 | 多版本静态 runtime 是产品决策 | `packages/python/313/` |
-| `python314` | 📦 本地 | — | ❌ | 静态 CPython 与内建扩展模块 | 多版本静态 runtime 是产品决策 | `packages/python/314/` |
-| `python315` | 🩹 + 📦 本地 | — | 🟡 | 保留静态 runtime；临时修正 musl `statx` 字段拼写 | 只删除字段替换，保留静态 modules | `packages/python/315/` |
+| `python311` | 📦 本地 | — | ❌ | 静态 CPython 与内建扩展模块 | 多版本静态 runtime 是产品决策 | `packages/python/` |
+| `python312` | 📦 本地 | — | ❌ | 静态 CPython 与内建扩展模块 | 多版本静态 runtime 是产品决策 | `packages/python/` |
+| `python313` | 📦 本地 | — | ❌ | 静态 CPython 与内建扩展模块 | 多版本静态 runtime 是产品决策 | `packages/python/` |
+| `python314` | 📦 本地 | — | ❌ | 静态 CPython 与内建扩展模块 | 多版本静态 runtime 是产品决策 | `packages/python/` |
+| `python315` | 🩹 + 📦 本地 | — | 🟡 | 保留静态 runtime；临时修正 musl `statx` 字段拼写 | 只删除字段替换，保留静态 modules | `packages/python/` |
 | `rime-plugins` | 📦 本地 | 📦 本地 | ❌ | 聚合多个 Rime 词库与转换结果 | 数据 bundle 是产品 | `packages/rime-plugins/` |
 | `rsync` | 🩹 本地 | 🩹 本地 | ✅ | 删除并排除失败的 `itemize` test | unstable 完整 check phase 与 portability 通过 | `packages/rsync/` |
 | `s6` | 🩹 本地 | — | 🟡 | 去掉 baked Nix prefixes 并接入 patched execline | stock 输出不再写入 Nix store 路径 | `packages/s6/` |
@@ -116,6 +115,6 @@ unstable pin、本地 derivation、override、禁用检查或动态例外时，�
 | `vim` | 📦 本地 | 📦 本地 | ❌ | wrapper 相对设置 `VIMRUNTIME` | 可搬运 runtime 定位必须保留 | `packages/vim/` |
 | `vim-plugins` | 📦 本地 | 📦 本地 | ❌ | 聚合固定 Vim plugins | plugin bundle 是产品 | `packages/vim-plugins/` |
 | `wget` | 🩹 + 📦 本地 | 🩹 + 📦 本地 | 🟡 | Linux 禁用 checks；macOS 绕过 static Perl；CA wrapper 必须保留 | 恢复 checks/build tool 后保留 CA packaging | `packages/wget/` |
-| `zellij` | 📌 `26.05` + 🩹 checks | — | ✅ | test target 静态链接 libcurl/libssh2 失败 | unstable `zellij-unwrapped` 构建、checks 与 portability 通过 | `packages/zellij/`, `packages/local.nix` |
+| `zellij` | 📌 `26.05` + 🩹 checks | — | ✅ | test target 静态链接 libcurl/libssh2 失败 | unstable `zellij-unwrapped` 构建、checks 与 portability 通过 | `packages/zellij/`, `packages/local/linux.nix` |
 | `zsh` | 🩹 + 📦 本地 | 🩹 + 📦 本地 | 🟡 | GCC fortify ICE 与静态 module patches；FPATH wrapper 和 zshenv policy 必须保留 | 逐项删编译 patch，保留 relocation packaging | `packages/zsh/` |
 | `zsh-plugins` | 📦 本地 | 📦 本地 | ❌ | 聚合 oh-my-zsh 与 plugins | plugin bundle 是产品 | `packages/zsh-plugins/` |
