@@ -34,7 +34,6 @@ let
         "buildifier"
         "lefthook"
         "oras"
-        "lark-cli"
       ]
       (
         name:
@@ -233,6 +232,13 @@ in
   # Darwin-only local packages.
   # Go: the `goWithoutCgo` set (built with CGO disabled) is merged in below.
   darwin = goWithoutCgo // rec {
+    # Go (unstable channel; not yet packaged in 25.11). Kept out of the
+    # goWithoutCgo set: the upstream CGO build already links only /usr/lib +
+    # system frameworks (no /nix dylib), and forcing CGO_ENABLED=0 makes the
+    # pure-Go binary retain a reference to the go compiler's store path, which
+    # trips buildGoModule's disallowedReferences check.
+    lark-cli = pkgs.lark-cli;
+
     # C (partial-static via pkgsStatic; only system libs stay dynamic on macOS)
     # macOS ffmpeg (headless): partial-static via pkgsStatic — every nix dep
     # linked statically, only /usr/lib + system frameworks stay dynamic (CLAUDE.md
