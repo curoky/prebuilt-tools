@@ -144,7 +144,7 @@ in
     python312 = pkgsStatic.callPackage ./python/312 { };
     python313 = pkgsStatic.callPackage ./python/313 { };
     python314 = pkgsStatic.callPackage ./python/314 { };
-    # python315 = pkgsStatic.callPackage ./python/315 { };
+    python315 = pkgsStatic.callPackage ./python/315 { };
     dool = pkgs.callPackage ./dool { };
 
     # s6 stack
