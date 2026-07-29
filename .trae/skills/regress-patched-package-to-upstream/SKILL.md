@@ -6,7 +6,8 @@ description: "定期 review 本仓库中被 patch 或被 pin 老版本的包，�
 # 回归 patched / pinned 包到上游
 
 本仓库长期目标是优先使用官方维护的 unstable 最新版。根 `CLAUDE.md` 是版本策略、
-平台约束和现有例外的 source of truth；本 skill 只定义如何识别并移除已经失效的 workaround。
+平台约束和现有例外的 source of truth；根 `TODO.md` 是 pin、patch 与本地 packaging 的总账，
+也是待审计候选的唯一队列。本 skill 只定义如何消费其中的回归候选并移除已经失效的 workaround。
 
 本 skill 是 `patch-nixpkgs-standalone` 的逆操作：那个在 stock 静态构建失败时**加**
 workaround；这个在 stock 构建重新可用时**去掉**它。
@@ -63,21 +64,40 @@ shellcheck = {
   - litmus test：假想上游完美，问「override 现在空了吗？」空了 ⇒ 候选；还有活干 ⇒ 别动。
     看不出意图（代码和注释都不清楚）时，先问再动。
   - 一个 override 可能**两者兼有**（一部分 workaround + 一部分 packaging）。只有
-    workaround 部分可回归；保留 packaging 部分。见 step 4 的「partial regression」。
+    workaround 部分可回归；保留 packaging 部分。见 step 5 的「partial regression」。
 
 - **B 类版本 pin**——所有非 `unstable` 的 `version` pin 都进入审计候选。确认它不是刻意的
   长期兼容选择后，目标是去掉 pin、回到 unstable。
 
-## When to run this
+## Queue Contract
 
-- 定期 review / 审计 `packages/` 与 `manifests/default.nix` 的条目。
-- bump 了某个 `nixpkgs` input（`flake.nix` 里的 `unstable`/`26.05`/...）之后。
-- 某个包的 `default.nix`/`darwin.nix` 注释说它在绕过某个具体上游 bug——查那个 bug 是否已消失。
-- 看到 manifest 里有非 `unstable` 的 `version` pin。
+- `TODO.md` 是单一 Markdown 表格。批量回归只遍历「回归」列为 `✅` 或 `🟡` 的行，默认按表格
+  顺序处理：
+
+  ```bash
+  rg '^\| .+ \| (✅|🟡)' TODO.md
+  ```
+
+- 不在批量执行时重新扫描 `packages/` 或 `manifests/default.nix` 猜测候选。仓库扫描只用于维护
+  `TODO.md`、核对队列完整性，或用户明确要求全量审计时。
+- 每次只消费一行。先读包名、Linux、macOS、回归、原因与保留边界、回归判据、来源，再读取实现。
+  表内判据是最低验收条件，不替代根 `CLAUDE.md` 的通用 portability 检查。
+- `✅` 可以尝试整项回到 unstable；`🟡` 只回归原因栏所述 workaround，保留 wrapper、资源打包、
+  产品行为与多版本发布；`❌` 不进入批量回归；`⏳` 只做长期例外审计。
+- `✅` 和 `🟡` 只表示值得验证，不表示当前已经可以安全回归。仍需实际构建和 portability 验证。
+- 回归失败时保留状态；若得到更准确的失败证据，更新原因和判据。不要用 checkbox 表示“已测试”。
+
+新增或改变 pin、本地 derivation、override、禁用检查或例外，由 `patch-nixpkgs-standalone` skill
+负责同步维护表格。bump nixpkgs 后，应再次消费现有候选，而不是生成另一份临时清单。
 
 ## Procedure
 
-1. **搞清 patch/pin 为何存在。**
+1. **从队列选择一个条目。**
+   - 批量模式取 `TODO.md` 中下一条 `✅` 或 `🟡` 行；用户指定包时，从表格定位对应行。
+   - 若指定的 pin、patch 或本地 packaging 不在表格，先补齐该行和正确状态再继续。
+   - 按「来源」读取实现，确认当前代码仍与「原因与保留边界」一致。表格陈旧时先修正表格。
+
+2. **搞清 patch/pin 为何存在。**
    - A 类：读本地 `packages/<pkg>/*.nix` 及其注释。先用上面「regression 候选？」分类——
      若是刻意 repackaging（wrapper、rename 二进制、bundle sibling 依赖，如
      `packages/cloc`），**停手**，不可回归。否则注释几乎总会点名确切的失败
@@ -86,7 +106,7 @@ shellcheck = {
    - B 类：找出这个包/平台当初为何被 pin 到老 `version`（看注释或 git 历史）。它的
      regression test 就是「unstable 最新版能否构建 + portable」。
 
-2. **测 stock upstream 构建。** 为目标平台构建 patch/pin 要替换掉的纯上游 derivation：
+3. **测 stock upstream 构建。** 为目标平台构建 patch/pin 要替换掉的纯上游 derivation：
    - 优先临时修改本仓库 manifest/local wiring 后构建 `nix build .#<name>`，这样使用的正是
      flake lock 和 Linux musl cross static 环境。
    - 不要把 `nix build nixpkgs#pkgsStatic.<x>` 当成等价验证；它可能使用不同 nixpkgs revision
@@ -95,7 +115,7 @@ shellcheck = {
    - B 类：直接改 manifest 去掉 `version` pin，再构建最终 flake output。
    - 在包**目标的每个平台**（Linux + darwin）上复现。一个平台修好不代表另一个也修好。
 
-3. **验证上游构建仍满足 portability 目标**（与 `patch-nixpkgs-standalone` 同一套检查）：
+4. **验证上游构建仍满足 portability 目标**（与 `patch-nixpkgs-standalone` 同一套检查）：
    - **Linux 常规包：** `file`/`ldd` → musl 纯静态、无 glibc、无 `.so`、无 `/nix`
      运行期引用。
    - **macOS：** `otool -L` 检查二进制及每个 ship 的 `.dylib`/`.bundle`/`.so` → 只有
@@ -104,7 +124,7 @@ shellcheck = {
    - 若上游能构建但仍不 portable，则 patch/pin **尚未**过时——保留它。只有在上游
      **既可构建又 portable** 时才回归。
 
-4. **执行回归**（验证通过后）：
+5. **执行回归**（验证通过后）：
    - **A 类，整包可用上游：** **删除** `packages/<pkg>/`，从
      `packages/local.nix` 的
      `common`/`linux`/`darwin` 集合里移除它的 `callPackage ./<pkg>` 行，然后在
@@ -118,13 +138,19 @@ shellcheck = {
      若这个 pin 只在某个 per-platform key 下、且去掉后该 key 变空，就把整个 per-platform key
      也删掉；若删掉后整个包条目变成 `{ }`，保留 `<pkg> = { };` 即可。
 
-5. **清理你的改动产生的 orphan：** 不再被用到的 patch 文件、wrapper 脚本、
+6. **清理你的改动产生的 orphan：** 不再被用到的 patch 文件、wrapper 脚本、
    `packages/<pkg>/` 下的 vendor 配置、以及失效的 `callPackage` wiring。
    不要删与本次改动无关的既有代码。
 
-6. **重建受影响包的最终 standalone 产物**，重跑 step 3 的验证，确认回归后的构建仍 portable。
+7. **重建受影响包的最终 standalone 产物**，重跑 step 4 的验证，确认回归后的构建仍 portable。
 
-7. **同步 agent 文档。** 若回归改变稳定 package selection、例外或协议，更新根
+8. **更新队列与 agent 文档。**
+   - 纯 pin 或纯 workaround 完整回归成功：删除表格行。
+   - mixed 包回归掉全部 workaround、但仍有 packaging：保留行，平台列只写 `📦`，回归状态改成
+     `❌`，原因和判据改为结构性保留说明。
+   - 只回归部分 workaround：保留 `✅` 或 `🟡`，原因和判据只留下仍未解决的部分。
+   - 验证失败：保留状态；若本次得到比原记录更具体的错误，更新原因和判据。
+   - 若回归改变稳定 package selection、例外或协议，更新根
    `CLAUDE.md`；若只删除包级非默认策略，更新或删除对应 case study。不要在根文档维护易漂移的
    当前包枚举。
 
@@ -135,5 +161,6 @@ shellcheck = {
   上游修构建 bug 不会让 repackaging 过时。
 - 不要凭假设回归——总是先在**所有**目标平台上构建并验证上游。
 - 只有上游**既可构建又 portable** 时才回归。可构建但不 portable 不是去掉 patch/pin 的理由。
+- 批量回归不得绕过 `TODO.md` 自建候选清单；代码与队列不一致时，先维护队列。
 - diff 要外科式：只移除过时 patch/pin 拥有的东西。
 - 拿不准某个平台是否真修好（如本地无法测 darwin），就说明并先问，再删那个平台的 patch/pin。

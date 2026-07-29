@@ -17,7 +17,8 @@ OCI artifact 发布。本文是构建端设计、约束和改动流程的 agent 
 3. **macOS 静态链接所有 Nix 依赖。** 只允许 `/usr/lib` 和
    `/System/Library/Frameworks` 中的系统动态库，不允许 `/nix/store` dylib。
 4. **默认使用 unstable 上游最新版。** manifest 的 `version` pin 和本地编译 patch
-   都是待定期回归的临时状态。
+   都是待定期回归的临时状态；所有 pin、patch 和本地 packaging 必须登记到
+   [`TODO.md`](TODO.md) 总表。
 5. **每个包必须可搬运。** 不依赖宿主包管理器；需要 runtime 的脚本工具优先通过同级
    runtime wrapper 解决。`sb` 不做包依赖解析。
 
@@ -121,7 +122,8 @@ Mach-O load command 改为 `@loader_path` 或 `@rpath` 相对路径。
 
 处理新包或静态构建失败时，使用
 `.trae/skills/patch-nixpkgs-standalone/SKILL.md`。回归本地 patch 或版本 pin 时，使用
-`.trae/skills/regress-patched-package-to-upstream/SKILL.md`。
+`.trae/skills/regress-patched-package-to-upstream/SKILL.md`；批量回归只遍历
+[`TODO.md`](TODO.md)，不重新扫描仓库猜测候选。
 
 ## Normalization
 
@@ -159,6 +161,7 @@ tar.gz layer，client 使用 layer digest 判断升级。修改 tag、layer 数�
 | --- | --- |
 | 添加可直接使用的 nixpkgs 包 | `manifests/default.nix` |
 | 添加 patch、wrapper 或平台拆分 | `packages/<name>/`、`packages/local.nix` |
+| 登记 pin、patch、packaging 与回归状态 | `TODO.md` |
 | 回归版本 pin | `manifests/default.nix` |
 | 回归本地 patch | manifest、`packages/local.nix`，并删除孤儿目录 |
 | 修改通用后处理 | `scripts/normalize.sh` |
@@ -167,7 +170,8 @@ tar.gz layer，client 使用 layer digest 判断升级。修改 tag、layer 数�
 
 添加上游包时不要显式填写默认字段。添加本地包前先区分编译、链接、硬编码路径和资源定位问题，
 只修 root cause。上游修复可用后，一次性删除本地 patch、pin、聚合条目、无用资源和过时文档，
-不保留兼容路径。
+不保留兼容路径。新增或改变非 unstable pin、本地 derivation、override、禁用检查或动态例外时，
+同步维护 `TODO.md`；结构性 wrapper、资源打包和产品行为进入总表，但标记为不可整包回归。
 
 ## 验证
 
@@ -193,6 +197,8 @@ nix build .#all-fast
 - 本仓库不维护面向人的 README；agent 入口只有根和目录级 `CLAUDE.md`。
 - 根 `CLAUDE.md` 保存稳定架构、全局约束、改动入口和验证要求。
 - `client/CLAUDE.md` 保存 client 的公开契约、状态模型和专属约束。
+- `TODO.md` 是人和 agent 共用的 pin、patch 与本地 packaging 总表；批量回归只消费其中标为
+  `✅` 或 `🟡` 的行。
 - `docs/package-strategies*.md` 只记录偏离默认构建路径的技术案例和诊断记录。
 - 代码参数与当前包清单以实现为准；文档解释决策和不变量，不复制完整 derivation。
 - 仓库内链接使用相对路径，不使用 `file://` URL、工作区绝对路径或易漂移的行号链接。
