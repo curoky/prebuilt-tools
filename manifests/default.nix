@@ -26,6 +26,7 @@
   binutils-unwrapped = {
     alias = "binutils";
   };
+  lark-cli = { };
   bison = { };
   bzip2 = {
     output = [ "bin" ];
