@@ -10,15 +10,6 @@
     nixpkgs-2405.url = "github:NixOS/nixpkgs/nixos-24.05";
   };
 
-  nixConfig = {
-    extra-substituters = [
-      "https://curoky-static-binaries-v2.cachix.org"
-    ];
-    extra-trusted-public-keys = [
-      "curoky-static-binaries-v2.cachix.org-1:fz4EbiwDeisCH9c1a7ItzRlF6BMEkugFBDeagmMIbsQ="
-    ];
-  };
-
   outputs =
     inputs:
     let

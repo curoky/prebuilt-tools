@@ -8,6 +8,7 @@ on:
       - 'manifests/**'
       - 'lib/**'
       - 'scripts/**'
+      - 'cmd/nixcache/install.sh'
       - 'flake*'
   workflow_dispatch:
     inputs:
@@ -20,8 +21,7 @@ on:
     - cron: '0 0 * * 0'
 
 env:
-  CACHIX_NAME: curoky-static-binaries-v2
-  CACHIX_STORE: https://curoky-static-binaries-v2.cachix.org
+  NIXCACHE_STORE: http://127.0.0.1:37515
   # Packages built by dedicated workflows (build-llvm-tools.yaml); excluded from
   # this workflow so they are not built/published twice. Space-separated.
   EXCLUDE_PKGS: >-
@@ -32,6 +32,9 @@ env:
 jobs:
   discover:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
       count: ${{ steps.set.outputs.count }}
@@ -39,6 +42,19 @@ jobs:
       - uses: actions/checkout@v5
 
       - uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Start Nix cache
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash cmd/nixcache/install.sh --prefix "$RUNNER_TEMP/bin"
+          "$RUNNER_TEMP/bin/nixcache" serve > "$RUNNER_TEMP/nixcache.log" 2>&1 &
+          curl --retry 30 --retry-delay 1 --retry-connrefused -fsS \
+            "$NIXCACHE_STORE/nix-cache-info" || {
+              cat "$RUNNER_TEMP/nixcache.log"
+              exit 1
+            }
 
       - id: set
         env:
@@ -52,6 +68,7 @@ jobs:
           # aggregates). Doing this in one `nix eval` avoids one process per
           # package and sidesteps attribute-path escaping issues for names
           # containing dots.
+          # shellcheck disable=SC2016
           nix eval --accept-flake-config --raw .#packages.x86_64-linux --apply '
             pkgs: builtins.concatStringsSep "\n" (
               builtins.filter (s: s != "") (builtins.attrValues (builtins.mapAttrs
@@ -91,7 +108,7 @@ jobs:
             check() {
               local name="${1%%$'\t'*}"
               local out_path="${1#*$'\t'}"
-              if nix path-info --accept-flake-config --store "$CACHIX_STORE" "$out_path" >/dev/null 2>&1; then
+              if nix path-info --store "$NIXCACHE_STORE" --option require-sigs false "$out_path" >/dev/null 2>&1; then
                 echo "cache hit : $name" >&2
               else
                 echo "need build: $name" >&2
@@ -99,7 +116,7 @@ jobs:
               fi
             }
             export -f check
-            export CACHIX_STORE
+            export NIXCACHE_STORE
             xargs -P 16 -d '\n' -I {} bash -c 'check "$@"' _ {} < pkgs.tsv > selected.txt
           fi
 
@@ -118,7 +135,7 @@ jobs:
     if: ${{ needs.discover.outputs.count != '0' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       packages: write
     strategy:
       fail-fast: false
@@ -132,20 +149,35 @@ jobs:
 
       - uses: DeterminateSystems/nix-installer-action@main
 
-      - run: nix config show substituters
-
-      - uses: cachix/cachix-action@v15
-        with:
-          name: ${{ env.CACHIX_NAME }}
-          authToken: ${{ secrets.CACHIX_TOKEN }}
+      - name: Start Nix cache
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash cmd/nixcache/install.sh --prefix "$RUNNER_TEMP/bin"
+          "$RUNNER_TEMP/bin/nixcache" serve > "$RUNNER_TEMP/nixcache.log" 2>&1 &
+          curl --retry 30 --retry-delay 1 --retry-connrefused -fsS \
+            "$NIXCACHE_STORE/nix-cache-info" || {
+              cat "$RUNNER_TEMP/nixcache.log"
+              exit 1
+            }
 
       - run: |
-          nix build .#${{ matrix.name }}
-          nix-store -qR $(readlink -f ./result)
-          nix-store -qR $(readlink -f ./result) | cachix push ${{ env.CACHIX_NAME }}
+          nix build \
+            --option extra-substituters "$NIXCACHE_STORE" \
+            --option require-sigs false \
+            .#${{ matrix.name }}
+          output=$(readlink -f ./result)
+          nix-store -qR "$output"
           rsync -av --copy-unsafe-links ./result/ ./${{ matrix.name }}/
           find ./${{ matrix.name }} -type d -exec chmod +w {} +
           tar -czvf ./${{ matrix.name }}.linux-x86_64.tar.gz ./${{ matrix.name }}
+
+      - name: Push Nix closure to GHCR
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: '"$RUNNER_TEMP/bin/nixcache" push "$(readlink -f ./result)"'
 
       - uses: oras-project/setup-oras@v1
 

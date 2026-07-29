@@ -5,8 +5,7 @@ OCI artifact 发布。本文是构建端设计、约束和改动流程的 agent 
 
 修改具体生态前，再阅读[包构建策略](docs/package-strategies.md)及对应 case study。修改
 `cmd/binman/` 时同时遵守 [`cmd/binman/CLAUDE.md`](cmd/binman/CLAUDE.md)。修改
-`cmd/nixcache/` 时同时遵守 [`cmd/nixcache/CLAUDE.md`](cmd/nixcache/CLAUDE.md)并阅读
-[`docs/nix-cache-proxy-plan.md`](docs/nix-cache-proxy-plan.md)。
+`cmd/nixcache/` 时同时遵守 [`cmd/nixcache/CLAUDE.md`](cmd/nixcache/CLAUDE.md)。
 
 ## 产物不变量
 
@@ -156,29 +155,37 @@ derivation 或 wrapper 中解决。修改 normalization 会影响几乎全部包
 普通 Linux 和 Darwin workflow：
 
 1. 一次 eval 当前平台的包名与 `outPath`；
-2. push 时只选择 Cachix 缺失包，定时和手工全量模式选择全部包；
-3. 执行 `nix build .#<name>`；
+2. 通过 `cmd/nixcache/install.sh` 下载已发布的 `nixcache`，启动本地 GHCR-backed
+   substituter；push 时只选择 cache 缺失包，定时和手工全量模式选择全部包；
+3. 以本地 substituter 执行 `nix build .#<name>`，unsigned cache 仅在 workflow 命令上
+   显式设置 `require-sigs=false`；
 4. 复制 output 并生成 `<name>.linux-x86_64.tar.gz` 或
    `<name>.darwin-arm64.tar.gz`；
-5. 发布到 `ghcr.io/curoky/standalone-binaries:<name>-<arch>`。
+5. 用 `nixcache push` 把 closure 发布到 cache repository，再把工具 tarball 发布到
+   `ghcr.io/curoky/standalone-binaries:<name>-<arch>`。
 
-LLVM 工具由专用 workflow 构建。`bm` client 以 `binman-<arch>` 发布，归档布局为
+LLVM 工具由专用 workflow 构建，并使用相同的 cache 流程。所有 build workflow 不现场编译
+`nixcache`，也不保留其他 cache backend。`bm` client 以 `binman-<arch>` 发布，归档布局为
 `binman/bm`。每个 artifact 当前只有一个 tar.gz layer，client 使用 layer digest 判断升级。
 修改 tag、layer 数量或归档布局时，必须同步修改所有 build workflow、
 `cmd/binman/main.go`、`cmd/binman/install.sh` 和
 `cmd/binman/CLAUDE.md`。
 
-`cmd/nixcache/` 是待接入 CI 的仓库专用 GHCR Nix cache，固定使用
+`cmd/nixcache/` 是仓库专用 GHCR Nix cache，固定使用
 `ghcr.io/curoky/standalone-binaries-cache`。`push` 让 `nix copy` 生成临时 file binary
 cache，再用 `go-nix` 解析并上传完整 closure；`serve` 在 `127.0.0.1:37515` 提供
 substituter。cache metadata 按完整
-`flake.lock` snapshot 写入 immutable OCI segments，不能改回共享可变 index；现有 CI 在完成
-GHCR 权限、签名和 cleanup 验证前仍使用 Cachix。其二进制中的 `StoreDir: /nix/store`
+`flake.lock` snapshot 写入 immutable OCI segments，不能改回共享可变 index。
+`.github/workflows/build-linux.yaml`、`.github/workflows/build-darwin.yaml` 和
+`.github/workflows/build-llvm-tools.yaml` 都通过 `cmd/nixcache/install.sh` 下载发布版本，
+以本地 `serve` 作为读取源，并在 build 后把实际 output closure push 到 GHCR。其二进制中的
+`StoreDir: /nix/store`
 是 Nix binary cache 协议必需文本，不是运行期依赖，也不是 normalization 应删除的残留。
 `nixcache` 二进制由 `.github/workflows/build-nixcache.yaml` 以
 `nixcache-<arch>` tag 发布到普通工具 repository
 `ghcr.io/curoky/standalone-binaries`，归档布局为 `nixcache/nixcache`；不要把二进制
-发布到 cache repository。
+发布到 cache repository。`cmd/nixcache/install.sh` 是 CI bootstrap 入口，只依赖 `curl`
+和 `tar`。
 
 ## 改动入口
 

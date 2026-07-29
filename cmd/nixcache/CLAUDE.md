@@ -1,8 +1,7 @@
 # Nixcache Agent Guide
 
 `cmd/nixcache/` 实现本仓库专用的 GHCR-backed Nix binary cache。它构建为单个静态
-Go 二进制 `nixcache`，只提供 `push` 和 `serve`。整体设计和过期策略见
-[`docs/nix-cache-proxy-plan.md`](../../docs/nix-cache-proxy-plan.md)，全局产物约束见根
+Go 二进制 `nixcache`，只提供 `push` 和 `serve`。全局产物与 CI 约束见根
 [`CLAUDE.md`](../../CLAUDE.md)。
 
 本文是 `nixcache` 的 CLI、OCI schema、发布协议和验证要求 source of truth。
@@ -91,6 +90,21 @@ nixcache serve
 miss 返回 `404`，不实现 upstream fallback、管理 API 或磁盘 NAR cache。NAR 从 GHCR
 直接流式返回。刷新失败保留上一份可用 index；首次加载失败直接退出。
 
+## CI 接线
+
+`.github/workflows/build-linux.yaml`、`.github/workflows/build-darwin.yaml` 和
+`.github/workflows/build-llvm-tools.yaml` 使用同一流程：
+
+1. 用 `cmd/nixcache/install.sh` 从普通工具 repository 下载对应平台的已发布二进制，不在
+   build workflow 现场编译；
+2. 启动 `nixcache serve`，等待 `/nix-cache-info` ready；
+3. discover 用本地 store URL 查询 cache hit，build 把它加入 `extra-substituters`；
+4. 当前 cache 未签名，因此只有这些 workflow 命令显式设置 `require-sigs=false`；
+5. build 完成后，以 `result` 的实际 store path 执行 `nixcache push`。
+
+每个 matrix job 发布一个完整 closure segment，可以并发执行，不增加共享 index 汇总 job。
+不保留其他 backend fallback 或 dual-write。
+
 ## 二进制发布协议
 
 `.github/workflows/build-nixcache.yaml` 构建：
@@ -110,10 +124,13 @@ ghcr.io/curoky/standalone-binaries:nixcache-<arch>
 nixcache/nixcache
 ```
 
-该布局使 `bm install nixcache` 能按普通 package 协议安装。改变 repository、tag、layer
-数量、media type 或归档布局时，必须同时修改：
+该布局同时供 `bm install nixcache` 和 `cmd/nixcache/install.sh` 使用。installer 只依赖
+`curl` 和 `tar`，支持 `NIXCACHE_INSTALL_DIR` / `--prefix` 及
+`NIXCACHE_ARCH` / `--arch`。改变 repository、tag、layer 数量、media type 或归档布局时，
+必须同时修改：
 
 - `.github/workflows/build-nixcache.yaml`
+- `cmd/nixcache/install.sh`
 - 根 `CLAUDE.md`
 - 本文
 - `bm` 的远端协议（如果变化不再兼容普通 package）
@@ -139,6 +156,8 @@ CGO_ENABLED=0 go test ./cmd/nixcache
 CGO_ENABLED=0 go vet ./cmd/nixcache
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/nixcache
 CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build ./cmd/nixcache
+bash -n cmd/nixcache/install.sh
+shellcheck cmd/nixcache/install.sh
 ```
 
 真实 Nix round-trip：
