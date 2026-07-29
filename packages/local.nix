@@ -195,13 +195,17 @@ in
     #
     # nodejs-slim24 is retained as a standalone runtime package; the CLI tools
     # above now target nodejs-slim26.
-    # nodejs-slim24 = pkgsStatic.callPackage ./nodejs/24 { };
+    nodejs-slim24 = pkgsStatic.callPackage ./nodejs/24 {
+      inherit (pkgs) python3;
+    };
     # node 26 links temporal_capi (a Rust dep). Under a native-static set this
     # rebuilds the whole musl LLVM + rustc toolchain from source. On Linux the
     # `pkgsStatic` passed in here is the musl64 *cross* set (see flake.nix /
     # mkEnv), which instead reuses the cached glibc rustc/LLVM via rust's
     # `fastCross` path. The node output is still a fully-static musl binary.
-    nodejs-slim26 = pkgsStatic.callPackage ./nodejs/26/linux.nix { };
+    nodejs-slim26 = pkgsStatic.callPackage ./nodejs/26/linux.nix {
+      inherit (pkgs) python3;
+    };
     pnpm = pkgsStatic.callPackage ./pnpm {
       pnpm = pkgs.pnpm.override { nodejs-slim = nodejs-slim26; };
     };

@@ -24,6 +24,14 @@
 {
   lib,
   pkgsStatic,
+  # Native (non-static) python used only as node's build-time configure tool.
+  # Under pkgsStatic, `python3` is the fully static (musl) interpreter, whose
+  # ctypes cannot `dlopen` (`OSError: Dynamic loading not supported`); node's
+  # gyp ninja generator imports ctypes, so running configure.py under the static
+  # python aborts before generating any build files. python is only a
+  # nativeBuildInput (never linked into node), so inject the native one (same
+  # pattern the darwin build and wget's build-time perl use).
+  python3,
 }:
 
 let
@@ -38,10 +46,32 @@ let
   #     unwanted libuvwasi.so (R_X86_64_32 against crtbeginT.o). Force that
   #     target to STATIC (renamed output to avoid clashing with the existing
   #     uvwasi_a static lib); node only needs the static lib anyway.
+  #   - hdrhistogram_c: its CMakeLists builds a SHARED `hdr_histogram` target by
+  #     default; under the static toolchain linking that .so fails (R_X86_64_32
+  #     against crtbeginT.o, same as uvwasi). Disable the shared target via the
+  #     upstream CMake option, which leaves only the static archive — but CMake
+  #     names it `libhdr_histogram_static.a`, whereas node's gyp link line uses
+  #     plain `-lhdr_histogram` (the shared lib's name). With the shared lib gone
+  #     the link fails ("cannot find -lhdr_histogram"), so add a
+  #     `libhdr_histogram.a` symlink pointing at the static archive. Also disable
+  #     the bundled tests/examples (HDR_HISTOGRAM_BUILD_PROGRAMS): the examples
+  #     (`hdr_decoder`, `hiccup`) fail to compile (`#include <hdr/hdr_histogram.h>`
+  #     not on the include path) and node doesn't need them; disabling them also
+  #     removes the check phase, so doCheck is turned off to match.
   pkgsStaticNode = pkgsStatic.extend (
     _: prev: {
       ada = prev.ada.overrideAttrs { doCheck = false; };
       libuv = prev.libuv.overrideAttrs { doCheck = false; };
+      hdrhistogram_c = prev.hdrhistogram_c.overrideAttrs (old: {
+        cmakeFlags = (old.cmakeFlags or [ ]) ++ [
+          "-DHDR_HISTOGRAM_BUILD_SHARED=OFF"
+          "-DHDR_HISTOGRAM_BUILD_PROGRAMS=OFF"
+        ];
+        postInstall = (old.postInstall or "") + ''
+          ln -s $out/lib/libhdr_histogram_static.a $out/lib/libhdr_histogram.a
+        '';
+        doCheck = false;
+      });
       uvwasi = prev.uvwasi.overrideAttrs (old: {
         postPatch = (old.postPatch or "") + ''
           substituteInPlace CMakeLists.txt \
@@ -56,7 +86,7 @@ let
 
   # Pin to the major-24 attribute so this package's version doesn't drift with
   # nixpkgs' default `nodejs-slim` alias.
-  patchedNode = pkgsStaticNode.nodejs-slim_24.overrideAttrs (old: {
+  patchedNode = (pkgsStaticNode.nodejs-slim_24.override { python3 = python3; }).overrideAttrs (old: {
     configureFlags = builtins.filter (
       f:
       # Under pkgsStatic the static stdenv adapter appends the autotools flags

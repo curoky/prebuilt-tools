@@ -24,6 +24,14 @@
 {
   lib,
   pkgsStatic,
+  # Native (non-static) python used only as node's build-time configure tool.
+  # Under pkgsStatic, `python3` is the fully static (musl) interpreter, whose
+  # ctypes cannot `dlopen` (`OSError: Dynamic loading not supported`); node's
+  # gyp ninja generator imports ctypes, so running configure.py under the static
+  # python aborts before generating any build files. python is only a
+  # nativeBuildInput (never linked into node), so inject the native one (same
+  # pattern node 24, the darwin build and wget's build-time perl use).
+  python3,
 }:
 
 let
@@ -51,11 +59,24 @@ let
   #     (`hdr_decoder`, `hiccup`) fail to compile (`#include <hdr/hdr_histogram.h>`
   #     not on the include path) and node doesn't need them; disabling them
   #     also removes the check phase, so doCheck is turned off to match.
+  # These overrides fix problems that only occur when a dependency is built for
+  # the fully-static musl *target* (test suites that don't run in the sandbox,
+  # SHARED-only CMake targets the static toolchain can't link, etc.). But a
+  # plain `pkgsStatic.extend` also rewrites the *build-platform* (glibc) copies
+  # of these packages, which nixpkgs' own toolchain pulls in — e.g. libuv is a
+  # nativeBuildInput of cmake, which is a nativeBuildInput of llvm. Rewriting
+  # the glibc libuv therefore changes cmake's and llvm's hashes, so rustc's
+  # llvm can no longer be substituted from cache.nixos.org and gets rebuilt
+  # from source. Guard every override with `hostPlatform.isStatic` so it only
+  # applies to the musl-static target copy; the glibc build-platform copies are
+  # left untouched and keep hitting the upstream cache.
+  # Full write-up: ../../../docs/pkgsstatic-extend-toolchain-pollution.md
+  onlyStatic = pkg: overrides: if pkg.stdenv.hostPlatform.isStatic then pkg.overrideAttrs overrides else pkg;
   pkgsStaticNode = pkgsStatic.extend (
     _: prev: {
-      ada = prev.ada.overrideAttrs { doCheck = false; };
-      libuv = prev.libuv.overrideAttrs { doCheck = false; };
-      hdrhistogram_c = prev.hdrhistogram_c.overrideAttrs (old: {
+      ada = onlyStatic prev.ada { doCheck = false; };
+      libuv = onlyStatic prev.libuv { doCheck = false; };
+      hdrhistogram_c = onlyStatic prev.hdrhistogram_c (old: {
         cmakeFlags = (old.cmakeFlags or [ ]) ++ [
           "-DHDR_HISTOGRAM_BUILD_SHARED=OFF"
           "-DHDR_HISTOGRAM_BUILD_PROGRAMS=OFF"
@@ -81,7 +102,7 @@ let
       # leaves pydantic-core in the closure. We must also clear
       # propagatedBuildInputs (alongside dropping the `py` output and disabling
       # LIEF_PYTHON_API / the python build+install/import-check phases).
-      lief = prev.lief.overrideAttrs (old: {
+      lief = onlyStatic prev.lief (old: {
         outputs = [ "out" ];
         buildInputs = [ ];
         propagatedBuildInputs = [ ];
@@ -102,8 +123,8 @@ let
       # "command not found", and the test binaries are static target binaries
       # not meant to run in the build sandbox. node only needs the resulting
       # library / headers / .pc file, so skip the install check.
-      temporal_capi = prev.temporal_capi.overrideAttrs { doInstallCheck = false; };
-      uvwasi = prev.uvwasi.overrideAttrs (old: {
+      temporal_capi = onlyStatic prev.temporal_capi { doInstallCheck = false; };
+      uvwasi = onlyStatic prev.uvwasi (old: {
         postPatch = (old.postPatch or "") + ''
           substituteInPlace CMakeLists.txt \
             --replace-fail \
@@ -117,7 +138,7 @@ let
 
   # Pin to the major-26 attribute so this package's version doesn't drift with
   # nixpkgs' default `nodejs-slim` alias.
-  patchedNode = pkgsStaticNode.nodejs-slim_26.overrideAttrs (old: {
+  patchedNode = (pkgsStaticNode.nodejs-slim_26.override { python3 = python3; }).overrideAttrs (old: {
     configureFlags = builtins.filter (
       f:
       # Under pkgsStatic the static stdenv adapter appends the autotools flags
