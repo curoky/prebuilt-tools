@@ -1,8 +1,8 @@
-# 基础工具特例（feature reduction / 工具链修复 / prebuilt）
+# 特殊构建案例
 
 本文收录那些**无法靠默认 `pkgsStatic` 直接静态化**、需要 feature reduction、linker/工具链级修复、或
 本身是 prebuilt 二进制重打包的重案例。共同点是修复的 root cause 都很具体，且大多是需要跟踪回归的
-**临时编译修复**（见 [regress skill](file:///workspace/standalone-binaries/.trae/skills/regress-patched-package-to-upstream/SKILL.md)）——除非明确标注是结构性需要。
+**临时编译修复**。回归流程见根 `CLAUDE.md`；明确标注的结构性 repackaging 不应机械切回 manifest。
 
 ## ffmpeg（macOS，ladder 2b：feature reduction）
 
@@ -101,3 +101,14 @@ ACL/xattr 支持而非关掉它们。注释强调只加到 `make`（不加到 co
 `.run` 自解包安装器，`sed` 把 `/dev/tty`→`/dev/null` 以便非交互，`perl ./install-linux.pl
 -targetpath=$out -noprompt` 安装。二进制是 NVIDIA 提供的 glibc 动态可执行文件，本包不做静态化，属
 **"repackaged prebuilt" 例外**，musl 纯静态硬校验对其不适用。
+
+## 例外审计
+
+`music-decrypto` 和 `nsight-systems` 是当前唯二记录的 Linux 动态例外。修改它们时仍必须保证：
+
+- 不引用 `/nix/store`；
+- interpreter 和 rpath 指向明确存在的宿主 ABI 路径；
+- 运行时前提继续记录在根 `CLAUDE.md`；
+- 若上游出现 musl/static 发行方式，优先消除例外。
+
+不要仅因 normalization 的检查没有拒绝某个动态 ELF，就把它视为满足 Linux 默认约束。

@@ -1,75 +1,50 @@
-# Package Strategies（分生态 case study 索引）
+# 包构建策略
 
-本文档是**按语言生态/runtime 分类**的 per-package 构建策略索引。设计总览与策略抽象见根目录
-[CLAUDE.md](file:///workspace/standalone-binaries/CLAUDE.md)；这里只讲「某一类包为什么这么打、在
-Linux 与 macOS 两平台分别怎么做」。
+默认构建路径是：在 `manifests/default.nix` 选择 unstable 的 `pkgsStatic` 包，然后由
+`scripts/normalize.sh` 后处理。本文索引只记录偏离默认路径的本地实现；通用约束和改动流程见
+[根 CLAUDE.md](../CLAUDE.md)。
 
-这些是 **case study**，不是穷举清单。source of truth 永远是 `packages/<pkg>/` 下的代码与注释；
-本文档过时或与代码冲突时以代码为准。
-
-## 怎么用这份文档
-
-先按包的「构建来源」定位到对应生态文档，再看具体包的两平台策略：
-
-| 生态 / 构建来源 | 文档 | 覆盖的典型包 |
+| 生态 | 文档 | 主要案例 |
 | --- | --- | --- |
-| Python 解释器 + Python 脚本工具 | [python.md](file:///workspace/standalone-binaries/docs/package-strategies/python.md) | `python311..315`、`git-filter-repo`、`netron`、`dool` |
-| Node.js runtime + Node CLI 工具 | [nodejs.md](file:///workspace/standalone-binaries/docs/package-strategies/nodejs.md) | `nodejs-slim24/26`、`pnpm`、`prettier`、`markdownlint-cli2`、`opencommit` |
-| Perl 解释器（platform-split）+ Perl 脚本工具 | [perl.md](file:///workspace/standalone-binaries/docs/package-strategies/perl.md) | `perl`、`cloc`、`parallel`、`exiftool` |
-| Go 编译（含 CGO 关闭） | [go.md](file:///workspace/standalone-binaries/docs/package-strategies/go.md) | `podman`、macOS 上一批 Go 工具 |
-| Rust 编译 | [rust.md](file:///workspace/standalone-binaries/docs/package-strategies/rust.md) | `zellij` |
-| C / autotools（stdenv）+ s6 stack + clang-tools | [c-autotools.md](file:///workspace/standalone-binaries/docs/package-strategies/c-autotools.md) | `curl`、`git`、`vim`、`zsh`、`cmake`、`s6*`、`clang-tools-*` 等 |
-| 基础工具特例（feature reduction / 工具链修复 / prebuilt） | [special-cases.md](file:///workspace/standalone-binaries/docs/package-strategies/special-cases.md) | `ffmpeg`、`postgresql`、`krb5`、`gnutar`、`nsight-systems`、`music-decrypto` |
+| C / autotools | [c-autotools.md](package-strategies/c-autotools.md) | 资源 wrapper、s6 路径、容器组件、clang-format |
+| Go | [go.md](package-strategies/go.md) | podman、macOS `CGO_ENABLED=0` |
+| Node.js | [nodejs.md](package-strategies/nodejs.md) | 静态 runtime、同级 Node wrapper |
+| Perl | [perl.md](package-strategies/perl.md) | 平台拆分解释器、纯 Perl 工具、XS 模块 |
+| Python | [python.md](package-strategies/python.md) | 静态解释器、同级 Python wrapper |
+| Rust | [rust.md](package-strategies/rust.md) | miniserve、zellij |
+| 特殊案例 | [special-cases.md](package-strategies/special-cases.md) | feature reduction、linker 修复、动态例外 |
 
-包分类的骨架 source of truth 是 [packages/local.nix](file:///workspace/standalone-binaries/packages/local.nix)（注释已按生态分好类），
-manifest 里的上游包见 [manifests/default.nix](file:///workspace/standalone-binaries/manifests/default.nix)。
+包集合以 `packages/local.nix` 和 `manifests/default.nix` 为准。case study 不复制完整 derivation，
+只解释为什么需要本地实现、关键约束是什么、何时可以删除。
 
-## 两平台通用策略（回顾）
+## 共用模式
 
-具体分级与硬底线的完整定义在 [CLAUDE.md](file:///workspace/standalone-binaries/CLAUDE.md) 的 Prime Directives /
-Standalone Strategy 节，这里只做一页速查，供各生态文档引用。
+### 相对资源 wrapper
 
-### Standalone strategy 分级
+静态二进制仍可能把数据目录、证书、插件或 helper 路径写入构建结果。常见做法是把真实入口重命名为
+`_<name>`，由公开 wrapper 根据自身真实路径计算 package root，再传入相对资源路径。`file`、`vim`、
+`curl`、`wget` 和 `git` 使用这一模式。
 
-按侵入性从低到高，**能停在早一级就不要用后一级**：
+### 同级 runtime wrapper
 
-1. **Static compilation**（`pkgsStatic`）——默认。
-2. **手动 patch + bundle**——改写硬编码路径、vendor 配置、bundle 资源。
-   - 2a. **Selective static override**：从更轻的 base 起，只注入所需静态归档。
-   - 2b. **Feature reduction**：从 `pkgsStatic.<tool>` 起，只关掉惹事的可选特性。
-   - 2c. **Shared-sibling wrapper**：重 runtime 独立成包，工具用薄 wrapper 运行期解析同级 sibling。
-3. **`nix bundle`**——最后手段，仅 Linux。
+Python、Perl 和 Node.js 工具把脚本与 runtime 分成独立 artifact。wrapper 从自身位置求出共同
+`store/` 目录，再显式执行同级 runtime。这样工具不依赖宿主解释器，也不依赖构建期 shebang。
 
-### Linux 硬底线
+这类工具在单独下载时需要同时安装对应 runtime；`sb` 不做依赖解析。
 
-含二进制的包最终必须是 **musl 纯静态 ELF**：`file` 显示 "statically linked"、`ldd` 显示 "not a
-dynamic executable"，无 glibc 依赖、无任何 `.so` 依赖（尤其不能依赖 `/nix` 下动态库）。Linux 上
-`pkgsStatic` 实为 **musl64 cross 静态集**（见 [flake.nix](file:///workspace/standalone-binaries/flake.nix) 的 `mkEnv`）。
+### 平台拆分
 
-### macOS static ladder
+同名输出可在 `packages/local.nix` 的 `linux` 与 `darwin` 集合中使用不同 derivation。平台拆分优于在
+单个文件中堆叠大量条件，尤其适合解释器和 macOS 部分静态构建。
 
-darwin 无法完全静态（没有静态 libSystem/libc）。目标：每个 nix 内部依赖静态链接，只有 `/usr/lib/*`、
-`/System/Library/Frameworks/*` 可动态；**零** `/nix/store` dylib。ladder：
+### 临时修复
 
-1. 先修 `pkgsStatic.<x>`（小上游 patch 让静态归档在 darwin 链接成功）。
-2. 无解时 fall back 到 native `pkgs.<x>`，把每个非系统动态依赖换成 `pkgsStatic.<dep>` 静态归档。
-3. 仍残留 `/nix/store` dylib：**先与用户确认**，再用 `install_name_tool` 改写成 `@loader_path` 相对。
-4. 复制 dylib 进包（dylib-bundle）——绝对最后手段，**需用户显式确认**。
+下列内容应视为待回归状态：
 
-> macOS Mach-O 提醒：`normalize.sh` 处理 ELF（`nuke-refs`/strip）但**不**动 Mach-O load command。
-> 任何在包里留下非系统 dylib 的 darwin 路线，必须在 `postInstall` 里用 `install_name_tool`
-> 把 id / consumer 的 load command 改写成 `@loader_path` 相对。
+- 非 unstable 版本；
+- 为上游编译错误增加的 source patch；
+- `doCheck = false` 或 `doInstallCheck = false`；
+- linker 容错参数；
+- 只为旧版 nixpkgs 复制的 builder。
 
-### 两种反复出现的可移植性手法
-
-跨生态高频复用、各文档会反复引用的两个 pattern：
-
-- **Shared-sibling wrapper**：无法静态链接、但能被多工具复用的 runtime（Python/Perl 解释器、Node.js
-  runtime），独立成包 ship（如 `packages/python/314`、`packages/nodejs/26`），工具用薄 bash wrapper
-  经 `readlink -f "$0"` 定位自身、求出同级 sibling 目录（`$store/<runtime>`），运行期显式 `exec` 那个
-  runtime 跑主脚本，并显式设 `PYTHONHOME`/`PYTHONPATH`/`PERL5LIB`——从而绕开被 normalize 改写的
-  nix-store shebang，实现可移植。
-- **Rename + relative-path wrapper**：静态二进制运行期不知道自己被部署到哪，凡是需要 baked 数据路径的
-  工具（`file` 的 magic.mgc、`vim` 的 VIMRUNTIME、`curl`/`wget` 的 CA bundle、`git` 的 exec-path）都把
-  真实二进制 rename 成 `_<name>`、放一个 bash wrapper 当 `<name>`，wrapper 用 `$root` 相对解析这些数据
-  再 exec 真身。
+上游修复后删除本地路径和对应说明，不保留兼容层。

@@ -1,44 +1,32 @@
-# Go 编译包打包策略
+# Go 构建案例
 
-Go 能产出自包含二进制，两平台策略差异是「Linux 走 musl 全静态、macOS 减动态依赖」：
+Linux 上普通 Go 包直接使用 manifest 的 `pkgsStatic`，无需在本文列出。这里仅记录 podman 容器栈和
+macOS 无 CGO 重建。容器栈的 C 组件见 [C / autotools](c-autotools.md)。
 
-- Linux 用 `pkgsStatic`（musl 全静态）。
-- macOS 用 native `pkgs` + `CGO_ENABLED=0` 摆脱 nix dylib。
-
-容器栈 `podman`（Go）与 `crun/conmon/catatonit/gpgme`（C）虽同属一栈，但 Go/C 分别处理——C 组件见
-[c-autotools.md](file:///workspace/standalone-binaries/docs/package-strategies/c-autotools.md) 的容器栈 C 组件一节。Rust 编译包见
-[rust.md](file:///workspace/standalone-binaries/docs/package-strategies/rust.md)。
-
-## 容器栈：podman（Go）
+## podman
 
 `packages/podman`，base=`pkgsStatic`（Linux musl 全静态）。用 `podman.override` 把
 `conmon/catatonit/crun/runc` 换成本仓库静态版，再 `overrideAttrs`。
 
-**runc wrapper workaround（核心）：** runc 经上游 `extraRuntimes` 进入 `helpersBin`。pkgsStatic 下真实
-runc 已全静态，但上游 installPhase 对它跑 `wrapProgram`，把静态二进制改名 `.runc-wrapped` 并装一个小的
-**动态** launcher `runc`（引用 /nix musl interpreter + rpath）。podman 的 helpersBin 会 ship 这个
-launcher，导致复制过来的 `runc` 变动态并依赖 /nix，触发可移植性检查失败。（独立 `.#runc` 输出没这问题，
-因 normalize.sh 把 `.runc-wrapped` 改名盖回 launcher。）故 `runcStatic = runc.overrideAttrs` 重写
-installPhase，直接 `install -Dm755 runc` 装静态二进制、去掉 wrapper。
+上游 `extraRuntimes` 把 runc 加入 `helpersBin`。虽然 `pkgsStatic.runc` 的真实二进制是静态的，
+其 install phase 会运行 `wrapProgram`，产生引用 Nix interpreter 和 rpath 的动态 launcher。
+独立 runc output 会在 normalization 时用 `.runc-wrapped` 覆盖 launcher，但 podman 提前复制的是
+launcher。
+
+本地 `runcStatic` 因此重写 install phase，直接安装真实静态 runc。不要删除这层 override，除非确认
+podman 的 `helpersBin` 已复制静态入口。
 
 路径硬编码：patch `hardcode-paths.patch`（`bin_path = /opt/podmanx/libexec/podman`）与
 `rm-podman-mac-helper-msg.patch`；`env.HELPER_BINARIES_DIR2`、LDFLAGS 注入 `-X
 ...adminOverrideConfigPath=/opt/podmanx/conf/`。
 
-## macOS 上的 Go 工具（`CGO_ENABLED=0`）
+## macOS `CGO_ENABLED=0`
 
-无 per-package 目录，经 [local.nix](file:///workspace/standalone-binaries/packages/local.nix#L19-L44) 的 `goWithoutCgo`：
+`packages/local.nix` 的 `goWithoutCgo` 从 native `pkgs2511` 选择一组 Go 工具，并设置
+`CGO_ENABLED=0`。这样产物不再链接 Nix dylib。当前列表以 `local.nix` 为准，不在文档复制。
 
-```
-goWithoutCgo = lib.genAttrs
-  [ "gdu" "gh" "bazelisk" "croc" "go-task" "git-lfs" "shfmt" "fzf"
-    "dive" "scc" "buildifier" "lefthook" "oras" "lark-cli" ]
-  (name: pkgs2511.${name}.overrideAttrs (oldAttrs: { env.CGO_ENABLED = "0"; }));
-```
+`lark-cli` 是例外：它来自 unstable，且上游 CGO build 已只链接系统库。强制关闭 CGO 会让纯 Go
+二进制保留 Go compiler store path，并触发 `disallowedReferences`，因此不加入 `goWithoutCgo`。
 
-base=pinned native `pkgs2511`（非 pkgsStatic）。纯 Go（无 cgo）二进制在 macOS 上自然摆脱 nix dylib
-依赖——这是 macOS 部分静态 ladder 的一环，而非 musl 全静态。该集合经 `darwin = goWithoutCgo // rec
-{ ... }` 合入 darwin 包集。
-
-> 对比：Linux 上这些工具多数直接从 manifest 取 `pkgsStatic` 版；macOS 无 musl 全静态工具链，故退一步用
-> `CGO_ENABLED=0`。
+`pkgs2511` pin 和列表中的每个 CGO override 都需要定期对 unstable 重新验证。若上游默认产物已无
+`/nix` dylib，应回归 manifest 或普通包。

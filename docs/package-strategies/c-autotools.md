@@ -1,4 +1,4 @@
-# C / autotools 打包策略
+# C / autotools 构建案例
 
 绝大多数 C/autotools 工具走最简路径：**`pkgsStatic.callPackage` 直接吃默认静态**（Linux musl 纯静态），
 `.nix` 文件本身不加 `-static`，静态归属交给包集 + `normalize.sh` 校验。大部分额外工作不是静态编译，而是
@@ -7,7 +7,7 @@
 
 本文覆盖：跨平台 common 的 C 工具、Linux-only C 工具（cmake/git/openssh 等）、s6 stack、clang-tools、
 以及容器栈的 C 组件。真正需要 linker/工具链级修复的重案例（gnutar/postgresql）见
-[special-cases.md](file:///workspace/standalone-binaries/docs/package-strategies/special-cases.md)。
+[特殊案例](special-cases.md)。
 
 ## 跨平台 common 的 C 工具
 
@@ -29,7 +29,7 @@
 - **curl**：用 `stdenv.mkDerivation` 重组：拷 `curl.bin`/`curl.dev`，把内置 CA bundle 装到
   `etc/ssl/certs/ca-certificates.crt`，rename `curl`→`_curl`，wrapper 相对解析并强制 `--cacert`。
   静态 curl 没有系统 CA 路径，自带证书使其可移植。（`wget/linux.nix` 同模式，见
-  [special-cases.md](file:///workspace/standalone-binaries/docs/package-strategies/special-cases.md)。）
+  [特殊案例](special-cases.md)。）
 
 **feature / 依赖内联：**
 
@@ -47,7 +47,7 @@
 **其它：**
 
 - **diffutils**：`overrideAttrs` 唯一改动 `doCheck = false`（跳过测试）。属纯编译修复 workaround，
-  **需评估切回上游**（见 [regress skill](file:///workspace/standalone-binaries/.trae/skills/regress-patched-package-to-upstream/SKILL.md)）。
+  **需按根 `CLAUDE.md` 的回归流程评估切回上游**。
 - **rsync**：只改 `checkPhase`（删 `testsuite/itemize.test` + `make check EXCLUDE=itemize`）。
 - **p7zip**：`preConfigure` 追加 `buildFlags=default`，`outputs = [out doc man]`。
 - **protobuf 3.8.0 / 3.9.2**：都只是 `callPackage ../generic-v3.nix` 传 `version`+`sha256`，共享
@@ -79,7 +79,7 @@
   `sshd`→`_sshd`（相对注入 `SshdSessionPath`/`SshdAuthPath`）。静态由 `pkgsStatic` 提供。
 
 > `gnutar`（`*xattrat` 符号冲突）、`postgresql`（psql-only + gccAsClang）、`wget/linux.nix`（CA
-> bundle）、`nsight-systems`（prebuilt）见 [special-cases.md](file:///workspace/standalone-binaries/docs/package-strategies/special-cases.md)。
+> bundle）、`nsight-systems`（prebuilt）见[特殊案例](special-cases.md)。
 
 ## s6 stack（execline / s6 / s6-linux-init / s6-rc）
 
@@ -103,7 +103,7 @@
 ## 容器栈的 C 组件（crun / conmon / catatonit / gpgme）
 
 均 base=`pkgsStatic`（Linux musl 全静态）。与 Go 的 `podman` 同栈但按语言分开处理（podman 见
-[go.md](file:///workspace/standalone-binaries/docs/package-strategies/go.md)）。
+[Go 案例](go.md)）。
 
 - **crun**：`crun.override { withLibkrun=false; withLibkrunSEV=false; }` 再 overrideAttrs 强制全静态：
   `env` 显式 `CFLAGS="-static"`、`LDFLAGS="-static"`、`CRUN_LDFLAGS="-all-static"`、`NIX_LDFLAGS=""`；
@@ -124,7 +124,7 @@
 - 内层：`llvmPackages_NN.clang-unwrapped.overrideAttrs`——`env.NIX_CFLAGS_COMPILE += " -g0
   -ffunction-sections -fdata-sections"`、`env.NIX_LDFLAGS += " --gc-sections -s"`（去调试信息、按
   section GC、strip）；`cmakeFlags += ["-DCMAKE_BUILD_TYPE=MinSizeRel" "-DLLVM_USE_LINKER=mold"]`
-  + `nativeBuildInputs += [mold]`（LLVM 全量太大，用 mold + MinSizeRel 最小体积构建）。
+  并设置 `nativeBuildInputs += [mold]`（LLVM 全量太大，用 mold + MinSizeRel 最小体积构建）。
 - 外层：`stdenv.mkDerivation`，`unpackPhase`/`buildPhase` 皆空，`installPhase` 只 `cp
   ${clang}/bin/clang-format $out/bin/`（不发 clang-tidy）。
 

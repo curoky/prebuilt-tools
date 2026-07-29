@@ -1,4 +1,4 @@
-# Perl 生态打包策略
+# Perl 构建案例
 
 Perl 生态是**两平台策略分歧最大**的一类，因为 `packages/perl` 的解释器在两平台构建方式完全不同，
 直接决定了下游 Perl 工具（尤其含 XS 编译扩展的）怎么打包：
@@ -61,9 +61,11 @@ CPAN 源 `tar` 解到 `cpan/Compress-Raw-Lzma`、`cpan/IO-Compress-Brotli`，让
 
 ### cloc / parallel（跨平台 common，纯 Perl）
 
-**base：** native `pkgs.callPackage`。根因（[local.nix](file:///workspace/standalone-binaries/packages/local.nix#L87-L92)）：
-cloc 不需静态链接，且它会拉进的全静态 perl/perlPackages 在 darwin 构建失败，故两平台都从 native pkgs
-构建。这属于刻意的 **packaging decision（wrapper）**，不是临时编译修复，**不切回上游**。
+`cloc` 和 `parallel` 通过 native `pkgs.callPackage` 构建。它们本身是纯 Perl；若直接从静态
+perlPackages 构建，Darwin 会被不可用的静态 Perl 构建阻塞。native 上游输出只作为脚本来源，运行时
+始终切换到同级 `perl`。
+
+这是结构性 repackaging，不是应简单切回 manifest 的临时编译 patch。
 
 - **cloc**：`overrideAttrs`，`mv cloc _cloc` + wrapper 直接 `exec $store/perl/bin/perl "$root/bin/_cloc"`。
   用 rsync 把纯 Perl 依赖模块树复制进 `$out/lib/perl5`（`Moo`、`AlgorithmDiff`、`RoleTiny`、

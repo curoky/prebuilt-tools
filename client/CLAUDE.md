@@ -1,52 +1,215 @@
-# Client Install / Upgrade Model（`client/`）
+# sb Client Agent Guide
 
-本文档描述 `sb` client 的设计。它是本仓库产物的消费端；构建/发布模型见根目录
-[CLAUDE.md](file:///workspace/standalone-binaries/CLAUDE.md)。
+`client/` 是本仓库 OCI artifact 的消费端。它实现单个静态 Go 二进制 `sb`，面向没有 Nix、
+Homebrew 或 `oras` 的最小环境。构建端协议与全局约束见根 [`CLAUDE.md`](../CLAUDE.md)。
 
-[client/](file:///workspace/standalone-binaries/client) 是一个小型包管理器（brew/apt 风格的 client），面向**没有 Nix/Homebrew/包管理器**的最小化环境。它用 **Go** 写成单个静态链接二进制（`sb`），交叉编译到 `linux-x86_64` 和 `darwin-arm64`。它直接从 `ghcr.io/curoky/standalone-binaries` OCI registry 拉取已发布的 tarball（复用根 CLAUDE.md 里描述的 `<name>-<arch>` tag -> layer blob digest 流程）并本地安装。
+本文是 client 的公开契约、状态模型和实现约束 source of truth。
 
-## Design principles
+## 不变量
 
-- **无宿主运行期依赖。** sb 是一个以 `CGO_ENABLED=0` 构建的静态二进制；目标主机上**什么都不需要**（`curl`/`tar`/`oras`/`jq`/Nix 都不要）。它依赖维护良好的 Go 库而非手写管道：[go-containerregistry](https://github.com/google/go-containerregistry)（`crane`）负责全部 OCI 访问（auth、manifest、layer pull、digest），[cobra](https://github.com/spf13/cobra) 做 CLI，[`x/sync/errgroup`](https://pkg.go.dev/golang.org/x/sync/errgroup) 做有界并行 fan-out，[mpb](https://github.com/vbauerster/mpb) 做并发下载进度条。tarball 解压用标准库（`archive/tar` + `compress/gzip`）。同一份源码交叉编译到两个平台。
-- **可 relocate 的安装。** 一个包在 prefix 下暴露的一切都是**相对** symlink。因为链接是相对的，整个 prefix 可以移动到任何地方而**零修复**。
-- **包彼此独立。** 每个包都被当作完全自包含；sb **不做依赖解析**。每个包独立安装、移除、relocate。运行期重的包（node/python/perl 工具）自带相对路径 wrapper，所以单个 `store/<name>/` 目录也是自包含的。
-- **Platforms。** 自动探测的 arch tag 是 `linux-x86_64`（Linux/x86_64）或 `darwin-arm64`（macOS/arm64），与已发布的 OCI tag 一致；可用 `--arch` 覆盖。
-- **Self-publishing。** sb 自身也由 [build-sb.yaml](file:///workspace/standalone-binaries/.github/workflows/build-sb.yaml) 作为 `sb-<arch>` 发布到 registry，因此可用单条 `curl` bootstrap，之后像任何其他包一样升级。
+1. **无宿主运行时依赖。** `sb` 必须保持 `CGO_ENABLED=0` 可构建，不调用外部
+   `curl`、`tar`、`oras`、`jq` 或 Nix。
+2. **安装可整体移动。** package root 和 profile 中的链接必须是相对 symlink；移动 prefix
+   后无需修复。
+3. **包彼此独立。** client 不做依赖解析。脚本工具需要的 Python、Perl 或 Node.js runtime
+   由发布包的 sibling wrapper 约定解决。
+4. **digest 是版本标识。** 远端 OCI layer digest 与本地 `.sb-meta` 相同就跳过安装，
+   `--force` 除外。
+5. **多包 resolve 具有写入前原子性。** 必须先 resolve 全部请求；任一 tag 不存在时报告完整
+   缺失列表，不安装任何包。
+6. **平台协议固定。** 自动探测只支持 `linux-x86_64` 和 `darwin-arm64`，可由
+   `--arch` 覆盖。
 
-## Source layout
+## 远端协议
 
-[client/](file:///workspace/standalone-binaries/client) 是一个 Go module：
+registry 固定为：
 
-- [main.go](file:///workspace/standalone-binaries/client/main.go)：整个 client（OCI 访问、store/meta/link、命令、CLI）。
-- [main_test.go](file:///workspace/standalone-binaries/client/main_test.go)：离线单测（tar 解压 + 相对链接 relocate + arg parsing + metadata round-trip）。
-- [install.sh](file:///workspace/standalone-binaries/client/install.sh)：`sb` 自身的 **bootstrap installer**。全新主机上没有 `oras`/Go/Nix，只有 `curl` + `tar`，所以不能用 `sb` 装 `sb`。它直接经 ghcr registry HTTP API 拉 `sb-<arch>` artifact（匿名 pull token -> manifest -> 单个 layer blob），解出 `sb/sb`，把二进制放进安装目录（默认 `~/.local/bin`；可用 `SB_INSTALL_DIR`/`--prefix` 和 `SB_ARCH`/`--arch` 覆盖）。设计为 `curl -fsSL <raw-url>/install.sh | bash` 运行。这一次性 bootstrap 之后，`sb` 像任何其他包一样自升级。
+```text
+ghcr.io/curoky/standalone-binaries:<package>-<arch>
+```
 
-## Local layout
+发布 workflow 为每个 artifact 写入一个 tar.gz layer，归档顶层目录为包名。client 当前取
+manifest 的最后一个 layer，并用其 digest 和内容。增加额外 layer 会改变 client 选层语义。
 
-包安装在一个 prefix 下（默认 `/opt/sb`）：
+`sb` 自身使用 `sb-<arch>` tag，由 `.github/workflows/build-sb.yaml` 发布。bootstrap
+installer 通过 GHCR HTTP API 获取匿名 token、读取 manifest、下载 layer，再从归档中的
+`sb/sb` 安装二进制。
 
-- `store/<name>/`：解出的包内容。
-- `store/<name>/.sb-meta`：每包元数据，放在**包目录内部**，从而与包原子地一同创建/删除。它是一个纯 `key=value` 文件（`name`、`arch`、`digest`、`linked`、`installed_at`）。
-- `bin/`、`lib/`、`share/`...：以 `--link`（默认）安装时，是指向 `store/<name>/` 的**相对** symlink（`.sb-meta` 不参与 link）。`--nolink` 只装进 store。
+改变 registry、tag、layer 数量、media type 或归档布局属于跨构建端协议变更，必须同时修改：
 
-## Upgrade semantics（digest comparison）
+- 普通包发布 workflow；
+- `.github/workflows/build-sb.yaml`；
+- `main.go`；
+- `install.sh`；
+- 根和本目录 `CLAUDE.md`。
 
-OCI tag（`<name>-<arch>`）里没有人类可读的版本号，所以「是否需要更新」由 **OCI blob digest 比较** 决定：client resolve 远端 manifest 的 layer digest，与本地 `.sb-meta` 里记录的 `digest` 比较。不同则重新下载+解压；否则跳过（除非 `--force`，`install` 是幂等的）。
+## 代码布局
 
-## Subcommands
+- `main.go`：OCI 访问、cache、解压、metadata、store、link、manifest sync、日志和 CLI。
+- `main_test.go`：本地 registry 与临时 prefix 上的行为测试。
+- `install.sh`：仅用于首次安装 `sb` 的 bootstrap。
+- `go.mod`、`go.sum`：Go 1.26 module 与依赖锁定。
 
-- `install <pkg>...`：安装/刷新**一个或多个**包；本地 digest 已匹配远端的会被跳过（`--force` 覆盖）。`--link`/`--nolink` 控制 symlink 暴露。多包安装分三阶段：(1) **并行** resolve 每个包的远端 digest——任一缺失则 sb 报出完整列表并中止、什么都不装；(2) **并行**把需要的 blob 下载进 cache；(3) **串行** 解压 + link。
-- `remove <pkg>`：移除包的 symlink（若已 link）并删除其 `store/<name>/` 目录。
-- `upgrade [pkg...]`：升级给定的包，或不给参数时升级所有已装包（复用 install 的 digest-skip 逻辑，保留各包记录的 arch/linked）。
-- `info <pkg>`：显示一个包记录的元数据（未装则显示其 registry 坐标）以及是否相对远端 digest 最新。
-- `list`：读取每个 `store/*/.sb-meta`，列出已装包及其记录的 digest。
-- `outdated`：报告远端 digest 已变的已装包。
-- `sync [file]`：安装/刷新一个 **YAML manifest**（默认文件名 `sb.yaml`，或显式路径参数）里声明的每个包——sb 版的 Brewfile / pyproject。包在 `packages:` 下声明，分为 `link:`（装进 store 并 link 到 prefix 根）和 `unlink:`（只装进 store），另有可选的 `arch:` / `prefix:` 默认值（显式 `--arch` 总是优先；`prefix:` 仅在命令行未传 `--prefix` 时使用——log 文件仍在 flag 的 prefix 下）。它复用 install 的 digest-skip 逻辑，所以重跑是幂等的。`sync` 期间，`link`、`unlink`、`profiles` 引用的包先合并成一个去重的安装计划，于是 digest resolve 与下载在一个共享 batch 里完成；之后 sb 调和每个包最终的 root-link 状态，再把 profile 包 link 到 `<prefix>/profile/<name>/` 下。若一个包出现在多个 manifest 段里，root linking 优先于 store-only/profile-only 引用。加 `--prune` 时它还会移除 manifest **未**引用的已装包（走正常 `remove` 路径），使已装集合与 manifest 完全一致。manifest 也可声明 **profiles**（`profiles: { <name>: [<pkg>...] }`）：每个 profile 把其包装进 store，并经相对 symlink 把它们的文件聚合到 `<prefix>/profile/<name>/` 下。link 拆分与 profiles 是 sync 专属概念——client 其余部分（`install`/`remove`/`list`）不感知。
+保持单文件实现，除非拆分能解决已经出现的职责或测试问题；不要为可能的未来 backend、registry
+或 package graph 预造抽象。
 
-通用选项：`--prefix PATH|--prefix=PATH` 和 `--arch ARCH|--arch=ARCH`（`--opt value` 和 `--opt=value` 两种形式都接受；选项可出现在包名前或后）。`--verbose` 额外把详细日志镜像到 stderr。
+## 本地状态
+
+默认 prefix 是 `/opt/sb`：
+
+```text
+<prefix>/
+├── bin/                       # 指向 store 的相对 symlink
+├── lib/
+├── share/
+├── profile/<profile>/         # profile 聚合树
+├── store/<package>/
+│   └── .sb-meta
+└── sb.log
+```
+
+每个包完整解压到 `store/<name>/`。`.sb-meta` 位于包目录内部，随包一起创建和删除，格式为
+缩进 JSON，字段包括：
+
+- `name`
+- `arch`
+- `digest`
+- `linked`
+- `installed_at`
+
+根目录 `bin/`、`lib/`、`share/` 等按包内容建立相对 symlink；`.sb-meta` 永不参与 link。
+profile 使用相同算法，但 link root 是 `<prefix>/profile/<name>/`。
+
+下载 cache 位于 `${XDG_CACHE_HOME:-$HOME/.cache}/sb/<arch>/<name>.tar.gz`。cache 不是安装状态，
+删除后不影响已装包。
+
+## 安装状态机
+
+`install <package>...` 分三阶段：
+
+1. 并行 resolve 所有 tag 和 digest；任一缺失则在写入前终止。
+2. 对需要更新的包并行下载 layer 到 cache。
+3. 串行解压、写 metadata、移除旧链接并建立目标链接。
+
+串行提交避免多个包并发修改相同 prefix 路径。digest 相同的包不重新下载，但 link 状态仍可调和。
+
+`remove` 删除 metadata 标记的根链接，再删除 store 目录。`upgrade` 复用 install：
+
+- 指定包名时升级指定包；
+- 无参数时扫描所有 `.sb-meta`；
+- 保留每包记录的 `arch` 与 `linked`。
+
+## CLI 契约
+
+全局选项：
+
+- `--prefix PATH`：默认 `/opt/sb`；
+- `--arch ARCH`：覆盖自动探测；
+- `--verbose`：把详细日志同时写入 stderr。
+
+命令：
+
+- `install <package>...`：安装或刷新多个包；
+  - `--link` 是 bool flag，默认 `true`，设为 `false` 时只进入 store；
+  - `--force` 忽略 digest。
+- `remove <package>`：删除一个包和其根链接。
+- `upgrade [package...]`：升级指定包或全部包。
+- `info <package>`：显示 metadata、registry 坐标和远端状态。
+- `list`：列出已装包及 digest。
+- `outdated`：列出远端 digest 已变化的包。
+- `sync [file]`：应用 YAML manifest，默认 `sb.yaml`；
+  - `--force` 强制重装；
+  - `--prune` 删除 manifest 未引用的包。
+
+store-only 安装的 CLI 表达固定为 `--link=false`。
+
+## Manifest 契约
+
+```yaml
+prefix: /opt/sb
+arch: linux-x86_64
+
+packages:
+  link:
+    - ripgrep
+  unlink:
+    - python314
+
+profiles:
+  go:
+    - gopls
+    - delve
+```
+
+- `packages.link`：安装到 store 并链接到 prefix root。
+- `packages.unlink`：只安装到 store。
+- `profiles.<name>`：只安装到 store，并聚合到 `profile/<name>/`。
+- manifest 的 `arch` 和 `prefix` 可省略。
+- 显式 `--arch` 和 `--prefix` 优先于 manifest。
+- logger 在 Cobra pre-run 初始化；manifest 改写 prefix 前产生的 log 仍位于 flag/default prefix。
+
+sync 先把 link、unlink 和全部 profile 引用合并成一个去重 install plan。同一包被多处引用时，
+root link 优先。所有包共享一次 resolve/download batch，随后建立 profile links。`--prune`
+最后通过正常 remove 路径清理未引用包。
+
+profile 和 link/unlink 拆分只属于 sync 层；其他命令不维护独立 profile 状态。
+
+## 解压与链接安全
+
+- tar entry path 必须留在目标 package root；`extractTarGz` 已检查这一点。
+- 当前解压会原样创建归档中的 symlink，不验证 link target 是否逃出 package root。修改解压逻辑时
+  必须补 symlink escape 测试，不能把现状描述为已完成完整 tar 安全校验。
+- strip artifact 的第一个顶层目录，使内容落入 `store/<name>/`。
+- `linkPkgInto` 当前对目标执行 `os.Remove` 后建立新链接，因此后安装的包会覆盖同路径 link，
+  没有 ownership 数据。改变冲突语义时需同时设计 metadata 和 remove 行为。
+- client 创建的 package/profile 聚合链接必须保持相对路径。
+- `.sb-meta` 不得从远端归档继承，必须由 client 写入。
+
+涉及解压或链接算法时，先补能复现边界的测试，再修改实现。
 
 ## Logging
 
-每次调用都把一份详细的结构化（slog text）日志写到 `<prefix>/sb.log`（prefix 不存在则创建）。终端显示简化的关键步骤输出（`> ...` 行，含安装进度与运行结束时带耗时的 summary），外加下载阶段的 per-package 字节级进度条（由 [mpb](https://github.com/vbauerster/mpb) 渲染）；完整的 per-package resolve/download/extract/link 事件与阶段计时进日志文件。`--verbose` 会把该日志也 stream 到 stderr（走 stderr，不与 stdout 上的进度条冲突）。
+每次调用把 slog text 写到 `<prefix>/sb.log`。终端显示关键步骤、下载进度和 summary；
+`--verbose` 把详细日志镜像到 stderr。进度条走 stdout，避免与 verbose 日志冲突。
 
-这是 client 侧的事：根 CLAUDE.md 的 CI/publishing 模型不变，因为比较依赖的是 `ghcr.io` 在 `oras push` 时已算好的 layer digest。
+不要把日志文件当作状态源；命令行为只依赖 store 和 `.sb-meta`。
+
+## Bootstrap Installer
+
+`install.sh` 是唯一允许依赖宿主 `curl` 和 `tar` 的路径。它：
+
+- 默认安装到 `~/.local/bin`；
+- 接受 `SB_INSTALL_DIR`、`SB_ARCH`；
+- 接受覆盖环境变量的 `--prefix`、`--arch`；
+- 仅支持两个已发布平台；
+- 安装成功后即使 help probe 失败，也只警告而不回滚已安装文件。
+
+不要让 installer 依赖 Go、Nix、`oras`、`jq` 或非基础 shell 工具。
+
+## 验证
+
+在 `client/` 运行：
+
+```bash
+go test ./...
+go vet ./...
+go build ./...
+```
+
+涉及 installer 时追加：
+
+```bash
+bash -n install.sh
+shellcheck install.sh
+```
+
+新增或改变公开行为时必须同步更新 `main_test.go` 和本文。重点覆盖：
+
+- tar 路径与 symlink 安全；
+- prefix relocate；
+- metadata round-trip；
+- 多包 resolve 失败不产生部分安装；
+- digest 幂等与 force；
+- sync 去重、root-link 优先、profile 和 prune；
+- 两个平台自动探测；
+- installer 参数与 artifact 布局。

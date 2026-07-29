@@ -1,4 +1,4 @@
-# Node.js 生态打包策略
+# Node.js 构建案例
 
 Node.js 生态分两层：**静态 Node.js runtime**（独立成包，Linux musl 全静态 / macOS 部分静态）和
 **Node CLI 工具**（复用上游 JS 分发 + 薄 wrapper 运行期绑定同级静态 node）。
@@ -55,7 +55,7 @@ node 自身 overrideAttrs：
 
 相比 24 的关键改进 —— **`onlyStatic` guard**：
 
-```
+```nix
 onlyStatic = pkg: overrides:
   if pkg.stdenv.hostPlatform.isStatic then pkg.overrideAttrs overrides else pkg;
 ```
@@ -63,7 +63,8 @@ onlyStatic = pkg: overrides:
 根因：`pkgsStatic.extend` 会同时改写 build-platform（glibc）副本；而 libuv 是 cmake 的
 nativeBuildInput、cmake 又是 llvm 的 nativeBuildInput，改写 glibc libuv 会变更 cmake/llvm hash，
 导致 rustc 的 llvm 无法从 cache.nixos.org 替换而全量源码重建。故每个 override 只作用于 musl-static
-target 副本。详见 [docs/pkgsstatic-extend-toolchain-pollution.md](file:///workspace/standalone-binaries/docs/pkgsstatic-extend-toolchain-pollution.md)。
+target 副本。完整诊断见
+[`pkgsStatic.extend` 工具链污染](../pkgsstatic-extend-toolchain-pollution.md)。
 
 新增 overlay 补丁：
 

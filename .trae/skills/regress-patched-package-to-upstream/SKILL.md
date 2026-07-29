@@ -3,16 +3,11 @@ name: "regress-patched-package-to-upstream"
 description: "定期 review 本仓库中被 patch 或被 pin 老版本的包，把「临时的编译修复」尽可能切回 unstable channel 的上游包，去掉本地 patch/老版本 pin，改在 manifests/default.nix 里维护。当 review/更新 packages/ 或 manifests/ 条目、bump nixpkgs、或审计本地 patch/版本 pin 是否仍必要时调用。"
 ---
 
-# Regress a Patched / Pinned Package Back to Upstream
+# 回归 patched / pinned 包到上游
 
-本仓库的**长期目标是所有包都用官方维护的 `unstable` channel 最新版**（见 `CLAUDE.md`
-的「版本策略」）。凡是偏离这个目标的东西——`packages/` 下的本地 patch 包、或
-`manifests/default.nix` 里被 pin 在老 `version` 的条目——都应视为**临时状态**，
-定期复查，一旦上游已修好就切回上游。
+本仓库长期目标是优先使用官方维护的 unstable 最新版。根 `CLAUDE.md` 是版本策略、
+平台约束和现有例外的 source of truth；本 skill 只定义如何识别并移除已经失效的 workaround。
 
-本 skill 就是干这件事的：判定某个 patch/pin 是否已过时，并干净地执行回归。
-
-先读 `CLAUDE.md`——patch 策略、版本策略、package-selection 模型都在那里。
 本 skill 是 `patch-nixpkgs-standalone` 的逆操作：那个在 stock 静态构建失败时**加**
 workaround；这个在 stock 构建重新可用时**去掉**它。
 
@@ -26,17 +21,17 @@ workaround；这个在 stock 构建重新可用时**去掉**它。
 
 - **Workaround（regression 候选）**——绕过一个 `nixpkgs`（通常是 `pkgsStatic.<x>`）
   的构建/链接失败或 portability 问题。这类是临时的编译修复，上游修好后就该切回。
-  例如 [packages/diffutils/default.nix](file:///workspace/standalone-binaries/packages/diffutils/default.nix)
-  只是 `doCheck = false` 关掉一个失败的 check——**属于此类，需要评估能否切回上游**。
+  例如 `packages/diffutils/default.nix` 只是 `doCheck = false` 关掉一个失败的
+  check，属于此类。
 - **Packaging decision（不是候选）**——刻意的 repackaging，改变了「这个包是什么/如何被消费」。
-  例如 [packages/cloc/default.nix](file:///workspace/standalone-binaries/packages/cloc/default.nix)
-  把 `cloc` rename 成 `_cloc` 并放一个调用同级 `perl` 的 wrapper、vendor 它的 Perl 依赖——
+  例如 `packages/cloc/default.nix` 把 `cloc` rename 成 `_cloc` 并放一个调用同级
+  `perl` 的 wrapper、vendor 它的 Perl 依赖——
   这种 **wrapper 类的包不需要切回上游**，无论上游怎么修都不会消失。
 
 ### B. 被 pin 老版本的 manifest 条目（`manifests/default.nix`）
 
 manifest 里任何写了非 `unstable` `version` 的条目（无论包级还是 per-platform key），
-都是因为「当时 unstable 最新版构建失败/不 portable」才临时 pin 的老 channel。例如：
+默认都按临时 pin 审计，但先通过附近注释和 git history 确认原因。例如：
 
 ```nix
 shellcheck = {
@@ -46,12 +41,12 @@ shellcheck = {
 };
 ```
 
-这类要**试着去掉 `version`（即回到 unstable）**，只要 unstable 最新版现在能构建且 portable，
-就删掉这个 pin。
+这类要试着去掉 `version`。只要 unstable 最新版在目标平台能构建且满足根 `CLAUDE.md`
+的约束，就删除 pin。
 
 ## Principle
 
-**只要上游能构建且满足 portability 目标，就优先用 unstable 上游包。**
+**只要上游能构建且满足当前产物目标，就优先用 unstable 上游包。**
 本地包和老版本 pin 都是负债（维护成本、偏离上游、diff 更大）。若
 `nixpkgs.pkgsStatic.<x>`（unstable）现在能编译、链接、并通过 portability 检查，
 就删掉本地 patch / 老版本 pin，改用 manifest 里的 unstable 上游。
@@ -70,8 +65,8 @@ shellcheck = {
   - 一个 override 可能**两者兼有**（一部分 workaround + 一部分 packaging）。只有
     workaround 部分可回归；保留 packaging 部分。见 step 4 的「partial regression」。
 
-- **B 类版本 pin**——所有非 `unstable` 的 `version` pin 天生就是 workaround（当时上游最新版有问题），
-  一律是候选。目标是去掉 pin、回到 unstable。
+- **B 类版本 pin**——所有非 `unstable` 的 `version` pin 都进入审计候选。确认它不是刻意的
+  长期兼容选择后，目标是去掉 pin、回到 unstable。
 
 ## When to run this
 
@@ -91,25 +86,29 @@ shellcheck = {
    - B 类：找出这个包/平台当初为何被 pin 到老 `version`（看注释或 git 历史）。它的
      regression test 就是「unstable 最新版能否构建 + portable」。
 
-2. **测 stock upstream 构建。** 为目标平台构建 patch/pin 要替换掉的那个纯上游 derivation：
-   - 全静态路线：`nix build nixpkgs#pkgsStatic.<x>`（对应 manifest 会用的 unstable input）。
+2. **测 stock upstream 构建。** 为目标平台构建 patch/pin 要替换掉的纯上游 derivation：
+   - 优先临时修改本仓库 manifest/local wiring 后构建 `nix build .#<name>`，这样使用的正是
+     flake lock 和 Linux musl cross static 环境。
+   - 不要把 `nix build nixpkgs#pkgsStatic.<x>` 当成等价验证；它可能使用不同 nixpkgs revision
+     或不同 static package set。
    - A 类：若这正是 patch 绕过的东西、现在**能构建且能链接**，patch 是移除候选。
-   - B 类：直接改 manifest 去掉 `version` pin（或临时本地测 unstable 的 `pkgsStatic.<x>`），
-     看能否构建。
+   - B 类：直接改 manifest 去掉 `version` pin，再构建最终 flake output。
    - 在包**目标的每个平台**（Linux + darwin）上复现。一个平台修好不代表另一个也修好。
 
 3. **验证上游构建仍满足 portability 目标**（与 `patch-nixpkgs-standalone` 同一套检查）：
-   - **Linux（硬底线）：** `file`/`ldd` → musl 纯静态、无 glibc、无 `.so`、无 `/nix` 运行期引用。
+   - **Linux 常规包：** `file`/`ldd` → musl 纯静态、无 glibc、无 `.so`、无 `/nix`
+     运行期引用。
    - **macOS：** `otool -L` 检查二进制及每个 ship 的 `.dylib`/`.bundle`/`.so` → 只有
      `/usr/lib/*`、`/System/Library/Frameworks/*` 或 `@loader_path` 条目；**零** `/nix/store`。
+   - 根 `CLAUDE.md` 记录的例外按对应 case study 验证，不把动态例外误判成上游回归成功。
    - 若上游能构建但仍不 portable，则 patch/pin **尚未**过时——保留它。只有在上游
      **既可构建又 portable** 时才回归。
 
 4. **执行回归**（验证通过后）：
    - **A 类，整包可用上游：** **删除** `packages/<pkg>/`，从
-     [packages/local.nix](file:///workspace/standalone-binaries/packages/local.nix) 的
+     `packages/local.nix` 的
      `common`/`linux`/`darwin` 集合里移除它的 `callPackage ./<pkg>` 行，然后在
-     [manifests/default.nix](file:///workspace/standalone-binaries/manifests/default.nix)
+     `manifests/default.nix`
      里加/调条目（`isStatic = true`，正确的 `version`（省略 => unstable）/`platforms`/`output`/`alias`）。
    - **A 类，只有一个平台修好：** 只删那个平台的本地文件（如删 `darwin.nix`、留 `default.nix`），
      把该平台切到 manifest/上游；仍需 patch 的平台保留。
@@ -125,8 +124,9 @@ shellcheck = {
 
 6. **重建受影响包的最终 standalone 产物**，重跑 step 3 的验证，确认回归后的构建仍 portable。
 
-7. **同步更新 `CLAUDE.md`**（同一次改动），如果回归改变了 package selection 模型
-   （如某个包从 `packages/` 本地 override 变成 manifest 条目、或某个 per-platform 策略不再适用）。
+7. **同步 agent 文档。** 若回归改变稳定 package selection、例外或协议，更新根
+   `CLAUDE.md`；若只删除包级非默认策略，更新或删除对应 case study。不要在根文档维护易漂移的
+   当前包枚举。
 
 ## Guardrails
 

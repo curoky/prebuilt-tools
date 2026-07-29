@@ -62,9 +62,11 @@ $ nix eval --raw --impure --expr \
 - `cmake` 的输入里 `libuv-1.52.1.drv` 的 hash 与官方不同；
 - 对比这两颗 `libuv` 的 `doCheck`：我们的为空（false），官方为 `1`（true）。
 
-```console
-$ nix show-derivation /nix/store/…(our libuv).drv   | jq -r '.derivations[].env.doCheck // "unset"'   # 空
-$ nix show-derivation /nix/store/…(nixpkgs libuv).drv| jq -r '.derivations[].env.doCheck // "unset"'   # 1
+```bash
+nix show-derivation /nix/store/…-our-libuv.drv |
+  jq -r '.derivations[].env.doCheck // "unset"'
+nix show-derivation /nix/store/…-nixpkgs-libuv.drv |
+  jq -r '.derivations[].env.doCheck // "unset"'
 ```
 
 这正是 [packages/nodejs/26/linux.nix](../packages/nodejs/26/linux.nix) overlay 里的 `libuv = prev.libuv.overrideAttrs { doCheck = false; };`。
@@ -75,7 +77,7 @@ $ nix show-derivation /nix/store/…(nixpkgs libuv).drv| jq -r '.derivations[].e
 
 但 `pkgsStatic.extend` 得到的整个包集，其 `buildPackages`（build 平台工具链）也从**同一个 overlay** 派生。于是 build 平台（glibc）的 `libuv` 也被 `doCheck = false` 改了 hash。而 `libuv` 是 `cmake` 的 `nativeBuildInput`，`cmake` 又是 `llvm` 的 `nativeBuildInput`，连锁污染：
 
-```
+```text
 libuv（glibc，doCheck=false 改了 hash）
   → cmake（nativeBuildInputs 含 libuv → hash 变）
     → llvm-21.1.8（nativeBuildInputs 含 cmake → hash 变）
