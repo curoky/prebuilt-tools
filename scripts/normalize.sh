@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-set -xeuo pipefail
+set -euo pipefail
 
 prefix="$1"
 
 # find "$prefix" -type d \( -name "man" -o -name "fish" -o -name "bash-completion" -o -name "nix-support" \) -exec rm -rf {} +
-rm -rf $prefix/nix-support
-rm -rf $prefix/share/man
-rm -rf $prefix/share/doc
-rm -rf $prefix/share/bash-completion
+rm -rf "$prefix/nix-support"
+rm -rf "$prefix/share/man"
+rm -rf "$prefix/share/doc"
+rm -rf "$prefix/share/bash-completion"
 
 # Resolve symlinks:
 #   - links pointing inside $prefix: keep as symlinks (saves space)
@@ -23,24 +23,46 @@ find "$prefix" -type l -print0 | while IFS= read -r -d '' link; do
   fi
 done
 
-find "$prefix" -type f -print0 | while IFS= read -r -d '' f; do
+# Classify every regular file once. `file` is an expensive external command, so
+# instead of forking it per file (twice: here and in the portability check
+# below) we hand the whole file list to a single `file` invocation and cache the
+# type in the `ftype` associative array, keyed by path. `file --print0` emits
+# one record per file as "<path>\0: <type>\n", so we read the NUL-terminated
+# path and the trailing description line separately (NUL keeps parsing safe for
+# paths with spaces).
+declare -A ftype=()
+mapfile -d '' files < <(find "$prefix" -type f -print0)
+if [[ ${#files[@]} -gt 0 ]]; then
+  while IFS= read -r -d '' f && IFS= read -r t; do
+    ftype["$f"]=${t#: }
+  done < <(file --print0 "${files[@]}" 2>/dev/null)
+fi
 
-  FTYPE=$(file --brief "$f")
+for i in "${!files[@]}"; do
+  f=${files[$i]}
+  FTYPE=${ftype["$f"]:-}
 
-  if echo "$FTYPE" | grep -q 'text'; then
+  if [[ $FTYPE == *text* ]]; then
     sed -e 's|#\!\s*/nix/store/[a-z0-9\._-]*/bin/|#\! /usr/bin/env |g' \
       -e 's|/nix/store/[a-z0-9\._-]*/bin/||g' -i "$f"
     sed -E 's|/nix/store/[a-z0-9]{32}-[^[:space:]:/()<>]*||g' -i "$f"
 
-  elif echo "$FTYPE" | grep -q 'ELF'; then
+  elif [[ $FTYPE == *ELF* ]]; then
     strip --strip-unneeded "$f" || true
     nuke-refs "$f"
   fi
 
-  if [[ $(basename "$f") == .*-wrapped ]]; then
-    dir=$(dirname "$f")
-    new_name=$(basename "$f" | sed -e 's/-wrapped//g' -e 's/^.//')
-    mv "$f" "$dir/$new_name"
+  base=${f##*/}
+  if [[ $base == .*-wrapped ]]; then
+    new_name=${base#.}
+    new_name=${new_name%-wrapped}
+    newf=${f%/*}/$new_name
+    mv "$f" "$newf"
+    # keep the file list / type cache in sync so the portability check below
+    # still inspects the (renamed) binary.
+    files[i]=$newf
+    ftype["$newf"]=$FTYPE
+    f=$newf
   fi
 
   if [[ $f == *.a ]] || [[ $f == *.pyc ]]; then
@@ -52,25 +74,26 @@ done
 # depend on any dynamic library under /nix. Walk every ELF (Linux) / Mach-O
 # (Darwin) file and print its dynamic dependencies via `patchelf --print-needed`
 # + rpath / `otool -L`; fail the build if any dependency resolves under /nix.
+# File types are reused from the `ftype` cache computed above.
 bad=0
-while IFS= read -r -d '' f; do
+for f in "${files[@]}"; do
   # TODO: temporarily skip openssl-related files in the portability check.
   if [[ $f == *openssl* ]]; then
     echo "==> skip (openssl): $f"
     continue
   fi
-  FTYPE=$(file --brief "$f")
-  if echo "$FTYPE" | grep -q 'ELF'; then
+  FTYPE=${ftype["$f"]:-}
+  if [[ $FTYPE == *ELF* ]]; then
     echo "==> deps: $f"
     deps=$(patchelf --print-needed "$f" 2>/dev/null || true)
     rpath=$(patchelf --print-rpath "$f" 2>/dev/null || true)
     echo "$deps"
     [[ -n $rpath ]] && echo "rpath: $rpath"
-    if echo "$rpath" | grep -q '/nix'; then
+    if [[ $rpath == *"/nix"* ]]; then
       echo "ERROR: $f has an rpath under /nix: $rpath" >&2
       bad=1
     fi
-  elif echo "$FTYPE" | grep -q 'Mach-O'; then
+  elif [[ $FTYPE == *Mach-O* ]]; then
     echo "==> deps: $f"
     deps=$(otool -L "$f" 2>/dev/null || true)
     echo "$deps"
@@ -82,7 +105,7 @@ while IFS= read -r -d '' f; do
       bad=1
     fi
   fi
-done < <(find "$prefix" -type f -print0)
+done
 
 if [[ $bad -ne 0 ]]; then
   echo "ERROR: portability check failed: one or more binaries depend on /nix" >&2
