@@ -1,246 +1,232 @@
 # Design
 
-This document describes the intended design of this repository: what it builds, how the build is wired together, and where to make changes. Keep this document accurate over time: any design-impacting change should update this file.
+本文档描述本仓库的设计意图：它构建什么、构建流程如何串起来、以及在哪里做改动。请持续保持本文档准确：任何影响设计的改动都应在同一次提交里更新本文件。
 
 ## Purpose
 
-This repo produces a curated set of **standalone, portable** tool binaries, built via Nix and published as per-tool archives.
+本仓库产出一组精选的 **standalone、可移植** 工具二进制，经由 Nix 构建，并以「每个工具一个归档」的方式发布。
 
-The primary goals are:
-- Provide ready-to-use tool binaries for minimal or foreign environments (containers, initramfs, scratch-like images, etc.).
-- Make builds reproducible and centrally defined (single flake).
-- Reduce runtime coupling: normalize outputs (strip, remove Nix store references, drop docs/manpages, inline external symlinks) so binaries don't depend on the build host or the Nix store layout.
+核心目标：
 
-### Standalone strategy (preference order)
+- 为最小化或陌生环境（容器、initramfs、类 scratch 镜像等）提供开箱即用的工具二进制。
+- 让构建可复现、集中声明（单一 flake）。
+- 降低运行期耦合：normalize 产物（strip、移除 Nix store 引用、删掉 docs/manpages、inline 外部 symlink），使二进制不依赖构建主机或 Nix store 布局。
 
-"Standalone" means portable and self-contained — **not** necessarily a single fully static ELF. When deciding how to build a tool, prefer in this order:
+### 最关键的预期：musl 纯静态、无 glibc、无 so 依赖
 
-1. **Static compilation** where it works (`pkgsStatic`). This remains the default for most packages.
-2. **Manual patch + bundle** when full static linking isn't practical: rewrite hard-coded paths, vendor configuration, and bundle required resources (see `packages/`).
-3. **`nix bundle`** only as a last resort, for tools that genuinely cannot be statically compiled (e.g. Node.js-based tools). Implemented via `lib/make-bundle.nix` (matthewbauer/nix-bundle); produces a single self-extracting executable and is **Linux only** (relies on user namespaces). Its main downside is that the archive embeds the whole closure into one large file and exposes a single entry point (`meta.mainProgram`), so it cannot ship multiple binaries.
+这是本仓库**最高优先级、不可妥协**的产物预期：
 
-#### Portability requirement (the hard rule)
+- **最终产物必须是 musl 纯静态编译的二进制或文本文件。**
+- Linux 上的可执行文件**不能有 glibc 依赖**，也**不能有任何动态库（`.so`）依赖**——包括但不限于 `/nix` 下的动态库。理想结果是一个 `file` 显示 "statically linked"、`ldd` 显示 "not a dynamic executable" 的 musl 静态 ELF。
+- 纯文本产物（脚本、字体、数据、纯 Perl/Python 源码等无编译对象的文件）豁免静态链接要求，它们只经过 `normalize.sh` 的 shebang/path 改写。凡是含 ELF/Mach-O 二进制的包都必须满足静态目标。
 
-The shipped binary must be portable and **must not depend on any dynamic library under `/nix`**.
+macOS 无法做到完全静态（没有静态 libSystem/libc），因此 darwin 的目标退一步为：**每个 nix 依赖都静态链接，只有 macOS 系统库（如** **`/usr/lib/libSystem.B.dylib`）可以保持动态**——详见下文 portability 硬规则。但 Linux 侧的 musl 纯静态是硬底线。
 
-- **Linux:** full static is the goal (`pkgsStatic`).
-- **macOS:** full static is impossible (no static libSystem/libc), so the goal is: **every nix dependency statically linked; only macOS system libraries (e.g. `/usr/lib/libSystem.B.dylib`) may stay dynamic.** Apply this ladder:
-  1. Full static where it works (`pkgsStatic`) — sometimes needs small upstream patches to make a static link succeed on darwin (e.g. `packages/krb5/darwin.nix` builds the fully-static `pkgsStatic.krb5` but disables the macOS CCAPI ccache backend and moves a DES const definition so static archive linking of `libkrb5.a`/`libk5crypto.a` resolves; the result depends only on `/usr/lib/libSystem`).
-  2. Otherwise, link every other dependency statically; let only system libs stay dynamic.
-  3. Copy the dylibs (the dylib-bundle variant below) only when a dependency cannot be statically linked — **requires explicit confirmation**.
+### 版本策略：一律用 unstable channel 最新版
 
-If a build retains `/nix/store` dylibs, fix it (`CGO_ENABLED=0`, patch install names / rpaths, or — with confirmation — copy the dylib).
+**长期目标是所有包都使用官方维护的、`unstable`** **channel 的最新版本。**
 
-For strategy 2, when the darwin `pkgsStatic` set would only drag in a separate static toolchain (no real static-libc payoff) but the tool has just one or two non-system dynamic deps, a lighter variant is: build from the **native `pkgs`** derivation (prebuilt in the upstream cache, no local toolchain build) and inject only that dependency's static archive (e.g. `pkgs.perl.override { libxcrypt = pkgsStatic.libxcrypt; }`), then rewrite any remaining `/nix/store` Mach-O install names to `@loader_path`-relative paths in the package's `postInstall` (`normalize.sh` does not touch Mach-O load commands). This keeps the result depending only on `/usr/lib` system libs and relocatable. `packages/perl` uses this on darwin while staying fully static via `pkgsStatic` on Linux. `packages/wget` is fully static via `pkgsStatic` on both platforms: on Linux straight from the set (`./wget/linux.nix`), on darwin from `pkgsStatic.wget` with only its *build-time* `perlPackages` overridden to the native set (`./wget/darwin-static.nix`) — the darwin `pkgsStatic.perl` itself fails to build (its final `mktables` step crashes the freshly built static miniperl, which has most locale support compiled out), and wget needs perl only as a build tool. A dependency-by-dependency variant that instead builds native `pkgs.wget` and swaps each non-system dep for its `pkgsStatic` archive is kept as an alternative in `./wget/darwin.nix`.
+- manifest 里 `version` 字段默认就是 `unstable`；新增包不写 `version` 即取 unstable。
+- 任何被 pin 在老版本（如 `version = "25.11"` / `"24.11"`）的包都视为**临时状态**，应定期用 `regress-patched-package-to-upstream` skill 复查，尝试切回 unstable 最新版。
+- 任何 `packages/` 下的本地 patch 包，只要是临时的编译修复（而非刻意的 repackaging），一旦上游修好就应切回上游、在 `manifests/default.nix` 里维护。
 
-For a feature-rich tool whose darwin `pkgsStatic` build fails only because *some* optional feature libraries cannot build or link statically, another strategy-2 variant is **feature reduction**: start from the `pkgsStatic.<tool>` derivation and disable just the offending features via `.override`, keeping every codec/library whose static archive links cleanly. `packages/ffmpeg/darwin.nix` does this on top of `pkgsStatic.ffmpeg-headless`: the full `pkgsStatic.ffmpeg` is unbuildable on aarch64-darwin (dav1d/opus/etc. static builds hit a meson `arm64` cross-file bug; zimg/vid-stab/OpenCL pull in `openmp` -> `llvm-static`, which fails at CheckAtomic/libatomic; `libopenmpt` drags in an autogen step that gets SIGKILLed), so those features are turned off (`withDav1d`/`withOpus`/`withZimg`/... = false). Disabling every `openmp` path also keeps `nix eval` clean without a `config.problems` handler (openmp is the only thing that would mark the darwin static `python3` broken). `withOpenapv` is off because `liboapv` ships only a `.dylib` even under `pkgsStatic` (it would leave a `/nix/store` load command); the network/TLS libs (gnutls/ssh/srt/rist) are off because they fail ffmpeg's static configure link test. `x265` is kept but needs two package fixes (drop its `postInstall` `rm -f $out/lib/*.a`, which under `pkgsStatic`/`ENABLE_SHARED=false` would delete the only artifact `libx265.a`; and `multibitdepthSupport = false` to avoid undefined `x265_1{0,2}bit::` symbols in the static archive — trade-off: 8-bit HEVC encode only). The result depends only on `/usr/lib/*` and `/System/Library/Frameworks/*`.
+### Standalone strategy（preference order）
 
-For runtimes that are not statically linkable but are reusable across tools (e.g. a Python interpreter), prefer the **shared-sibling wrapper** variant of strategy 2 instead of `nix bundle`: ship the heavy runtime as its own package (e.g. `packages/python/311`) and give each tool a thin wrapper that resolves the runtime at execution time from the co-located sibling under a shared `$store` parent (e.g. `netron` -> `$store/python311`). This keeps tools as ordinary multi-file packages (so they can expose several binaries when needed), shares one runtime across tools instead of duplicating it, and still goes through normal standalone normalization.
+"Standalone" 意为可移植、自包含——**不**要求一定是单个完全静态的 ELF。决定如何构建一个工具时，按以下顺序优先：
 
-Perl tools follow this sibling-wrapper convention against the shared `packages/perl`: the tool's bin is renamed (e.g. `exiftool` -> `_exiftool`) and replaced with a wrapper that runs `$store/perl/bin/perl` on it with `PERL5LIB` pointing at the tool's bundled `lib/perl5` modules (`cloc`, `exiftool`). Handling XS (compiled) Perl deps is **platform-split**, because the two `packages/perl` builds differ: the Linux `perl` is fully static (`pkgsStatic`, built `-Uusedl`) and therefore **cannot `dlopen` any XS `.so` at runtime**, while the darwin `perl` is native and can. So `packages/exiftool` splits into `linux.nix` (Linux) and `darwin.nix`:
-- **Linux (`packages/exiftool/linux.nix`):** the optional compression XS modules must be compiled **into** the static interpreter as static extensions. Upstream `pkgsStatic.perl` already vendors `Compress::Raw::{Zlib,Bzip2}` and the `IO::Compress::*` family; `packages/perl/linux.nix` additionally injects the two missing XS dists (`Compress::Raw::Lzma`, `IO::Compress::Brotli`) under `cpan/` (with a `config.in` pointing Lzma at static `xz` and a minimal `Makefile.PL` linking the static `brotli` archives, plus MANIFEST entries) so perl's own build harness links `liblzma`/`libbrotli` straight into the `perl` binary. exiftool then ships only pure-Perl pieces (its script, `Image::ExifTool`, pure-Perl `Archive::Zip`) — no `.so` at all.
-- **darwin (`packages/exiftool/darwin.nix`):** the native perl can load `.bundle`s, so apply strategy 2 to each XS module — re-point the module's nixpkgs build at the matching `pkgsStatic.<lib>` lib dir (which ships only a `.a`) so the compression lib links statically and the resulting `.bundle` depends only on `/usr/lib` system libs (`Compress::Raw::{Zlib,Bzip2,Lzma}`, `IO::Compress::Brotli` -> static `zlib`/`bzip2`/`xz`/`brotli`), avoiding any dylib copy.
+1. **Static compilation**（`pkgsStatic`），凡是能静态编译就静态。这是绝大多数包的默认路线。
+2. **手动 patch + bundle**，当完全静态链接不现实时：改写硬编码路径、vendor 配置、bundle 所需资源（见 `packages/`）。
+3. **`nix bundle`** 仅作为最后手段，用于确实无法静态编译的工具（如基于 Node.js 的工具）。经由 `lib/make-bundle.nix`（matthewbauer/nix-bundle）实现；产出单个自解压可执行文件，**仅限 Linux**（依赖 user namespaces）。它的主要缺点是把整个 closure 塞进一个大文件、只暴露单一入口（`meta.mainProgram`），因此无法 ship 多个二进制。
 
-Non-goals:
-- Guarantee that every tool is a fully static single binary on every platform. Some packages are intentionally non-static (e.g. fonts), and "static" is best-effort depending on upstream.
-- Provide a general-purpose packaging framework beyond what this repository needs.
+#### Portability requirement（the hard rule）
+
+Ship 出去的二进制必须可移植，且 **绝不能依赖任何** **`/nix`** **下的动态库**。
+
+- **Linux：** 目标是 musl 完全静态（`pkgsStatic`），无 glibc、无 `.so`。
+- **macOS：** 完全静态不可能（没有静态 libSystem/libc），目标是：**每个 nix 依赖都静态链接，只有 macOS 系统库（如** **`/usr/lib/libSystem.B.dylib`）可以保持动态。** 按以下阶梯处理：
+  1. 能完全静态就完全静态（`pkgsStatic`）——有时需要小的上游 patch 才能让 darwin 上的静态链接成功（例如 `packages/krb5/darwin.nix` 构建完全静态的 `pkgsStatic.krb5`，但禁用 macOS CCAPI ccache 后端、并移动一处 DES const 定义，使 `libkrb5.a`/`libk5crypto.a` 的静态归档链接能 resolve；结果只依赖 `/usr/lib/libSystem`）。
+  2. 否则，把其余每个依赖都静态链接，只让系统库保持动态。
+  3. 复制 dylib（下文 dylib-bundle 变体）只在某个依赖无法静态链接时才用——**需要显式确认**。
+
+如果构建后仍残留 `/nix/store` dylib，就修掉它（`CGO_ENABLED=0`、patch install names / rpaths，或——经确认后——复制 dylib）。
+
+对于 strategy 2：当 darwin `pkgsStatic` 集合只会拖进一套独立的静态 toolchain（并没有真正的 static-libc 收益），而工具只有一两个非系统的动态依赖时，有一个更轻量的变体：从 **native** **`pkgs`** derivation 构建（上游缓存里已预编译，无需本地编 toolchain），只注入那个依赖的静态归档（如 `pkgs.perl.override { libxcrypt = pkgsStatic.libxcrypt; }`），再在包的 `postInstall` 里把残留的 `/nix/store` Mach-O install name 改写成 `@loader_path` 相对路径（`normalize.sh` 不处理 Mach-O load command）。这样结果只依赖 `/usr/lib` 系统库且可 relocate。`packages/perl` 在 darwin 上用这套，同时在 Linux 上经 `pkgsStatic` 保持完全静态。`packages/wget` 在两个平台都经 `pkgsStatic` 完全静态：Linux 直接从集合取（`./wget/linux.nix`），darwin 从 `pkgsStatic.wget` 取、仅把它 *build-time* 的 `perlPackages` override 成 native 集（`./wget/darwin-static.nix`）——darwin 的 `pkgsStatic.perl` 本身构建失败（它最后的 `mktables` 步骤会让刚编出来的静态 miniperl 崩溃，后者的 locale 支持大多被编译掉了），而 wget 只把 perl 当构建工具用。一个逐依赖替换的变体（改为构建 native `pkgs.wget`、再把每个非系统依赖换成其 `pkgsStatic` 归档）作为备选保留在 `./wget/darwin.nix`。
+
+对于一个功能丰富、darwin `pkgsStatic` 构建仅因 *某些* 可选特性库无法静态构建/链接而失败的工具，另一个 strategy-2 变体是 **feature reduction**：从 `pkgsStatic.<tool>` derivation 起步，仅通过 `.override` 关掉那些惹事的特性，保留每个 `.a` 能干净链接的 codec/库。`packages/ffmpeg/darwin.nix` 在 `pkgsStatic.ffmpeg-headless` 之上就是这么做的：完整的 `pkgsStatic.ffmpeg` 在 aarch64-darwin 上无法构建（dav1d/opus 等的静态构建撞上 meson `arm64` cross-file bug；zimg/vid-stab/OpenCL 拖进 `openmp` -> `llvm-static`，后者在 CheckAtomic/libatomic 处失败；`libopenmpt` 拖进一个会被 SIGKILL 的 autogen 步骤），所以这些特性被关掉（`withDav1d`/`withOpus`/`withZimg`/... = false）。关掉所有 `openmp` 路径也让 `nix eval` 保持干净、无需 `config.problems` handler（openmp 是唯一会把 darwin 静态 `python3` 标记为 broken 的东西）。`withOpenapv` 关掉是因为 `liboapv` 即便在 `pkgsStatic` 下也只 ship 一个 `.dylib`（会留下 `/nix/store` load command）；network/TLS 库（gnutls/ssh/srt/rist）关掉是因为它们过不了 ffmpeg 的静态 configure 链接测试。`x265` 保留，但需要两处包修复（去掉它 `postInstall` 里的 `rm -f $out/lib/*.a`，在 `pkgsStatic`/`ENABLE_SHARED=false` 下它会删掉唯一产物 `libx265.a`；以及 `multibitdepthSupport = false` 以避免静态归档里出现未定义的 `x265_1{0,2}bit::` 符号——代价：只支持 8-bit HEVC 编码）。结果只依赖 `/usr/lib/*` 和 `/System/Library/Frameworks/*`。
+
+对于无法静态链接、但能被多个工具复用的 runtime（如 Python 解释器），优先用 strategy 2 的 **shared-sibling wrapper** 变体而非 `nix bundle`：把这个重 runtime 作为独立包 ship（如 `packages/python/311`），再给每个工具一个薄 wrapper，运行期从共享 `$store` 父目录下同级的 sibling 解析出 runtime（如 `netron` -> `$store/python311`）。这让工具仍是普通的多文件包（需要时可暴露多个二进制），一份 runtime 被多个工具共享而非重复，并且照常走 standalone normalization。
+
+Perl 工具遵循这套 sibling-wrapper 约定、对接共享的 `packages/perl`：工具的 bin 被 rename（如 `exiftool` -> `_exiftool`）并替换为一个 wrapper，用 `$store/perl/bin/perl` 运行它、`PERL5LIB` 指向工具自带的 `lib/perl5` 模块（`cloc`、`exiftool`）。处理 XS（编译型）Perl 依赖是 **platform-split** 的，因为两个 `packages/perl` 构建不同：Linux 的 `perl` 是完全静态（`pkgsStatic`，以 `-Uusedl` 构建），因此**运行期无法** **`dlopen`** **任何 XS** **`.so`**；而 darwin 的 `perl` 是 native、可以。所以 `packages/exiftool` 拆成 `linux.nix`（Linux）和 `darwin.nix`：
+
+- **Linux（`packages/exiftool/linux.nix`）：** 可选的压缩 XS 模块必须作为静态扩展编译**进**静态解释器。上游 `pkgsStatic.perl` 已 vendor 了 `Compress::Raw::{Zlib,Bzip2}` 和 `IO::Compress::*` 系列；`packages/perl/linux.nix` 额外在 `cpan/` 下注入缺的两个 XS dist（`Compress::Raw::Lzma`、`IO::Compress::Brotli`）（配一个把 Lzma 指向静态 `xz` 的 `config.in`、以及一个链接静态 `brotli` 归档的最小 `Makefile.PL`，加上 MANIFEST 条目），让 perl 自己的构建 harness 把 `liblzma`/`libbrotli` 直接链进 `perl` 二进制。exiftool 随后只 ship 纯 Perl 部分（它的脚本、`Image::ExifTool`、纯 Perl 的 `Archive::Zip`）——完全没有 `.so`。
+- **darwin（`packages/exiftool/darwin.nix`）：** native perl 能加载 `.bundle`，所以对每个 XS 模块套用 strategy 2——把模块的 nixpkgs 构建重新指向对应的 `pkgsStatic.<lib>` lib 目录（只 ship `.a`），使压缩库静态链接、产出的 `.bundle` 只依赖 `/usr/lib` 系统库（`Compress::Raw::{Zlib,Bzip2,Lzma}`、`IO::Compress::Brotli` -> 静态 `zlib`/`bzip2`/`xz`/`brotli`），从而避免任何 dylib 复制。
+
+Non-goals：
+
+- 不保证每个工具在每个平台上都是单个完全静态二进制。有些包故意非静态（如字体），"static" 是尽力而为、取决于上游。
+- 不提供超出本仓库需要的通用打包框架。
 
 ## High-Level Architecture
 
-The build pipeline is:
-1. Select upstream package derivations declaratively via per-platform manifests.
-2. Merge in locally-defined packages (patched/wrapped/pinned builds) and platform-specific additions.
-3. Wrap each derivation with a "standalone normalization" step to slim it down and remove Nix-specific references.
-4. Expose each final derivation as a flake package output.
-5. In CI, build each package, archive it into a tar.gz, and publish to an OCI registry using `oras`.
+构建 pipeline：
 
-The flake is intentionally thin; logic lives in `lib/` and the package definitions live in `manifests/` and `packages/`.
+1. 通过 per-platform manifest 声明式选择上游包 derivation。
+2. 合入本地定义的包（patched/wrapped/pinned 构建）与平台特定的补充。
+3. 用一个 "standalone normalization" 步骤包裹每个 derivation，为其瘦身并移除 Nix 特定引用。
+4. 把每个最终 derivation 暴露为 flake package 输出。
+5. 在 CI 中，构建每个包、归档成 tar.gz，并用 `oras` 发布到 OCI registry。
+
+flake 刻意做得很薄；逻辑在 `lib/`，包定义在 `manifests/` 和 `packages/`。
 
 ## Repository Layout
 
-- [flake.nix](file:///workspace/standalone-binaries/flake.nix): Thin entry point. Declares inputs, builds per-system envs, wires helpers, and exposes outputs.
-- [lib/](file:///workspace/standalone-binaries/lib): Reusable build helpers.
-  - [make-manifest-packages.nix](file:///workspace/standalone-binaries/lib/make-manifest-packages.nix): Turns a manifest attrset into a set of upstream nixpkgs derivations.
-  - [make-standalone.nix](file:///workspace/standalone-binaries/lib/make-standalone.nix): Wraps a derivation with the normalization step (runs `scripts/normalize.sh`).
-  - [make-bundle.nix](file:///workspace/standalone-binaries/lib/make-bundle.nix): Bundles a derivation into a single self-extracting executable via `nix bundle` (matthewbauer/nix-bundle), for tools that cannot be statically compiled. Linux only. Bundle outputs skip the standalone normalization step.
-- [manifests/](file:///workspace/standalone-binaries/manifests): Declarative selection of upstream nixpkgs packages.
-  - [default.nix](file:///workspace/standalone-binaries/manifests/default.nix): Single manifest keyed by package name; each entry declares its target `platforms` and optional per-platform config overrides.
-- [packages/](file:///workspace/standalone-binaries/packages): Locally-defined derivations and overrides, organized **one directory per package**.
-  - [local.nix](file:///workspace/standalone-binaries/packages/local.nix): Explicit manifest that aggregates local packages into `{ common; linux; darwin; }` via `callPackage ./<pkg>`.
-  - `packages/<pkg>/default.nix`: One directory per local package; the directory also holds that package's own resources (patches, wrapper scripts, vendored configs, e.g. `packages/podman/{bin,conf,*.patch}`, `packages/python/311/Setup.local`).
-  - Multi-version applications are grouped under a single application directory with one subdirectory per version: `packages/cmake/{default,3_27_9,4_1_2}`, `packages/python/{311,312,313}`, `packages/clang-tools/{18,19,20,21,22}`, `packages/protobuf/{3_8_0,3_9_2}`. The default/current version of an app lives in `default/`.
-  - `packages/protobuf/generic-v3.nix`: A shared builder reused by the protobuf version directories; shared builders are not given their own version subdirectory.
-- [scripts/normalize.sh](file:///workspace/standalone-binaries/scripts/normalize.sh): Output normalization used by the standalone wrapper.
-- CI workflows:
+- [flake.nix](file:///workspace/standalone-binaries/flake.nix)：薄入口。声明 inputs、构建 per-system env、接好 helper、暴露 outputs。
+- [lib/](file:///workspace/standalone-binaries/lib)：可复用构建 helper。
+  - [make-manifest-packages.nix](file:///workspace/standalone-binaries/lib/make-manifest-packages.nix)：把 manifest attrset 转成一组上游 nixpkgs derivation。
+  - [make-standalone.nix](file:///workspace/standalone-binaries/lib/make-standalone.nix)：用 normalization 步骤（运行 `scripts/normalize.sh`）包裹一个 derivation。
+  - [make-bundle.nix](file:///workspace/standalone-binaries/lib/make-bundle.nix)：经 `nix bundle`（matthewbauer/nix-bundle）把一个 derivation 打成单个自解压可执行文件，用于无法静态编译的工具。仅限 Linux。bundle 产物跳过 standalone normalization。
+- [manifests/](file:///workspace/standalone-binaries/manifests)：声明式选择上游 nixpkgs 包。
+  - [default.nix](file:///workspace/standalone-binaries/manifests/default.nix)：以包名为 key 的单一 manifest；每个条目声明其目标 `platforms` 及可选的 per-platform 配置 override。
+- [packages/](file:///workspace/standalone-binaries/packages)：本地定义的 derivation 与 override，**一个目录一个包**。
+  - [local.nix](file:///workspace/standalone-binaries/packages/local.nix)：显式 manifest，经 `callPackage ./<pkg>` 把本地包聚合为 `{ common; linux; darwin; }`。
+  - `packages/<pkg>/default.nix`：一个目录一个本地包；该目录也放这个包自己的资源（patch、wrapper 脚本、vendor 配置，如 `packages/podman/{bin,conf,*.patch}`、`packages/python/311/Setup.local`）。
+  - 多版本应用归到单一应用目录下、一个版本一个子目录：`packages/cmake/{default,3_27_9,4_1_2}`、`packages/python/{311,312,313}`、`packages/clang-tools/{18,19,20,21,22}`、`packages/protobuf/{3_8_0,3_9_2}`。应用的默认/当前版本放在 `default/`。
+  - `packages/protobuf/generic-v3.nix`：被各 protobuf 版本目录复用的共享 builder；共享 builder 不单独给版本子目录。
+- [scripts/normalize.sh](file:///workspace/standalone-binaries/scripts/normalize.sh)：standalone wrapper 用的产物 normalization。
+- CI workflows：
   - [build-linux.yaml](file:///workspace/standalone-binaries/.github/workflows/build-linux.yaml)
   - [build-darwin.yaml](file:///workspace/standalone-binaries/.github/workflows/build-darwin.yaml)
-  - [build-llvm-tools.yaml](file:///workspace/standalone-binaries/.github/workflows/build-llvm-tools.yaml): dedicated builder for clang-tools / lld (excluded from the main Linux matrix).
-  - [build-sb.yaml](file:///workspace/standalone-binaries/.github/workflows/build-sb.yaml): cross-compiles and publishes the Go `sb` client itself (`sb-<arch>`).
+  - [build-llvm-tools.yaml](file:///workspace/standalone-binaries/.github/workflows/build-llvm-tools.yaml)：clang-tools / lld 的专用 builder（从主 Linux matrix 里排除）。
+  - [build-sb.yaml](file:///workspace/standalone-binaries/.github/workflows/build-sb.yaml)：交叉编译并发布 Go 写的 `sb` client 自身（`sb-<arch>`）。
 
 ## Flake Outputs and Package Selection
 
 ### Systems
 
-The flake currently defines outputs for:
+flake 目前为以下系统定义 output：
+
 - `x86_64-linux`
 - `aarch64-darwin`
 
 ### Per-system environments
 
-`flake.nix` builds one "env" per pinned nixpkgs input (`unstable`, `26.05`, `25.11`, `25.05`, `24.11`, `24.05`). Each env exposes both `pkgs` and `pkgsStatic`. The manifest picks which env + variant a package comes from.
+`flake.nix` 为每个 pin 的 nixpkgs input（`unstable`、`26.05`、`25.11`、`25.05`、`24.11`、`24.05`）构建一个 "env"。每个 env 同时暴露 `pkgs` 和 `pkgsStatic`。manifest 决定一个包从哪个 env + 变体取。
 
 ### Package Sources
 
-The final package set merges three sources:
+最终包集合合并三个来源：
 
-1. **Upstream packages (manifest-driven)** — `lib/make-manifest-packages.nix` applied to `manifests/default.nix` for the current system. Each manifest entry maps a package name to a config attrset:
-   - `platforms`: list of systems the package is built for (omitted => all systems).
-   - `version`: which nixpkgs env to import (defaults to `unstable`).
-   - `isStatic`: use `pkgsStatic` (`true`, default) or regular `pkgs` (`false`).
-   - `output`: list of derivation outputs to expose (`[ "out" ]` by default; sometimes `[ "bin" ]`), merged with `symlinkJoin`.
-   - `alias`: rename the exported flake package.
-   - `bundle`: `nix bundle` the package into a single self-extracting executable instead of normalizing it (Linux only, for tools that cannot be statically compiled). Bundle packages always use regular `pkgs`.
-   - `"<system>"`: a per-platform key that overrides any of the fields above (effective config = package-level shared config `//` platform key, platform wins).
-
-2. **Local packages** — `packages/local.nix` returns `{ common; linux; darwin; }`:
-   - `common`: cross-platform pinned/patched/wrapped builds (e.g. specific protobuf versions, `coreutils`, vim/zsh/curl wrappers, `eza-ls`).
-   - `linux`: Linux-only patched tooling (podman stack, multiple clang-tools versions, static Python variants, etc.).
-   - `darwin`: a subset of Go tools rebuilt with `CGO_ENABLED=0` to reduce dynamic library dependence, plus `nodejs-slim26` (a mostly-static Node.js 26 — see below).
-
-3. **Platform merge** — the flake merges `upstreamPackages // local.common // (local.linux | local.darwin)` depending on the target system.
+1. **Upstream packages（manifest-driven）**——`lib/make-manifest-packages.nix` 应用到当前系统的 `manifests/default.nix`。每个 manifest 条目把包名映射到一个配置 attrset：
+   - `platforms`：该包构建的目标系统列表（省略 => 所有系统）。
+   - `version`：从哪个 nixpkgs env 导入（默认 `unstable`，也是长期目标值）。
+   - `isStatic`：用 `pkgsStatic`（`true`，默认）还是普通 `pkgs`（`false`）。
+   - `output`：要暴露的 derivation output 列表（默认 `[ "out" ]`，有时 `[ "bin" ]`），用 `symlinkJoin` 合并。
+   - `alias`：重命名导出的 flake package。
+   - `bundle`：用 `nix bundle` 把包打成单个自解压可执行文件、而非 normalize（仅 Linux，用于无法静态编译的工具）。bundle 包总是用普通 `pkgs`。
+   - `"<system>"`：per-platform key，可 override 上面任意字段（有效配置 = 包级共享配置 `//` 平台 key，平台优先）。
+2. **Local packages**——`packages/local.nix` 返回 `{ common; linux; darwin; }`：
+   - `common`：跨平台的 pinned/patched/wrapped 构建（如特定 protobuf 版本、`coreutils`、vim/zsh/curl wrapper、`eza-ls`）。
+   - `linux`：Linux-only 的 patched 工具（podman 栈、多版本 clang-tools、静态 Python 变体等）。
+   - `darwin`：一小撮以 `CGO_ENABLED=0` 重建的 Go 工具（降低动态库依赖），外加 `nodejs-slim26`（一个基本静态的 Node.js 26——见下文）。
+3. **Platform merge**——flake 按目标系统合并 `upstreamPackages // local.common // (local.linux | local.darwin)`。
 
 ### "all" Aggregation Output
 
-In addition to per-package outputs, the flake provides an `all` output using a `linkFarm` over all standalone derivations. This is a convenience for local use and inspection.
+除 per-package output 外，flake 还提供一个 `all` output，用 `linkFarm` 覆盖所有 standalone derivation。便于本地使用与检视。
 
 ## Standalone Normalization Pipeline
 
-Every derivation in the final package set is wrapped by `make-standalone.nix`, which:
-- Copies the derivation output into a fresh, writable `$out`.
-- Runs [scripts/normalize.sh](file:///workspace/standalone-binaries/scripts/normalize.sh) over the output tree.
+最终包集合里的每个 derivation 都被 `make-standalone.nix` 包裹，它：
 
-Bundle packages (`bundle = true` in the manifest) are the exception: they are produced by `make-bundle.nix` as a single self-extracting executable and skip normalization entirely (stripping / nuke-refs / shebang rewriting would corrupt the archive).
+- 把 derivation output 复制进一个全新的、可写的 `$out`。
+- 在 output 树上运行 [scripts/normalize.sh](file:///workspace/standalone-binaries/scripts/normalize.sh)。
 
-This wrapper is purely post-processing; it does not change how a package is compiled (static vs dynamic). The normalization in `normalize.sh` includes:
-- Remove non-essential directories (`share/man`, `share/doc`, `share/bash-completion`, `nix-support`).
-- Resolve symlinks: keep links pointing inside `$out`; inline (copy) the real file for links pointing outside (e.g. into `/nix/store`) so the payload stays self-contained; drop dangling links.
-- For text files: rewrite shebangs from hard-coded Nix store paths to `/usr/bin/env ...`; strip Nix store path fragments.
-- For ELF binaries: `strip --strip-unneeded` (best-effort) and `nuke-refs`.
-- Rename `.*-wrapped` executables by removing the `-wrapped` suffix and leading dot.
-- Remove `.a` and `.pyc` files.
-- **Final portability check (the hard rule):** walk every ELF (Linux) / Mach-O (Darwin) file, print its dynamic dependencies (`patchelf --print-needed` + `--print-rpath` on Linux, `otool -L` on Darwin — the tools are added to the standalone wrapper's `nativeBuildInputs` per platform in `make-standalone.nix`), and **fail the build** if any dependency (or ELF rpath) resolves under `/nix`. This enforces "the shipped binary must not depend on any dynamic library under `/nix`" at build time. `otool -L`'s first line is the file's own path (under the `/nix/store` output dir) and is skipped before matching.
+bundle 包（manifest 里 `bundle = true`）是例外：它们由 `make-bundle.nix` 产出为单个自解压可执行文件、完全跳过 normalization（strip / nuke-refs / shebang 改写会损坏归档）。
 
-Design intent: keep runtime payloads small and remove implicit dependence on the Nix store layout.
+这个 wrapper 纯粹是后处理；它不改变包如何编译（static vs dynamic）。`normalize.sh` 里的 normalization 包括：
+
+- 移除非必要目录（`share/man`、`share/doc`、`share/bash-completion`、`nix-support`）。
+- 解析 symlink：保留指向 `$out` 内部的链接；对指向外部（如 `/nix/store`）的链接，inline（复制）其真实文件，使 payload 保持自包含；丢弃 dangling 链接。
+- 文本文件：把硬编码 Nix store 路径的 shebang 改写为 `/usr/bin/env ...`；剥掉 Nix store 路径片段。
+- ELF 二进制：`strip --strip-unneeded`（尽力而为）与 `nuke-refs`。
+- rename `.*-wrapped` 可执行文件，去掉 `-wrapped` 后缀与前导 `.`。
+- 移除 `.a` 与 `.pyc` 文件。
+- **最终 portability check（the hard rule）：** 遍历每个 ELF（Linux）/ Mach-O（Darwin）文件，打印其动态依赖（Linux 用 `patchelf --print-needed` + `--print-rpath`，Darwin 用 `otool -L`——这些工具按平台加进 standalone wrapper 的 `nativeBuildInputs`，见 `make-standalone.nix`），若任一依赖（或 ELF rpath）resolve 到 `/nix` 下就**让构建失败**。这在构建期强制执行「ship 出去的二进制不得依赖任何 `/nix` 下的动态库」。`otool -L` 的第一行是文件自身路径（在 `/nix/store` output 目录下），匹配前会跳过。
+
+设计意图：让运行期 payload 保持小巧、并移除对 Nix store 布局的隐式依赖。
 
 ## CI / Publishing Model
 
-The CI model is "build each tool independently and publish an artifact per tool".
+CI 模型是「独立构建每个工具、每个工具发布一个 artifact」。
 
-### Build selection (Linux)
+### Build selection（Linux）
 
-The Linux workflow uses a two-stage model to avoid spinning up one runner per package on every change:
+Linux workflow 用两阶段模型，避免每次改动都为每个包起一个 runner：
 
-1. A `discover` job enumerates all package names via `nix eval .#packages.x86_64-linux` (excluding the `all` aggregate), resolves each package's `outPath`, and queries the Cachix binary cache with `nix path-info --store <cachix>`. Packages missing from the cache form a GitHub Actions matrix emitted as a job output. Packages in `EXCLUDE_PKGS` (built by dedicated workflows) are filtered out.
-2. The `build` job consumes that matrix via `fromJSON` and runs only for selected packages. When nothing needs building, the `build` job is skipped (`if: needs.discover.outputs.count != '0'`).
+1. 一个 `discover` job 经 `nix eval .#packages.x86_64-linux` 枚举所有包名（排除 `all` 聚合），resolve 每个包的 `outPath`，并用 `nix path-info --store <cachix>` 查询 Cachix 二进制缓存。缓存里缺失的包组成一个 GitHub Actions matrix、作为 job output 发出。`EXCLUDE_PKGS`（由专用 workflow 构建）里的包被过滤掉。
+2. `build` job 经 `fromJSON` 消费该 matrix、仅对选中的包运行。无需构建时 `build` job 被跳过（`if: needs.discover.outputs.count != '0'`）。
 
-`workflow_dispatch` with a specific `name` builds only that package; with `*` (or empty) it forces all packages. `schedule` always forces all packages.
+`workflow_dispatch` 带具体 `name` 只构建那个包；带 `*`（或空）强制构建所有包。`schedule` 总是强制构建所有包。
 
 ### Artifacts
 
-In both Linux and Darwin workflows:
-- The CI job runs `nix build .#<name>`.
-- The `./result` output is copied into a directory named after the package via `rsync --copy-unsafe-links`.
-- The directory is archived into:
-  - `<name>.linux-x86_64.tar.gz` on Linux
-  - `<name>.darwin-arm64.tar.gz` on macOS
+Linux 与 Darwin workflow 都：
+
+- CI job 运行 `nix build .#<name>`。
+- `./result` output 经 `rsync --copy-unsafe-links` 复制进一个以包名命名的目录。
+- 该目录归档为：
+  - Linux 上 `<name>.linux-x86_64.tar.gz`
+  - macOS 上 `<name>.darwin-arm64.tar.gz`
 
 ### Publishing
 
-Workflows publish the tarball to `ghcr.io` using `oras push`, tagged as:
+workflow 用 `oras push` 把 tarball 发布到 `ghcr.io`，tag 为：
+
 - `ghcr.io/curoky/standalone-binaries:<name>-linux-x86_64`
 - `ghcr.io/curoky/standalone-binaries:<name>-darwin-arm64`
 
-The flake also configures a Cachix substituter; CI pushes build closures to Cachix to speed up subsequent builds.
+flake 也配了一个 Cachix substituter；CI 把构建 closure push 到 Cachix 以加速后续构建。
 
-## Client Install / Upgrade Model (`client/`)
+## Client Install / Upgrade Model（`client/`）
 
-[client/](file:///workspace/standalone-binaries/client) is a small package manager (a brew/apt-style client) for **minimal environments that have no Nix/Homebrew/package manager**. It is written in **Go** as a single, statically-linked binary (`sb`), cross-compiled for `linux-x86_64` and `darwin-arm64`. It pulls the published tarballs straight from the `ghcr.io/curoky/standalone-binaries` OCI registry (reusing the `<name>-<arch>` tag -> layer blob digest flow described above) and installs them locally.
+[client/](file:///workspace/standalone-binaries/client) 是消费本仓库产物的 `sb` client（一个 brew/apt 风格的小型包管理器，Go 写的单个静态二进制，从 `ghcr.io` OCI registry 拉取已发布的 tarball 并安装）。它的设计是独立主题，详见 [client/CLAUDE.md](file:///workspace/standalone-binaries/client/CLAUDE.md)。
 
-### Design principles
-
-- **No host runtime dependencies.** sb is one static binary built with `CGO_ENABLED=0`; **nothing** (`curl`/`tar`/`oras`/`jq`/Nix) is needed on the target host. It leans on well-maintained Go libraries rather than hand-rolled plumbing: [go-containerregistry](https://github.com/google/go-containerregistry) (`crane`) for all OCI access (auth, manifest, layer pull, digest), [cobra](https://github.com/spf13/cobra) for the CLI, [`x/sync/errgroup`](https://pkg.go.dev/golang.org/x/sync/errgroup) for bounded-parallel fan-out, and [mpb](https://github.com/vbauerster/mpb) for concurrent download progress bars. Tarball extraction uses the standard library (`archive/tar` + `compress/gzip`). The same source cross-compiles to both platforms.
-- **Relocatable installs.** Everything a package exposes under the prefix is a **relative** symlink. Because links are relative, the entire prefix can be moved anywhere with **zero repair**.
-- **Independent packages.** Every package is treated as fully self-contained; sb does **no dependency resolution**. Each package is installed, removed, and relocated on its own. Runtime-heavy packages (node/python/perl tools) carry their own relative-path wrappers, so an individual `store/<name>/` directory is self-contained as well.
-- **Platforms.** Auto-detected arch tag is `linux-x86_64` (Linux/x86_64) or `darwin-arm64` (macOS/arm64), matching the published OCI tags; override with `--arch`.
-- **Self-publishing.** sb is itself published to the registry as `sb-<arch>` by [build-sb.yaml](file:///workspace/standalone-binaries/.github/workflows/build-sb.yaml), so it can be bootstrapped with a single `curl` and afterwards upgraded like any other package.
-
-### Source layout
-
-[client/](file:///workspace/standalone-binaries/client) is a Go module:
-- [main.go](file:///workspace/standalone-binaries/client/main.go): the entire client (OCI access, store/meta/link, commands, CLI).
-- [main_test.go](file:///workspace/standalone-binaries/client/main_test.go): offline unit tests (tar extraction + relative-link relocation + arg parsing + metadata round-trip).
-- [install.sh](file:///workspace/standalone-binaries/client/install.sh): the **bootstrap installer** for `sb` itself. On a fresh host there is no `oras`/Go/Nix, only `curl` + `tar`, so it cannot use `sb` to install `sb`. It pulls the `sb-<arch>` artifact straight over the ghcr registry HTTP API (anonymous pull token -> manifest -> single layer blob), extracts `sb/sb`, and drops the binary into the install dir (default `~/.local/bin`; override via `SB_INSTALL_DIR`/`--prefix` and `SB_ARCH`/`--arch`). Intended to be run as `curl -fsSL <raw-url>/install.sh | bash`. After this one-shot bootstrap, `sb` upgrades itself like any other package.
-
-### Local layout
-
-Packages are installed under a prefix (default `/opt/sb`):
-
-- `store/<name>/`: the extracted package contents.
-- `store/<name>/.sb-meta`: per-package metadata, kept **inside** the package directory so it is created and removed atomically with the package. It is a plain `key=value` file (`name`, `arch`, `digest`, `linked`, `installed_at`).
-- `bin/`, `lib/`, `share/`, ...: when installed with `--link` (default), **relative** symlinks into `store/<name>/` (the `.sb-meta` file is excluded from linking). `--nolink` installs into the store only.
-
-### Upgrade semantics (digest comparison)
-
-There is no human-readable version embedded in the OCI tag (`<name>-<arch>`), so "needs update" is decided by **OCI blob digest comparison**: the client resolves the remote manifest's layer digest and compares it against the `digest` recorded in the local `.sb-meta`. If they differ, the package is re-downloaded and re-extracted; otherwise it is skipped (`install` is idempotent unless `--force` is given).
-
-### Subcommands
-
-- `install <pkg>...`: install/refresh **one or more** packages; skips packages whose local digest already matches the remote (override with `--force`). `--link`/`--nolink` control symlink exposure. Multi-package installs run in three phases: (1) resolve every package's remote digest **in parallel** — if any package is missing, sb aborts with the full list and installs nothing; (2) download the needed blobs **in parallel** into the cache; (3) extract + link **serially**.
-- `remove <pkg>`: remove a package's symlinks (when linked) and delete its `store/<name>/` directory.
-- `upgrade [pkg...]`: upgrade the given packages, or all installed packages when none is given (reuses the install digest-skip logic, preserving each package's recorded arch/linked).
-- `info <pkg>`: show a package's recorded metadata (or its registry coordinates if not installed) and whether it is up to date vs. the remote digest.
-- `list`: list installed packages and their recorded digests by reading each `store/*/.sb-meta`.
-- `outdated`: report installed packages whose remote digest has changed.
-- `sync [file]`: install/refresh every package declared in a **YAML manifest** (default filename `sb.yaml`, or an explicit path argument) — the sb equivalent of a Brewfile / pyproject file. Packages are declared under `packages:` split into `link:` (installed into the store and linked into the prefix root) and `unlink:` (installed into the store only), plus optional `arch:` / `prefix:` defaults (an explicit `--arch` always wins; `prefix:` is used only when `--prefix` was not passed on the command line — the log file still lives under the flag's prefix). It reuses the `install` digest-skip logic, so re-running is idempotent. During `sync`, the packages referenced by `link`, `unlink`, and `profiles` are first merged into one de-duplicated install plan, so digest resolution and downloads happen in a single shared batch; afterwards sb reconciles each package's final root-link state and then links profile packages under `<prefix>/profile/<name>/`. If a package appears in multiple manifest sections, root linking wins over store-only/profile-only references. With `--prune` it additionally removes installed packages **not** referenced by the manifest (via the normal `remove` path), making the installed set match the manifest exactly. A manifest may also declare **profiles** (`profiles: { <name>: [<pkg>...] }`): each profile installs its packages into the store and aggregates their files via relative symlinks under `<prefix>/profile/<name>/`. The link split and profiles are sync-only concepts — the rest of the client (`install`/`remove`/`list`) is unaware of them.
-
-Common options: `--prefix PATH|--prefix=PATH` and `--arch ARCH|--arch=ARCH` (both `--opt value` and `--opt=value` forms accepted; options may appear before or after the package names). `--verbose` additionally mirrors the detailed log to stderr.
-
-### Logging
-
-Every invocation writes a detailed, structured (slog text) log to `<prefix>/sb.log` (the prefix is created if missing). The terminal shows simplified key-step output (the `> ...` lines, including install progress and an end-of-run summary with elapsed time) plus, during the download phase, a per-package byte-level progress bar (rendered by [mpb](https://github.com/vbauerster/mpb)); the full per-package resolve/download/extract/link events and phase timings go to the log file. Pass `--verbose` to also stream that log to stderr (it goes to stderr, so it does not clash with the progress bars on stdout).
-
-This is a client-only concern: the CI/publishing model above is unchanged, because the comparison relies on the layer digest that `ghcr.io` already computes during `oras push`.
+这是 client 侧的事，与上文的 CI/publishing 模型解耦——client 依赖的只是 `ghcr.io` 在 `oras push` 时已算好的 `<name>-<arch>` tag 与 layer digest。
 
 ## How to Make Changes
 
 ### Add a new upstream tool from nixpkgs
 
-1. Add an entry to [manifests/default.nix](file:///workspace/standalone-binaries/manifests/default.nix):
-   - Omit `platforms` for an all-platform package, or set `platforms = [ "x86_64-linux" ]` / `[ "aarch64-darwin" ]` to restrict it.
-   - For a package that exists everywhere but needs a different config per system, add a per-platform key, e.g. `aria2 = { "aarch64-darwin" = { version = "24.11"; }; };`.
-2. Decide whether it should use `pkgsStatic` (`isStatic = true`, default) or regular `pkgs` (`isStatic = false`).
-3. If the package has multiple outputs, pick the right one(s) via `output = [ "bin" ]` (or list several to merge them).
-4. If the nixpkgs attribute name is awkward, use `alias` to export a better public name.
-5. If the tool cannot be statically compiled, prefer the shared-sibling wrapper approach over `nix bundle`: ship it as a local package whose JS/runtime is reused from upstream and wrapped to invoke the co-located static `nodejs-slim26` sibling (see `pnpm`, `prettier`, `markdownlint-cli2`, `opencommit` under "local override", below). Use `bundle = true` (with `isStatic = false` and `platforms = [ "x86_64-linux" ]`) only as a true last resort for tools that have no reusable sibling runtime.
+1. 在 [manifests/default.nix](file:///workspace/standalone-binaries/manifests/default.nix) 加一个条目：
+   - 全平台包省略 `platforms`，或设 `platforms = [ "x86_64-linux" ]` / `[ "aarch64-darwin" ]` 限定。
+   - 一个到处都有、但需要 per-system 不同配置的包，加一个 per-platform key，如 `aria2 = { "aarch64-darwin" = { version = "24.11"; }; };`。
+   - **默认不写** **`version`（即取 unstable 最新版）**；只在上游最新版确实构建失败时才临时 pin 老版本，并按 `regress-patched-package-to-upstream` skill 定期复查、尽快切回 unstable。
+2. 决定它该用 `pkgsStatic`（`isStatic = true`，默认）还是普通 `pkgs`（`isStatic = false`）。
+3. 多 output 的包，用 `output = [ "bin" ]`（或列多个合并）挑对的 output。
+4. nixpkgs attribute 名不好时，用 `alias` 导出更好的公开名。
+5. 无法静态编译的工具，优先用 shared-sibling wrapper 而非 `nix bundle`：作为本地包 ship、其 JS/runtime 复用上游、wrap 成调用同级的静态 `nodejs-slim26` sibling（见下文 "local override" 里的 `pnpm`、`prettier`、`markdownlint-cli2`、`opencommit`）。仅当没有可复用的 sibling runtime 时，才把 `bundle = true`（配 `isStatic = false`、`platforms = [ "x86_64-linux" ]`）当真正的最后手段。
 
 ### Add a local override / patched build
 
-1. Create a directory `packages/<pkg>/` with a `default.nix`, plus any resources (patches, wrapper scripts, vendored configs) the package needs alongside it.
-2. Wire it into the appropriate set in `packages/local.nix` (`common`, `linux`, or `darwin`) via `callPackage ./<pkg> { }`. `local.nix` remains the explicit manifest of local packages (no auto-discovery).
-3. Follow the standalone strategy: prefer static; otherwise patch + bundle; use `nix bundle` only when static is impossible.
-4. Prefer minimal diffs: only patch what is necessary to improve portability, reduce dynamic deps, or fix runtime paths.
+1. 建目录 `packages/<pkg>/`，放一个 `default.nix`，外加该包所需的资源（patch、wrapper 脚本、vendor 配置）。
+2. 经 `callPackage ./<pkg> { }` 接进 `packages/local.nix` 里合适的集合（`common`、`linux` 或 `darwin`）。`local.nix` 仍是本地包的显式 manifest（无自动发现）。
+3. 遵循 standalone strategy：优先 static；否则 patch + bundle；仅当静态不可能时用 `nix bundle`。
+4. 优先最小 diff：只 patch 为改善 portability、降低动态依赖、或修运行期路径所必需的部分。
+5. **本地 patch 包只应是临时的编译修复。** 一旦上游修好，就按 `regress-patched-package-to-upstream` skill 切回上游、在 `manifests/default.nix` 里维护。刻意的 repackaging（wrapper、rename 二进制、bundle sibling 依赖，如 `packages/cloc`）不在此列。
 
-Example — Node.js tools (`packages/pnpm`, `packages/prettier`, `packages/markdownlint-cli2`, `packages/opencommit`): instead of `nix bundle`, each reuses the tool's JS distribution (`lib/node_modules/<pkg>`) and replaces the upstream bin wrapper(s) with a relative-path script that invokes the sibling static node (`$store/nodejs-slim26/bin/node`) explicitly, so the static node travels with the deployed tool instead of depending on a node on the host PATH after the standalone normalize pass. `pnpm`/`prettier` are additionally *built* against the static node by overriding the upstream interpreter (`pnpm` only unpacks JS; `prettier` fetches deps with pnpm), which exercises the static runtime end-to-end. `markdownlint-cli2`/`opencommit` are npm-based `buildNpmPackage` tools whose build needs `npm` (absent from `nodejs-slim`), so they are built with the regular node and only switch to the sibling static node at runtime. This supersedes the previous `bundle = true` entries for these tools in the manifest.
+Example——Node.js 工具（`packages/pnpm`、`packages/prettier`、`packages/markdownlint-cli2`、`packages/opencommit`）：不用 `nix bundle`，而是各自复用工具的 JS 分发（`lib/node_modules/<pkg>`）、把上游 bin wrapper 换成一个显式调用同级静态 node（`$store/nodejs-slim26/bin/node`）的相对路径脚本，使静态 node 随部署的工具一起走、而非在 standalone normalize 后依赖宿主 PATH 上的 node。`pnpm`/`prettier` 还额外通过 override 上游解释器**用静态 node 构建**（`pnpm` 只解 JS；`prettier` 用 pnpm 拉依赖），端到端地锻炼静态 runtime。`markdownlint-cli2`/`opencommit` 是基于 npm 的 `buildNpmPackage` 工具、构建需要 `npm`（`nodejs-slim` 里没有），所以用普通 node 构建、仅运行期切到同级静态 node。这套取代了 manifest 里这些工具之前的 `bundle = true` 条目。
 
-Example — `eza-ls` (`packages/eza-ls`): an `ls`-compatible front-end backed by `eza`. The upstream `eza` manifest package is left untouched; `eza-ls` is a separate `common` package that ships the static `eza` binary plus a `bin/ls` bash wrapper (`packages/eza-ls/ls-wrapper.sh`). The wrapper adapts the eggbean eza gist (the same script as `/opt/devspace/tools/eza-wrapper.sh`), changed to invoke the co-located `./eza` (so `ls` is self-contained) and extended to map most common GNU `ls` options — short **and** long forms (`-la`, `--all`, `--long`, `--reverse`, `--recursive`, `--inode`, `--classify`, `--human-readable`, `--color[=WHEN]`, `--sort=WORD`, `--time-style=STYLE`, `--group-directories-first`, `--ignore=GLOB`, `-I`, both `--opt=value` and `--opt value`) — to eza equivalents with ls-like defaults (human sizes, git status, `--color-scale`). Options eza cannot faithfully represent (e.g. `-Q`/`-C`/`-m`/`-w`, `--sort=version`, any unknown long option) transparently `exec /bin/ls "$@"` so no supported real-`ls` call errors out; it also falls back to `/bin/ls` when the bundled eza is unusable or stdout is piped. Compatibility is characterized by `packages/eza-ls/tests/compat.bats` (run via `nix shell nixpkgs#bats -c bats ...`), which asserts the accepted short/long options, the `/bin/ls` fallback for unmappable options, and entry-set parity with GNU `ls`.
+Example——`eza-ls`（`packages/eza-ls`）：一个 `ls` 兼容前端，后端是 `eza`。上游 `eza` manifest 包保持不动；`eza-ls` 是一个单独的 `common` 包，ship 静态 `eza` 二进制外加一个 `bin/ls` bash wrapper（`packages/eza-ls/ls-wrapper.sh`）。wrapper 改编自 eggbean eza gist（与 `/opt/devspace/tools/eza-wrapper.sh` 同一脚本），改为调用同级的 `./eza`（使 `ls` 自包含）、并扩展映射了大多数常见 GNU `ls` 选项——短**和**长形式（`-la`、`--all`、`--long`、`--reverse`、`--recursive`、`--inode`、`--classify`、`--human-readable`、`--color[=WHEN]`、`--sort=WORD`、`--time-style=STYLE`、`--group-directories-first`、`--ignore=GLOB`、`-I`、`--opt=value` 和 `--opt value` 两种形式）——映射到带 ls 风格默认值（human sizes、git status、`--color-scale`）的 eza 等价项。eza 无法忠实表达的选项（如 `-Q`/`-C`/`-m`/`-w`、`--sort=version`、任何未知长选项）会透明地 `exec /bin/ls "$@"`，使任何受支持的真 `ls` 调用都不会报错；当自带 eza 不可用或 stdout 被 pipe 时也回退到 `/bin/ls`。兼容性由 `packages/eza-ls/tests/compat.bats`（经 `nix shell nixpkgs#bats -c bats ...` 运行）刻画，断言被接受的短/长选项、不可映射选项的 `/bin/ls` 回退、以及与 GNU `ls` 的 entry-set 一致性。
 
 ### Change normalization behavior
 
-Edit [scripts/normalize.sh](file:///workspace/standalone-binaries/scripts/normalize.sh). Treat this script as a compatibility surface:
-- Changing removals/rewrites can break tools in subtle ways.
-- Prefer incremental changes and validate on a representative sample of packages.
+编辑 [scripts/normalize.sh](file:///workspace/standalone-binaries/scripts/normalize.sh)。把这个脚本当作兼容性表面对待：
+
+- 改动 removal/rewrite 可能以微妙方式弄坏工具。
+- 优先增量改动，并在有代表性的一批包上验证。
 
 ## Design Documentation Rules
 
-- This file is the design source of truth for the repository.
-- Any change that affects architecture, build flow, package selection model, artifact format, or publishing model must update this document in the same change.
+- 本文件是本仓库的设计 source of truth。
+- 任何影响 architecture、build flow、package selection model、artifact format 或 publishing model 的改动，必须在同一次改动里更新本文档。
+
