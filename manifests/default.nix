@@ -251,11 +251,11 @@
 
   # go pkgs
   #
-  # Cross-platform Go tools below carry an `aarch64-darwin` override pinning
-  # version 25.11 with `isStatic = false` (native pkgs, CGO on). Their upstream
-  # CGO build already links only /usr/lib + system frameworks (no /nix dylib),
-  # so no CGO_ENABLED=0 override is needed on macOS; forcing it off would only
-  # make the pure-Go binary retain a go-compiler store path and trip
+  # Cross-platform Go tools below carry an `aarch64-darwin` override with
+  # `isStatic = false` (native pkgs, CGO on). Their upstream CGO build already
+  # links only /usr/lib + system frameworks (no /nix dylib), so no
+  # CGO_ENABLED=0 override is needed on macOS; forcing it off would only make
+  # the pure-Go binary retain a go-compiler store path and trip
   # buildGoModule's disallowedReferences check. Linux keeps the default
   # (unstable, pkgsStatic musl static). Go tools that stay Linux-only (age,
   # sops, delve, gopls, ...) keep their `platforms = [ "x86_64-linux" ]`.
@@ -267,19 +267,16 @@
   };
   bazelisk = {
     "aarch64-darwin" = {
-      version = "25.11";
       isStatic = false;
     };
   };
   buildifier = {
     "aarch64-darwin" = {
-      version = "25.11";
       isStatic = false;
     };
   };
   croc = {
     "aarch64-darwin" = {
-      version = "25.11";
       isStatic = false;
     };
   };
@@ -291,25 +288,21 @@
       version = "25.11";
     };
     "aarch64-darwin" = {
-      version = "25.11";
       isStatic = false;
     };
   };
   fzf = {
     "aarch64-darwin" = {
-      version = "25.11";
       isStatic = false;
     };
   };
   gdu = {
     "aarch64-darwin" = {
-      version = "25.11";
       isStatic = false;
     };
   };
   gh = {
     "aarch64-darwin" = {
-      version = "25.11";
       isStatic = false;
     };
   };
@@ -318,7 +311,6 @@
       version = "25.11";
     };
     "aarch64-darwin" = {
-      version = "25.11";
       isStatic = false;
     };
   };
@@ -327,7 +319,6 @@
   };
   go-task = {
     "aarch64-darwin" = {
-      version = "25.11";
       isStatic = false;
     };
   };
@@ -360,13 +351,11 @@
   };
   lefthook = {
     "aarch64-darwin" = {
-      version = "25.11";
       isStatic = false;
     };
   };
   oras = {
     "aarch64-darwin" = {
-      version = "25.11";
       isStatic = false;
     };
   };
@@ -375,13 +364,11 @@
   };
   scc = {
     "aarch64-darwin" = {
-      version = "25.11";
       isStatic = false;
     };
   };
   shfmt = {
     "aarch64-darwin" = {
-      version = "25.11";
       isStatic = false;
     };
   };
