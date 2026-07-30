@@ -4,17 +4,21 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
-	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 )
 
@@ -42,7 +46,21 @@ func pkgTarGz(t *testing.T, pkg string) []byte {
 // ociRegistry at it, and returns nothing (cleanup is registered on t).
 func startRegistry(t *testing.T, arch string, packages ...string) {
 	t.Helper()
-	srv := httptest.NewServer(registry.New())
+	startRegistryWithMiddleware(t, arch, nil, packages...)
+}
+
+func startRegistryWithMiddleware(
+	t *testing.T,
+	arch string,
+	middleware func(http.Handler) http.Handler,
+	packages ...string,
+) {
+	t.Helper()
+	var handler http.Handler = registry.New()
+	if middleware != nil {
+		handler = middleware(handler)
+	}
+	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	u, err := url.Parse(srv.URL)
 	if err != nil {
@@ -50,8 +68,8 @@ func startRegistry(t *testing.T, arch string, packages ...string) {
 	}
 	repo := u.Host + "/binman"
 
-	for _, name := range packages {
-		layer, err := tarball.LayerFromReader(bytes.NewReader(pkgTarGz(t, name)))
+	for _, packageName := range packages {
+		layer, err := tarball.LayerFromReader(bytes.NewReader(pkgTarGz(t, packageName)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -59,7 +77,11 @@ func startRegistry(t *testing.T, arch string, packages ...string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := crane.Push(img, repo+":"+name+"-"+arch); err != nil {
+		reference, err := name.ParseReference(repo+":"+packageName+"-"+arch, name.Insecure)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := remote.Write(reference, img); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -251,6 +273,76 @@ func TestInstallMultiOneMissingAbortsAll(t *testing.T) {
 	}
 }
 
+func TestInstallPreservesStoreWhenMetadataIsInvalid(t *testing.T) {
+	arch := "linux-x86_64"
+	startRegistry(t, arch, "ripgrep")
+	prefix := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	store := storePath(prefix, "ripgrep")
+	if err := os.MkdirAll(store, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store, metaFile), []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store, "keep"), []byte("important"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := installPackages([]string{"ripgrep"}, installOpts{
+		prefix: prefix, arch: arch, linked: true,
+	}); err == nil {
+		t.Fatal("expected invalid metadata error")
+	}
+	if _, err := os.Stat(filepath.Join(store, "keep")); err != nil {
+		t.Fatalf("install replaced store with invalid metadata: %v", err)
+	}
+}
+
+func TestInstallDownloadFailureReturns(t *testing.T) {
+	arch := "linux-x86_64"
+	var truncate atomic.Bool
+	middleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			if !truncate.Load() || request.Method != http.MethodGet ||
+				!strings.Contains(request.URL.Path, "/blobs/") {
+				next.ServeHTTP(writer, request)
+				return
+			}
+			recorder := httptest.NewRecorder()
+			next.ServeHTTP(recorder, request)
+			for key, values := range recorder.Header() {
+				writer.Header()[key] = values
+			}
+			writer.WriteHeader(recorder.Code)
+			body := recorder.Body.Bytes()
+			if len(body) > 1 {
+				body = body[:len(body)/2]
+			}
+			_, _ = writer.Write(body)
+		})
+	}
+	startRegistryWithMiddleware(t, arch, middleware, "ripgrep")
+	truncate.Store(true)
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	prefix := t.TempDir()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- installPackages([]string{"ripgrep"}, installOpts{
+			prefix: prefix, arch: arch, linked: true,
+		})
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected truncated download to fail")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("install hung waiting for an incomplete progress bar")
+	}
+}
+
 func TestLoadManifest(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "binman.yaml")
@@ -280,6 +372,30 @@ func TestLoadManifest(t *testing.T) {
 	if _, err := loadManifest(empty); err == nil {
 		t.Error("expected error for manifest with no packages")
 	}
+
+	unknown := filepath.Join(dir, "unknown.yaml")
+	if err := os.WriteFile(unknown, []byte("packages:\n  links:\n    - ripgrep\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadManifest(unknown); err == nil {
+		t.Error("expected error for unknown manifest field")
+	}
+
+	unsafe := filepath.Join(dir, "unsafe.yaml")
+	if err := os.WriteFile(unsafe, []byte("profiles:\n  ../../outside:\n    - ripgrep\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadManifest(unsafe); err == nil {
+		t.Error("expected error for unsafe profile name")
+	}
+
+	multiple := filepath.Join(dir, "multiple.yaml")
+	if err := os.WriteFile(multiple, []byte("packages:\n  link:\n    - ripgrep\n---\npackages:\n  link:\n    - fd\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadManifest(multiple); err == nil {
+		t.Error("expected error for multiple YAML documents")
+	}
 }
 
 func TestSyncInstalls(t *testing.T) {
@@ -292,7 +408,7 @@ func TestSyncInstalls(t *testing.T) {
 	if err := os.WriteFile(file, []byte("packages:\n  link:\n    - ripgrep\n    - fd\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmdSync(prefix, arch, file, true, false, false); err != nil {
+	if err := cmdSync(prefix, arch, file, true, false, false, false); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"ripgrep", "fd"} {
@@ -318,7 +434,7 @@ func TestSyncManifestPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	// prefixSet=false: the flag prefix is a throwaway; the manifest's prefix wins.
-	if err := cmdSync(filepath.Join(root, "ignored"), arch, file, false, false, false); err != nil {
+	if err := cmdSync(filepath.Join(root, "ignored"), arch, file, false, false, false, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(manifestPrefix, "bin", "ripgrep")); err != nil {
@@ -330,11 +446,33 @@ func TestSyncManifestPrefix(t *testing.T) {
 
 	// prefixSet=true: an explicit --prefix overrides the manifest.
 	flagPrefix := filepath.Join(root, "flag", "binman")
-	if err := cmdSync(flagPrefix, arch, file, true, false, false); err != nil {
+	if err := cmdSync(flagPrefix, arch, file, true, false, false, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(flagPrefix, "bin", "ripgrep")); err != nil {
 		t.Errorf("explicit --prefix should override manifest prefix: %v", err)
+	}
+}
+
+func TestSyncManifestArchPrecedence(t *testing.T) {
+	arch := "linux-x86_64"
+	startRegistry(t, arch, "ripgrep")
+	prefix := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	file := filepath.Join(t.TempDir(), "binman.yaml")
+	if err := os.WriteFile(file, []byte("arch: darwin-arm64\npackages:\n  link:\n    - ripgrep\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cmdSync(prefix, arch, file, true, true, false, false); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readMeta(prefix, "ripgrep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Arch != arch {
+		t.Fatalf("sync arch=%q want explicit flag arch %q", got.Arch, arch)
 	}
 }
 
@@ -353,7 +491,7 @@ func TestSyncPrune(t *testing.T) {
 	if err := os.WriteFile(file, []byte("packages:\n  link:\n    - ripgrep\n    - fd\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmdSync(prefix, arch, file, true, false, true); err != nil {
+	if err := cmdSync(prefix, arch, file, true, false, false, true); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"ripgrep", "fd"} {
@@ -380,7 +518,7 @@ func TestSyncUnlinked(t *testing.T) {
 	if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmdSync(prefix, arch, file, true, false, false); err != nil {
+	if err := cmdSync(prefix, arch, file, true, false, false, false); err != nil {
 		t.Fatal(err)
 	}
 	// Regular package is linked into the prefix root.
@@ -407,7 +545,7 @@ func TestSyncProfiles(t *testing.T) {
 	if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmdSync(prefix, arch, file, true, false, false); err != nil {
+	if err := cmdSync(prefix, arch, file, true, false, false, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -479,7 +617,7 @@ func TestSyncSharedBatchKeepsLinkedPackagesLinked(t *testing.T) {
 	if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmdSync(prefix, arch, file, true, false, false); err != nil {
+	if err := cmdSync(prefix, arch, file, true, false, false, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -498,5 +636,539 @@ func TestSyncSharedBatchKeepsLinkedPackagesLinked(t *testing.T) {
 	}
 	if !m.Linked {
 		t.Fatalf("ripgrep metadata should record linked=true, got %#v", m)
+	}
+}
+
+func TestRemoveRejectsPackagePathTraversal(t *testing.T) {
+	root := t.TempDir()
+	prefix := filepath.Join(root, "prefix")
+	victim := filepath.Join(root, "victim")
+	if err := os.MkdirAll(victim, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(victim, "keep"), []byte("important"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cmdRemove(prefix, "../../victim"); err == nil {
+		t.Fatal("expected invalid package name error")
+	}
+	if _, err := os.Stat(filepath.Join(victim, "keep")); err != nil {
+		t.Fatalf("remove escaped the store and deleted victim: %v", err)
+	}
+}
+
+func TestRemovePreservesStoreWhenMetadataIsInvalid(t *testing.T) {
+	prefix := t.TempDir()
+	name := "ripgrep"
+	store := storePath(prefix, name)
+	if err := os.MkdirAll(store, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store, metaFile), []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store, "keep"), []byte("important"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cmdRemove(prefix, name); err == nil {
+		t.Fatal("expected invalid metadata error")
+	}
+	if _, err := os.Stat(filepath.Join(store, "keep")); err != nil {
+		t.Fatalf("remove deleted store with invalid metadata: %v", err)
+	}
+}
+
+func TestExtractRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	archive := filepath.Join(root, "escape.tar.gz")
+	f, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	if err := tw.WriteHeader(&tar.Header{
+		Name:     "./pkg/link",
+		Typeflag: tar.TypeSymlink,
+		Linkname: "../outside",
+		Mode:     0o777,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte("escaped")
+	if err := tw.WriteHeader(&tar.Header{
+		Name:     "./pkg/link/written-outside",
+		Typeflag: tar.TypeReg,
+		Mode:     0o644,
+		Size:     int64(len(body)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(body); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := extractTarGz(archive, filepath.Join(root, "store")); err == nil {
+		t.Fatal("expected escaping symlink to be rejected")
+	}
+	if _, err := os.Stat(filepath.Join(root, "outside", "written-outside")); !os.IsNotExist(err) {
+		t.Fatalf("archive wrote outside extraction root: %v", err)
+	}
+}
+
+func TestExtractPreservesInternalRelativeSymlink(t *testing.T) {
+	root := t.TempDir()
+	archive := filepath.Join(root, "symlink.tar.gz")
+	f, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	body := []byte("target")
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "./pkg/lib/target", Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(body)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(body); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "./pkg/bin/tool", Typeflag: tar.TypeSymlink, Linkname: "../lib/target", Mode: 0o777,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	dst := filepath.Join(root, "store")
+	if err := extractTarGz(archive, dst); err != nil {
+		t.Fatal(err)
+	}
+	target, err := os.Readlink(filepath.Join(dst, "bin", "tool"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target != "../lib/target" {
+		t.Fatalf("symlink target=%q want ../lib/target", target)
+	}
+	if got, err := os.ReadFile(filepath.Join(dst, "bin", "tool")); err != nil || string(got) != "target" {
+		t.Fatalf("internal symlink does not resolve: content=%q err=%v", got, err)
+	}
+}
+
+func TestLinkConflictDoesNotOverwriteOwner(t *testing.T) {
+	prefix := t.TempDir()
+	for _, name := range []string{"first", "second"} {
+		path := filepath.Join(storePath(prefix, name), "bin", "tool")
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := linkPkg(prefix, "first"); err != nil {
+		t.Fatal(err)
+	}
+	if err := linkPkg(prefix, "second"); err == nil {
+		t.Fatal("expected link ownership conflict")
+	}
+
+	target, err := os.Readlink(filepath.Join(prefix, "bin", "tool"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(target, "first") {
+		t.Fatalf("conflicting package replaced existing owner: %q", target)
+	}
+}
+
+func TestLinkRejectsSymlinkParentEscape(t *testing.T) {
+	prefix := t.TempDir()
+	outside := t.TempDir()
+	name := "ripgrep"
+	path := filepath.Join(storePath(prefix, name), "bin", "rg")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("package"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(prefix, "bin")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := linkPkg(prefix, name); err == nil {
+		t.Fatal("expected symlink parent to be rejected")
+	}
+	if _, err := os.Lstat(filepath.Join(outside, "rg")); !os.IsNotExist(err) {
+		t.Fatalf("link escaped prefix through symlink parent: %v", err)
+	}
+}
+
+func TestUnlinkDoesNotDeleteAnotherPackageLink(t *testing.T) {
+	prefix := t.TempDir()
+	for _, name := range []string{"first", "second"} {
+		path := filepath.Join(storePath(prefix, name), "bin", "tool")
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	dest := filepath.Join(prefix, "bin", "tool")
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target, err := filepath.Rel(filepath.Dir(dest), filepath.Join(storePath(prefix, "second"), "bin", "tool"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, dest); err != nil {
+		t.Fatal(err)
+	}
+	if err := unlinkPkg(prefix, "first"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dest); err != nil {
+		t.Fatalf("unlink removed another package's link: %v", err)
+	}
+}
+
+func TestUnlinkRejectsSymlinkParentEscape(t *testing.T) {
+	prefix := t.TempDir()
+	outside := t.TempDir()
+	name := "ripgrep"
+	path := filepath.Join(storePath(prefix, name), "bin", "rg")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("package"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target, err := filepath.Rel(outside, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(outside, "rg")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(prefix, "bin")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := unlinkPkg(prefix, name); err == nil {
+		t.Fatal("expected symlink parent to be rejected")
+	}
+	if _, err := os.Lstat(filepath.Join(outside, "rg")); err != nil {
+		t.Fatalf("unlink removed path outside prefix: %v", err)
+	}
+}
+
+func TestUnlinkPreservesUserReplacement(t *testing.T) {
+	prefix := t.TempDir()
+	name := "ripgrep"
+	path := filepath.Join(storePath(prefix, name), "bin", "rg")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("package"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(prefix, "bin", "rg")
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dest, []byte("user"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := unlinkPkg(prefix, name); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "user" {
+		t.Fatalf("user replacement changed: %q", got)
+	}
+}
+
+func TestSyncReconcilesProfiles(t *testing.T) {
+	arch := "linux-x86_64"
+	startRegistry(t, arch, "gopls", "delve")
+	prefix := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	file := filepath.Join(t.TempDir(), "binman.yaml")
+
+	if err := os.WriteFile(file, []byte("profiles:\n  go:\n    - gopls\n    - delve\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdSync(prefix, arch, file, true, false, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("profiles:\n  go:\n    - gopls\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdSync(prefix, arch, file, true, false, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(prefix, "profile", "go", "bin", "delve")); !os.IsNotExist(err) {
+		t.Fatalf("stale profile link was not removed: %v", err)
+	}
+}
+
+func TestRemoveCleansProfileLinks(t *testing.T) {
+	prefix := t.TempDir()
+	name := "gopls"
+	path := filepath.Join(storePath(prefix, name), "bin", name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(name), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeMeta(prefix, meta{Name: name, Arch: "linux-x86_64", Digest: "sha256:test"}); err != nil {
+		t.Fatal(err)
+	}
+	profile := filepath.Join(prefix, "profile", "go")
+	if err := linkPkgInto(prefix, name, profile); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cmdRemove(prefix, name); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(profile, "bin", name)); !os.IsNotExist(err) {
+		t.Fatalf("profile link remains after remove: %v", err)
+	}
+}
+
+func TestOutdatedReturnsRegistryErrors(t *testing.T) {
+	prefix := t.TempDir()
+	if err := os.MkdirAll(storePath(prefix, "ripgrep"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeMeta(prefix, meta{
+		Name: "ripgrep", Arch: "linux-x86_64", Digest: "sha256:old",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	startRegistry(t, "linux-x86_64")
+
+	if err := cmdOutdated(prefix); err == nil {
+		t.Fatal("expected registry error")
+	}
+}
+
+func TestOutdatedResolvesPackagesConcurrently(t *testing.T) {
+	arch := "linux-x86_64"
+	var active int32
+	var peak int32
+	middleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			if request.Method == http.MethodGet && strings.Contains(request.URL.Path, "/manifests/") {
+				current := atomic.AddInt32(&active, 1)
+				for {
+					previous := atomic.LoadInt32(&peak)
+					if current <= previous || atomic.CompareAndSwapInt32(&peak, previous, current) {
+						break
+					}
+				}
+				time.Sleep(50 * time.Millisecond)
+				defer atomic.AddInt32(&active, -1)
+			}
+			next.ServeHTTP(writer, request)
+		})
+	}
+	packages := []string{"ripgrep", "fd", "bat", "eza"}
+	startRegistryWithMiddleware(t, arch, middleware, packages...)
+	prefix := t.TempDir()
+	for _, packageName := range packages {
+		if err := os.MkdirAll(storePath(prefix, packageName), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		digest, err := remoteDigest(packageName, arch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writeMeta(prefix, meta{
+			Name: packageName, Arch: arch, Digest: digest,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	atomic.StoreInt32(&peak, 0)
+
+	if err := cmdOutdated(prefix); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt32(&peak); got < 2 {
+		t.Fatalf("remote checks did not overlap: peak concurrency=%d", got)
+	}
+}
+
+func TestUpgradeResolvesAllPackagesBeforeWriting(t *testing.T) {
+	arch := "linux-x86_64"
+	startRegistry(t, arch, "first")
+	prefix := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	for _, name := range []string{"first", "missing"} {
+		if err := os.MkdirAll(storePath(prefix, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeMeta(prefix, meta{
+			Name: name, Arch: arch, Digest: "sha256:old-" + name,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := cmdUpgrade(prefix, arch, []string{"first", "missing"}); err == nil {
+		t.Fatal("expected missing package error")
+	}
+	got, err := readMeta(prefix, "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Digest != "sha256:old-first" {
+		t.Fatalf("first package changed before all upgrades resolved: %q", got.Digest)
+	}
+}
+
+func TestUpgradeArchOverride(t *testing.T) {
+	arch := "linux-x86_64"
+	startRegistry(t, arch, "ripgrep")
+	prefix := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	if err := os.MkdirAll(storePath(prefix, "ripgrep"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeMeta(prefix, meta{
+		Name: "ripgrep", Arch: "darwin-arm64", Digest: "sha256:old",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cmdUpgrade(prefix, arch, []string{"ripgrep"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readMeta(prefix, "ripgrep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Arch != arch {
+		t.Fatalf("upgrade arch=%q want %q", got.Arch, arch)
+	}
+}
+
+func TestLinkStateRollsBackWhenMetadataWriteFails(t *testing.T) {
+	arch := "linux-x86_64"
+	startRegistry(t, arch, "ripgrep")
+	prefix := t.TempDir()
+	digest, err := remoteDigest("ripgrep", arch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := storePath(prefix, "ripgrep")
+	path := filepath.Join(store, "bin", "ripgrep")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("package"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeMeta(prefix, meta{
+		Name: "ripgrep", Arch: arch, Digest: digest, Linked: false,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(store, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(store, 0o755) })
+
+	err = installPackages([]string{"ripgrep"}, installOpts{
+		prefix: prefix, arch: arch, linked: true,
+	})
+	if err == nil {
+		t.Fatal("expected metadata write failure")
+	}
+	if _, err := os.Lstat(filepath.Join(prefix, "bin", "ripgrep")); !os.IsNotExist(err) {
+		t.Fatalf("link state was not rolled back: %v", err)
+	}
+	if err := os.Chmod(store, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := readMeta(prefix, "ripgrep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Linked {
+		t.Fatal("metadata unexpectedly changed to linked")
+	}
+}
+
+func TestReplaceStoreRollsBackOnLinkConflict(t *testing.T) {
+	prefix := t.TempDir()
+	name := "ripgrep"
+	oldStore := storePath(prefix, name)
+	if err := os.MkdirAll(filepath.Join(oldStore, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldFile := filepath.Join(oldStore, "bin", "rg")
+	if err := os.WriteFile(oldFile, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	staged, err := os.MkdirTemp(filepath.Dir(oldStore), ".ripgrep.stage-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(staged, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(staged, "bin", "rg"), []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(prefix, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(prefix, "bin", "rg"), []byte("user file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := replaceStore(prefix, name, staged, false, true); err == nil {
+		t.Fatal("expected link conflict")
+	}
+	got, err := os.ReadFile(oldFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "old" {
+		t.Fatalf("old store was not restored: %q", got)
 	}
 }
