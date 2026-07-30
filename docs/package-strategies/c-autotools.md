@@ -26,8 +26,8 @@
 
 **自带 CA bundle（静态网络工具的可移植性）：**
 
-- **curl**：用 `stdenv.mkDerivation` 重组：拷 `curl.bin`/`curl.dev`，把内置 CA bundle 装到
-  `etc/ssl/certs/ca-certificates.crt`，rename `curl`→`_curl`，wrapper 相对解析并强制 `--cacert`。
+- **curl**：用 `stdenv.mkDerivation` 重组：拷 `curl.bin`/`curl.dev`，把官方 `cacert` 的 CA bundle 装到
+  `etc/ssl/certs/ca-bundle.crt`，rename `curl`→`_curl`，wrapper 相对解析并强制 `--cacert`。
   静态 curl 没有系统 CA 路径，自带证书使其可移植。（`wget/linux.nix` 同模式，见
   [特殊案例](special-cases.md)。）
 

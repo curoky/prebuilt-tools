@@ -30,6 +30,7 @@
   bzip2 = {
     output = [ "bin" ];
   };
+  cacert = { };
   connect = { };
   coreutils = { };
   findutils = { };

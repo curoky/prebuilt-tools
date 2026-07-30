@@ -32,7 +32,6 @@ commit。新增或改变非 unstable pin、本地 derivation、override、禁用
 | `aria2` | — | 📌 `24.11` | ✅ | — | 历史 pin，原始失败未记录 | unstable 产物只依赖系统 dylib | — | — | `manifests/default.nix` |
 | `autoconf` | 📦 本地 | 📦 本地 | ❌ | 相对路径 wrappers 定位配套脚本 | 相对路径 wrappers 定位配套脚本 | 上游入口无需 Nix store 路径时再评估 | — | — | `packages/autoconf/` |
 | `automake` | 📦 本地 | 📦 本地 | ❌ | 相对路径 wrappers 定位配套脚本 | 相对路径 wrappers 定位配套脚本 | 上游入口无需 Nix store 路径时再评估 | — | — | `packages/automake/` |
-| `cacert` | 📦 本地 | 📦 本地 | ❌ | 独立发布 curl CA bundle | 独立发布 curl CA bundle | 这是仓库产品，不随 nixpkgs 构建修复消失 | — | — | `packages/cacert/` |
 | `catatonit` | 🩹 本地 | — | ✅ | 清空 stock `installCheckPhase`：上游 check 跑 `readelf` 但未把 binutils 加入 `nativeBuildInputs`，musl64 cross `strictDeps` 构建下报 `readelf: command not found` | — | 上游把 binutils 加入 `nativeBuildInputs`（或改用可用 check）后，unstable install check 与最终静态验证通过 | 624af665418d | — | `packages/catatonit/` |
 | `clang-tools-18` | 📦 本地 | — | ❌ | 固定 LLVM 18，只提取并瘦身 `clang-format` | — | 多版本单工具发布是产品决策 | — | — | `packages/clang-tools/` |
 | `clang-tools-19` | 📦 本地 | — | ❌ | 固定 LLVM 19，只提取并瘦身 `clang-format` | — | 多版本单工具发布是产品决策 | — | — | `packages/clang-tools/` |

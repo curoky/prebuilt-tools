@@ -59,8 +59,8 @@ rist）关掉是因为过不了 ffmpeg 的静态 configure 链接测试。
 两平台都经 `pkgsStatic` 完全静态：
 
 - **Linux**（`wget/linux.nix`）：`wget_static = wget.overrideAttrs { doCheck=false; }`，再
-  `stdenv.mkDerivation` 拷 bin/etc/share、注入自带 CA bundle（`cacert-*.pem` 装到
-  `etc/ssl/certs/ca-certificates.crt`）、rename `wget`→`_wget`、wrapper 相对 `--ca-certificate`
+  `stdenv.mkDerivation` 拷 bin/etc/share、注入官方 `cacert` 的 CA bundle（`ca-bundle.crt` 装到
+  `etc/ssl/certs/ca-bundle.crt`）、rename `wget`→`_wget`、wrapper 相对 `--ca-certificate`
   （与 curl 同模式）。
 - **macOS**（`wget/darwin-static.nix`）：取同一 `pkgsStatic.wget`，**只把它 build-time 的
   `perlPackages` override 成 native 集**。root cause：darwin 的 `pkgsStatic.perl` 构建失败——最后的

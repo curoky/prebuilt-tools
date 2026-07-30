@@ -1,7 +1,7 @@
 {
   stdenv,
-  fetchurl,
   wget,
+  cacert,
   perlPackages,
   writeText,
 }:
@@ -31,7 +31,7 @@ let
     script_path="$(readlink -f "$0")"
     root=$(cd "$(dirname "$script_path")" && pwd)/..
 
-    exec -a "$0" "$root/bin/_wget" --ca-certificate $root/etc/ssl/certs/ca-certificates.crt "$@"
+    exec -a "$0" "$root/bin/_wget" --ca-certificate $root/etc/ssl/certs/ca-bundle.crt "$@"
   '';
 in
 
@@ -39,12 +39,7 @@ stdenv.mkDerivation rec {
   pname = "wget";
   version = "1.0.0";
 
-  src = fetchurl {
-    url = "https://curl.se/ca/cacert-2026-05-14.pem";
-    sha256 = "sha256-hqHzNmr6x8b4rp88d5rCIRKTKMQ/CrK4gX6y82KlAlw=";
-  };
-
-  unpackPhase = ":";
+  dontUnpack = true;
 
   installPhase = ''
     mkdir -p $out
@@ -53,7 +48,7 @@ stdenv.mkDerivation rec {
 
     chmod +w $out/etc/
     mkdir -p $out/etc/ssl/certs/
-    cp ${src} $out/etc/ssl/certs/ca-certificates.crt
+    cp ${cacert}/etc/ssl/certs/ca-bundle.crt $out/etc/ssl/certs/ca-bundle.crt
 
     chmod +w $out/bin/
     mv $out/bin/wget $out/bin/_wget

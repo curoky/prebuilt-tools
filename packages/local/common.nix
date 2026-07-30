@@ -4,7 +4,6 @@
 }:
 {
   # Resource bundles.
-  cacert = pkgsStatic.callPackage ../cacert { };
   rime-plugins = pkgsStatic.callPackage ../rime-plugins { };
   tmux-plugins = pkgsStatic.callPackage ../tmux-plugins { };
   vim-plugins = pkgs.callPackage ../vim-plugins { };
