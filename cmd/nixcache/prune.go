@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sort"
@@ -54,19 +55,50 @@ func pruneCache(client *registryClient, keep, keepTags int, dryRun bool) error {
 
 	kept := keptSnapshots(segments, keep)
 	keptTag := keptTags(segments, keepTags)
-	var deleted, retained int
+
+	toDelete := make([]segmentRef, 0)
+	var retained int
 	for _, ref := range segments {
 		if kept[ref.System][ref.Snapshot] && keptTag[ref.Tag] {
 			retained++
 			continue
 		}
-		if dryRun {
+		toDelete = append(toDelete, ref)
+	}
+
+	if dryRun {
+		for _, ref := range toDelete {
 			log.Printf("would delete segment %s (snapshot %s, %s)", ref.Tag, shortSnapshot(ref.Snapshot), ref.System)
-			deleted++
+		}
+		log.Printf("prune dry-run: would delete %d segment(s), retain %d", len(toDelete), retained)
+		return nil
+	}
+	if len(toDelete) == 0 {
+		log.Printf("prune complete: deleted 0 segment(s), retained %d", retained)
+		return nil
+	}
+
+	// GHCR does not support OCI manifest deletion, so map each tag to its
+	// GitHub package version id and delete via the Packages REST API.
+	ghcr, err := newGHCRClient(client.repo.Reference.Repository)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	versionByTag, err := ghcr.versionsByTag(ctx)
+	if err != nil {
+		return fmt.Errorf("list package versions: %w", err)
+	}
+
+	var deleted int
+	for _, ref := range toDelete {
+		versionID, ok := versionByTag[ref.Tag]
+		if !ok {
+			log.Printf("skip segment %s: no matching package version", ref.Tag)
 			continue
 		}
-		if err := client.deleteSegment(ref); err != nil {
-			return fmt.Errorf("delete segment %s: %w", ref.Tag, err)
+		if err := ghcr.deleteVersion(ctx, versionID); err != nil {
+			return fmt.Errorf("delete segment %s (version %d): %w", ref.Tag, versionID, err)
 		}
 		log.Printf("deleted segment %s (snapshot %s, %s)", ref.Tag, shortSnapshot(ref.Snapshot), ref.System)
 		deleted++

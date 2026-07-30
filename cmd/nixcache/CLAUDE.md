@@ -14,7 +14,9 @@ Go 二进制 `nixcache`，提供 `push`、`serve`、`prune` 和 `size`。全局�
    closure、NAR 和 narinfo；Go 不自行实现 NAR 编码、closure 查询或 narinfo 签名。
 3. **标准格式交给开源库。** narinfo 和 store path 使用
    `github.com/nix-community/go-nix` 解析与校验；OCI descriptor、manifest 和 registry
-   操作使用 `oras.land/oras-go/v2`。`bm` 独立保留 `go-containerregistry`。
+   操作使用 `oras.land/oras-go/v2`；GitHub Packages 版本删除使用
+   `github.com/google/go-github/v75`，不手写 REST 调用。`bm` 独立保留
+   `go-containerregistry`。
 4. **segment immutable。** 每次 `push` 只追加一个随机 tag，不更新共享 index tag。
    同一 GitHub Actions run 的 matrix job 必须可以并发发布且互不覆盖。
 5. **snapshot 是完整 `flake.lock`。** cache identity 是原始 `flake.lock` 内容的
@@ -83,8 +85,12 @@ default keychain。
 nixcache serve
 ```
 
-固定监听 `127.0.0.1:37515`，先开端口、后台启动 HTTP server，再同步加载所有 `v1-*`
-segments，加载完成后置 ready，之后每 5 分钟刷新。`/nix-cache-info` 在 index 就绪前返回
+固定监听 `127.0.0.1:37515`，先开端口、后台启动 HTTP server，再并发加载当前 snapshot 的
+segments，加载完成后置 ready，之后每 5 分钟刷新。启动时读取当前工作目录 `flake.lock` 计算
+snapshot 前缀 `v1-<snapshot16>-<system>-`，只加载该前缀的 tag（读不到 `flake.lock` 时退化为
+加载全部 `v1-*`）；segment 加载走有限并发（`segmentLoadConcurrency`），每次 registry 调用有
+`registryTimeout` 超时，避免单次 GHCR 抖动无限期挂起。加载完成打印一行汇总（segment 数、
+snapshot 数、entry 数）而非逐 segment 刷屏。`/nix-cache-info` 在 index 就绪前返回
 `503`、就绪后返回内容，因此 CI 的 readiness 探测（`curl --retry-all-errors`）会一直重试到
 index 就绪才通过，既不会因端口未开而 connection refused，也不会在 index 还空时把 cache hit
 误判为 miss。只支持 `GET` 和 `HEAD`：
@@ -101,7 +107,7 @@ miss 返回 `404`，不实现 upstream fallback、管理 API 或磁盘 NAR cache
 ## Prune
 
 ```text
-nixcache prune [--keep N] [--dry-run]
+nixcache prune [--keep N] [--keep-tags M] [--dry-run]
 ```
 
 `serve` 的合并语义天然让旧 segment 的同名 store hash 被新 segment 逻辑覆盖，但旧
@@ -109,14 +115,22 @@ segment 的 tag 和 NAR blob 仍物理留在 GHCR。`prune` 是唯一的物理�
 
 1. 列出所有 `v1-*` segment，读出各自 metadata 的 `snapshot`、`system` 和 `createdAt`；
 2. 按 `system` 分组，每个 snapshot 取其最新 segment 的 `createdAt` 作为该 snapshot 的时间；
-3. 每个 system 只保留最近 `N` 个 snapshot（默认 `N=2`），其余 snapshot 的**全部** tag
-   删除。同一 snapshot 的多个 CI run tag 要么一起保留、要么一起删除；
-4. 删除通过 `oras-go` 的 `Repository.Delete` 按 manifest digest 进行，GHCR 随之移除
-   tag，未被任何存活 manifest 引用的 NAR blob 由 GHCR 自身 GC 回收。
+3. 每个 system 只保留最近 `N` 个 snapshot（默认 `N=2`）；
+4. 对保留下来的 (system, snapshot)，同一 snapshot 可能有多个 CI run 的 tag，只保留其中最新
+   `M` 个（默认 `M=3`，按 `createdAt` 降序、tag 名破平），其余同 snapshot 的旧 run tag 也删除；
+5. 未通过上述两级保留的 segment 全部删除。
+
+GHCR 不实现 OCI 的 `DELETE /v2/.../manifests/<digest>`（返回 `405 UNSUPPORTED`），因此删除
+不走 `oras-go`，而是用 `go-github` 调 GitHub Packages REST API：先 `versionsByTag` 列出
+container package 的所有 version，建立 tag → numeric version id 映射，再按 id
+`deleteVersion`。client 首次列举时自动在 user / org owner 间回退。删除 version 需要 token 对
+package 有 admin 权限（Actions 里发布该 package 的 repo 的 `GITHUB_TOKEN` 默认满足；classic
+PAT 需 `delete:packages`）。删 version 后 GHCR 移除对应 tag，未被任何存活 manifest 引用的 NAR
+blob 由 GHCR 自身 GC 回收。
 
 因为不变量 6，被保留 snapshot 的 manifest 自带完整 closure，删旧 snapshot 不会造成缺
-NAR。`--dry-run` 只打印将删除的 tag，不发起删除。保留判据是 snapshot 新旧（见不变量 8），
-不比较 channel revision。
+NAR。`--dry-run` 只打印将删除的 tag，不发起删除，也不需要 `GITHUB_TOKEN`。保留判据是
+snapshot 新旧（见不变量 8）叠加同 snapshot 的最新 `M` 个 run tag，不比较 channel revision。
 
 ## Size
 
@@ -145,9 +159,10 @@ workflow 中报告 `prune` 前后的大小变化。只读，不修改 registry�
 
 `.github/workflows/prune-nix-cache.yaml` 的 `cache-prune` job 定时（每周）与手动触发：用
 `cmd/nixcache/install.sh` 下载二进制，先 `nixcache size` 记录清理前大小，再
-`nixcache prune --keep 2` 删除旧 snapshot，最后再次 `nixcache size` 并把前后大小写入
-`$GITHUB_STEP_SUMMARY`。该 job 需要 `packages: write` 才能删除 cache repository 的
-manifest。
+`nixcache prune --keep 2 --keep-tags 3` 删除旧 snapshot 与冗余 run tag，最后再次
+`nixcache size` 并把前后大小写入 `$GITHUB_STEP_SUMMARY`。删除走 GitHub Packages REST API，
+该 job 需要 `packages: write`，并向进程注入 `GITHUB_TOKEN`（`GITHUB_ACTOR` 供 registry 读
+auth）才能删除 cache repository 的 package version。
 
 ## 二进制发布协议
 
@@ -184,9 +199,10 @@ nixcache/nixcache
 - `main.go`：Cobra CLI 与固定 repository 接线。
 - `model.go`：snapshot、segment 和 entry schema。
 - `push.go`：临时 file binary cache 与 `go-nix` 解析。
-- `registry.go`：GHCR auth、segment 读写、删除和 NAR blob。
+- `registry.go`：GHCR auth、segment 读写、并发加载、超时与 NAR blob。
+- `ghcr.go`：`go-github` 封装的 GitHub Packages 版本删除（tag → version id 映射）。
 - `serve.go`：Nix HTTP substituter 与 refresh。
-- `prune.go`：snapshot 保留策略、segment 删除与去重 size 统计。
+- `prune.go`：snapshot / run tag 保留策略、经 `ghcr.go` 删除与去重 size 统计。
 - `*_test.go`：本地 OCI registry、HTTP endpoint 和 opt-in Nix round-trip。
 
 不要重新引入自建 HTTP writer、手写 narinfo parser、closure traversal、segment 分片或
