@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -70,42 +69,14 @@ func remoteDigest(packageName, arch string) (string, error) {
 }
 
 // downloadLayer atomically replaces dst after the complete compressed layer
-// has been written. wrap optionally adds byte-level progress reporting.
-func downloadLayer(layer v1.Layer, dst string, wrap func(int64, io.ReadCloser) io.ReadCloser) error {
+// has been written.
+func downloadLayer(layer v1.Layer, dst string) error {
 	reader, err := layer.Compressed()
 	if err != nil {
 		return err
 	}
 	defer reader.Close()
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
-	file, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".tmp-")
-	if err != nil {
-		return err
-	}
-	tmp := file.Name()
-	defer os.Remove(tmp)
-
-	var source io.Reader = reader
-	if wrap != nil {
-		size, err := layer.Size()
-		if err != nil {
-			_ = file.Close()
-			return err
-		}
-		proxy := wrap(size, reader)
-		defer proxy.Close()
-		source = proxy
-	}
-	if _, err := io.Copy(file, source); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp, dst)
+	return writeAtomic(dst, 0o600, reader)
 }
 
 func cachePath(arch, packageName string) string {

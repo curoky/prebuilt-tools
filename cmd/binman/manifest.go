@@ -72,24 +72,9 @@ func loadManifest(path string) (manifest, error) {
 	return config, nil
 }
 
-func (config manifest) profilePackages() []string {
-	seen := make(map[string]bool)
-	for _, packages := range config.Profiles {
-		for _, packageName := range packages {
-			seen[packageName] = true
-		}
-	}
-	names := make([]string, 0, len(seen))
-	for packageName := range seen {
-		names = append(names, packageName)
-	}
-	sort.Strings(names)
-	return names
-}
-
 // installPlan de-duplicates packages while preserving manifest order. A root
 // link wins when a package appears in multiple sections.
-func (config manifest) installPlan(profilePackages []string) []installTarget {
+func (config manifest) installPlan() []installTarget {
 	var plan []installTarget
 	seen := make(map[string]int)
 	add := func(packageName string, linked bool) {
@@ -108,8 +93,10 @@ func (config manifest) installPlan(profilePackages []string) []installTarget {
 	for _, packageName := range config.Packages.Unlink {
 		add(packageName, false)
 	}
-	for _, packageName := range profilePackages {
-		add(packageName, false)
+	for _, profile := range sortedProfileNames(config.Profiles) {
+		for _, packageName := range config.Profiles[profile] {
+			add(packageName, false)
+		}
 	}
 	return plan
 }
@@ -125,15 +112,10 @@ func cmdSync(prefix, arch, file string, prefixSet, archSet, force, prune bool) e
 	if !prefixSet && config.Prefix != "" {
 		prefix = config.Prefix
 	}
-	profilePackages := config.profilePackages()
-	plan := config.installPlan(profilePackages)
+	plan := config.installPlan()
 	logger.Info("sync started", "file", file, "prefix", prefix, "link", config.Packages.Link,
 		"unlink", config.Packages.Unlink, "profiles", len(config.Profiles), "prune", prune)
-	fmt.Printf("> Syncing %d unique package(s)", len(plan))
-	if len(config.Profiles) > 0 {
-		fmt.Printf(" including %d unique profile package(s)", len(profilePackages))
-	}
-	fmt.Printf(" from %s...\n", file)
+	fmt.Printf("> Syncing %d unique package(s) from %s...\n", len(plan), file)
 
 	if len(plan) > 0 {
 		if err := installPackagePlan(plan, prefix, arch, force); err != nil {
@@ -187,21 +169,14 @@ func cmdSync(prefix, arch, file string, prefixSet, archSet, force, prune bool) e
 }
 
 func replaceTree(dst, staged string) error {
-	backup := ""
-	if _, err := os.Stat(dst); err == nil {
-		backupDir, err := os.MkdirTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".backup-")
-		if err != nil {
-			return err
-		}
-		if err := os.Remove(backupDir); err != nil {
-			return err
-		}
-		backup = backupDir
+	backup, err := backupPath(dst)
+	if err != nil {
+		return err
+	}
+	if backup != "" {
 		if err := os.Rename(dst, backup); err != nil {
 			return err
 		}
-	} else if !os.IsNotExist(err) {
-		return err
 	}
 	if err := os.Rename(staged, dst); err != nil {
 		if backup != "" {

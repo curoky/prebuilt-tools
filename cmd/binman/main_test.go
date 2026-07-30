@@ -22,23 +22,57 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 )
 
-// pkgTarGz builds a gzipped tar laid out as ./<pkg>/bin/<pkg>, matching the CI
-// archive format (top-level dir = package name, stripped on extract).
+type archiveEntry struct {
+	name     string
+	body     string
+	linkname string
+	typeflag byte
+	mode     int64
+}
+
+func archiveTarGz(t *testing.T, pkg string, entries ...archiveEntry) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	gzipWriter := gzip.NewWriter(&buffer)
+	tarWriter := tar.NewWriter(gzipWriter)
+	for _, entry := range entries {
+		if entry.typeflag == 0 {
+			entry.typeflag = tar.TypeReg
+		}
+		if entry.mode == 0 {
+			entry.mode = 0o755
+		}
+		header := &tar.Header{
+			Name:     "./" + pkg + "/" + entry.name,
+			Mode:     entry.mode,
+			Size:     int64(len(entry.body)),
+			Typeflag: entry.typeflag,
+			Linkname: entry.linkname,
+		}
+		if err := tarWriter.WriteHeader(header); err != nil {
+			t.Fatal(err)
+		}
+		if entry.body != "" {
+			if _, err := tarWriter.Write([]byte(entry.body)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := tarWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buffer.Bytes()
+}
+
 func pkgTarGz(t *testing.T, pkg string) []byte {
 	t.Helper()
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gz)
-	body := "#!/bin/sh\necho " + pkg + "\n"
-	if err := tw.WriteHeader(&tar.Header{Name: "./" + pkg + "/bin/" + pkg, Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tw.Write([]byte(body)); err != nil {
-		t.Fatal(err)
-	}
-	tw.Close()
-	gz.Close()
-	return buf.Bytes()
+	return archiveTarGz(t, pkg, archiveEntry{
+		name: "bin/" + pkg,
+		body: "#!/bin/sh\necho " + pkg + "\n",
+	})
 }
 
 // startRegistry stands up an in-process OCI registry (go-containerregistry),
@@ -135,11 +169,12 @@ func TestExtractLinkRelocate(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(tgz), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Reuse the CI-shaped archive, but add a second file to exercise nesting.
-	writeArchive(t, tgz, pkg, map[string]string{
-		"bin/rg":         "#!/bin/sh\necho rg\n",
-		"share/man/rg.1": "manpage\n",
-	})
+	if err := os.WriteFile(tgz, archiveTarGz(t, pkg,
+		archiveEntry{name: "bin/rg", body: "#!/bin/sh\necho rg\n"},
+		archiveEntry{name: "share/man/rg.1", body: "manpage\n"},
+	), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	store := storePath(prefix, pkg)
 	if err := os.MkdirAll(store, 0o755); err != nil {
@@ -187,28 +222,6 @@ func TestExtractLinkRelocate(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(moved, "bin", "rg")); !os.IsNotExist(err) {
 		t.Fatalf("link not removed by unlink")
-	}
-}
-
-// writeArchive builds a gzipped tar of ./<pkg>/<files...> for extraction tests.
-func writeArchive(t *testing.T, dst, pkg string, files map[string]string) {
-	t.Helper()
-	f, err := os.Create(dst)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	gz := gzip.NewWriter(f)
-	defer gz.Close()
-	tw := tar.NewWriter(gz)
-	defer tw.Close()
-	for name, body := range files {
-		if err := tw.WriteHeader(&tar.Header{Name: "./" + pkg + "/" + name, Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := tw.Write([]byte(body)); err != nil {
-			t.Fatal(err)
-		}
 	}
 }
 
@@ -339,7 +352,7 @@ func TestInstallDownloadFailureReturns(t *testing.T) {
 			t.Fatal("expected truncated download to fail")
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("install hung waiting for an incomplete progress bar")
+		t.Fatal("install hung after a truncated download")
 	}
 }
 
@@ -588,7 +601,7 @@ func TestManifestInstallPlan(t *testing.T) {
 		},
 	}
 
-	got := m.installPlan(m.profilePackages())
+	got := m.installPlan()
 	want := []installTarget{
 		{name: "ripgrep", linked: true},
 		{name: "fd", linked: true},
@@ -683,39 +696,14 @@ func TestRemovePreservesStoreWhenMetadataIsInvalid(t *testing.T) {
 func TestExtractRejectsSymlinkEscape(t *testing.T) {
 	root := t.TempDir()
 	archive := filepath.Join(root, "escape.tar.gz")
-	f, err := os.Create(archive)
-	if err != nil {
-		t.Fatal(err)
-	}
-	gz := gzip.NewWriter(f)
-	tw := tar.NewWriter(gz)
-	if err := tw.WriteHeader(&tar.Header{
-		Name:     "./pkg/link",
-		Typeflag: tar.TypeSymlink,
-		Linkname: "../outside",
-		Mode:     0o777,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	body := []byte("escaped")
-	if err := tw.WriteHeader(&tar.Header{
-		Name:     "./pkg/link/written-outside",
-		Typeflag: tar.TypeReg,
-		Mode:     0o644,
-		Size:     int64(len(body)),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tw.Write(body); err != nil {
-		t.Fatal(err)
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
+	if err := os.WriteFile(archive, archiveTarGz(t, "pkg",
+		archiveEntry{
+			name: "link", typeflag: tar.TypeSymlink, linkname: "../outside", mode: 0o777,
+		},
+		archiveEntry{
+			name: "link/written-outside", body: "escaped", mode: 0o644,
+		},
+	), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -730,33 +718,12 @@ func TestExtractRejectsSymlinkEscape(t *testing.T) {
 func TestExtractPreservesInternalRelativeSymlink(t *testing.T) {
 	root := t.TempDir()
 	archive := filepath.Join(root, "symlink.tar.gz")
-	f, err := os.Create(archive)
-	if err != nil {
-		t.Fatal(err)
-	}
-	gz := gzip.NewWriter(f)
-	tw := tar.NewWriter(gz)
-	body := []byte("target")
-	if err := tw.WriteHeader(&tar.Header{
-		Name: "./pkg/lib/target", Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(body)),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tw.Write(body); err != nil {
-		t.Fatal(err)
-	}
-	if err := tw.WriteHeader(&tar.Header{
-		Name: "./pkg/bin/tool", Typeflag: tar.TypeSymlink, Linkname: "../lib/target", Mode: 0o777,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
+	if err := os.WriteFile(archive, archiveTarGz(t, "pkg",
+		archiveEntry{name: "lib/target", body: "target", mode: 0o644},
+		archiveEntry{
+			name: "bin/tool", typeflag: tar.TypeSymlink, linkname: "../lib/target", mode: 0o777,
+		},
+	), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

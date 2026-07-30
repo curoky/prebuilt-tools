@@ -2,9 +2,9 @@ package main
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -43,24 +43,31 @@ func writeMetaAt(store string, metadata meta) error {
 	if err != nil {
 		return err
 	}
-	file, err := os.CreateTemp(store, "."+metaFile+".tmp-")
+	return writeAtomic(filepath.Join(store, metaFile), 0o644, bytes.NewReader(data))
+}
+
+func writeAtomic(path string, mode os.FileMode, reader io.Reader) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	file, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-")
 	if err != nil {
 		return err
 	}
 	tmp := file.Name()
 	defer os.Remove(tmp)
-	if err := file.Chmod(0o644); err != nil {
+	if err := file.Chmod(mode); err != nil {
 		_ = file.Close()
 		return err
 	}
-	if _, err := file.Write(data); err != nil {
+	if _, err := io.Copy(file, reader); err != nil {
 		_ = file.Close()
 		return err
 	}
 	if err := file.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, filepath.Join(store, metaFile))
+	return os.Rename(tmp, path)
 }
 
 // extractTarGz strips the archive's package-name prefix and rejects entries
@@ -148,26 +155,29 @@ func extractTarGz(src, dst string) error {
 
 func safeArchivePath(root, rel string) (string, error) {
 	if filepath.IsAbs(rel) {
-		return "", errors.New("absolute path")
+		return "", fmt.Errorf("absolute path")
 	}
-	root = filepath.Clean(root)
 	target := filepath.Clean(filepath.Join(root, rel))
-	if target == root || !strings.HasPrefix(target, root+string(os.PathSeparator)) {
-		return "", errors.New("path escapes extraction root")
+	if !withinRoot(root, target) {
+		return "", fmt.Errorf("path escapes extraction root")
 	}
 	return target, nil
 }
 
 func safeSymlinkTarget(root, linkPath, linkname string) (string, error) {
 	if filepath.IsAbs(linkname) {
-		return "", errors.New("absolute target")
+		return "", fmt.Errorf("absolute target")
 	}
 	target := filepath.Clean(filepath.Join(filepath.Dir(linkPath), filepath.FromSlash(linkname)))
-	root = filepath.Clean(root)
-	if target == root || !strings.HasPrefix(target, root+string(os.PathSeparator)) {
-		return "", errors.New("target escapes extraction root")
+	if !withinRoot(root, target) {
+		return "", fmt.Errorf("target escapes extraction root")
 	}
 	return target, nil
+}
+
+func withinRoot(root, path string) bool {
+	root = filepath.Clean(root)
+	return path != root && strings.HasPrefix(path, root+string(os.PathSeparator))
 }
 
 func rejectSymlinkParents(root, target string) error {
@@ -218,7 +228,7 @@ func stripFirstComponent(name string) string {
 	return parts[1]
 }
 
-func walkPkgFiles(store string, fn func(absPath, relPath string) error) error {
+func walkPkgFiles(store string, fn func(abs, rel string) error) error {
 	return filepath.Walk(store, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -333,21 +343,28 @@ func symlinkPointsTo(link, target string) (bool, error) {
 	return filepath.Clean(linkTarget) == filepath.Clean(target), nil
 }
 
+func backupPath(path string) (string, error) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
+	backup, err := os.MkdirTemp(filepath.Dir(path), "."+filepath.Base(path)+".backup-")
+	if err != nil {
+		return "", err
+	}
+	if err := os.Remove(backup); err != nil {
+		return "", err
+	}
+	return backup, nil
+}
+
 // replaceStore swaps a staged package into place and restores the old store and
 // links if linking the new package fails.
 func replaceStore(prefix, name, staged string, wasLinked, linked bool) error {
 	store := storePath(prefix, name)
-	backup := ""
-	if _, err := os.Stat(store); err == nil {
-		backupDir, err := os.MkdirTemp(filepath.Dir(store), "."+name+".backup-")
-		if err != nil {
-			return err
-		}
-		if err := os.Remove(backupDir); err != nil {
-			return err
-		}
-		backup = backupDir
-	} else if !os.IsNotExist(err) {
+	backup, err := backupPath(store)
+	if err != nil {
 		return err
 	}
 

@@ -3,15 +3,12 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"time"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/vbauerster/mpb/v8"
-	"github.com/vbauerster/mpb/v8/decor"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -28,13 +25,19 @@ type installTarget struct {
 	linked bool
 }
 
+type installJob struct {
+	installTarget
+	layer   v1.Layer
+	digest  string
+	current *meta
+	fetch   bool
+	err     error
+}
+
 func installPackages(names []string, options installOpts) error {
 	plan := make([]installTarget, 0, len(names))
 	seen := make(map[string]bool, len(names))
 	for _, packageName := range names {
-		if err := validatePackageName(packageName); err != nil {
-			return err
-		}
 		if seen[packageName] {
 			continue
 		}
@@ -54,6 +57,7 @@ func installPackagePlan(plan []installTarget, prefix, arch string, force bool) e
 			return err
 		}
 	}
+	jobs := make([]installJob, len(plan))
 	for index := range plan {
 		if err := validatePackageName(plan[index].name); err != nil {
 			return err
@@ -64,195 +68,144 @@ func installPackagePlan(plan []installTarget, prefix, arch string, force bool) e
 		if err := validateArch(plan[index].arch); err != nil {
 			return fmt.Errorf("%s: %w", plan[index].name, err)
 		}
+		jobs[index].installTarget = plan[index]
 	}
 
 	start := time.Now()
-	names := make([]string, len(plan))
-	for index, target := range plan {
-		names[index] = target.name
-	}
-	logger.Info("install started", "packages", names, "arch", arch,
-		"prefix", prefix, "force", force)
-	fmt.Printf("> Resolving %d package(s)...\n", len(plan))
+	logger.Info("install started", "count", len(jobs), "prefix", prefix, "force", force)
+	fmt.Printf("> Resolving %d package(s)...\n", len(jobs))
 
-	phase1 := time.Now()
-	digests := make([]string, len(plan))
-	layers := make([]v1.Layer, len(plan))
-	resolveErrors := make([]error, len(plan))
 	var resolveGroup errgroup.Group
 	resolveGroup.SetLimit(maxParallel)
-	for index, target := range plan {
-		index, target := index, target
+	for index := range jobs {
+		job := &jobs[index]
 		resolveGroup.Go(func() error {
-			layer, err := remoteLayer(target.name, target.arch)
-			if err == nil {
-				digest, digestErr := layer.Digest()
-				if digestErr != nil {
-					err = fmt.Errorf("%s: %w", target.name, digestErr)
-				} else {
-					digests[index] = digest.String()
-					layers[index] = layer
+			job.layer, job.err = remoteLayer(job.name, job.arch)
+			if job.err == nil {
+				var digest v1.Hash
+				digest, job.err = job.layer.Digest()
+				if job.err != nil {
+					job.err = fmt.Errorf("%s: %w", job.name, job.err)
 				}
-			}
-			resolveErrors[index] = err
-			if err != nil {
-				logger.Error("resolve failed", "package", target.name, "arch", target.arch, "err", err)
-			} else {
-				logger.Debug("resolved digest", "package", target.name, "digest", digests[index])
+				job.digest = digest.String()
 			}
 			return nil
 		})
 	}
 	_ = resolveGroup.Wait()
-	logger.Info("phase 1 (resolve) done", "count", len(plan), "took", time.Since(phase1).String())
+	resolveErrors := make([]error, len(jobs))
+	for index := range jobs {
+		resolveErrors[index] = jobs[index].err
+	}
 	if err := errors.Join(resolveErrors...); err != nil {
 		logger.Error("install aborted: unresolved packages", "err", err)
 		return fmt.Errorf("aborting, some packages could not be resolved:\n%w", err)
 	}
 
-	metas := make([]meta, len(plan))
-	haveMeta := make([]bool, len(plan))
-	toFetch := make([]bool, len(plan))
 	fetchCount := 0
 	skipped := 0
-	for index, target := range plan {
-		if metadata, err := readMeta(prefix, target.name); err == nil {
-			metas[index], haveMeta[index] = metadata, true
+	for index := range jobs {
+		job := &jobs[index]
+		if metadata, err := readMeta(prefix, job.name); err == nil {
+			job.current = &metadata
 		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("%s: read metadata: %w", target.name, err)
-		} else if _, statErr := os.Stat(storePath(prefix, target.name)); statErr == nil {
-			return fmt.Errorf("%s: store exists without valid metadata", target.name)
+			return fmt.Errorf("%s: read metadata: %w", job.name, err)
+		} else if _, statErr := os.Stat(storePath(prefix, job.name)); statErr == nil {
+			return fmt.Errorf("%s: store exists without valid metadata", job.name)
 		} else if !os.IsNotExist(statErr) {
 			return statErr
 		}
-		if !force && haveMeta[index] && metas[index].Digest == digests[index] {
+		if !force && job.current != nil && job.current.Digest == job.digest {
 			skipped++
-			logger.Info("skip up-to-date", "package", target.name, "digest", digests[index])
 			fmt.Printf("> %s (%s) is already up to date, skipping download. Use --force to reinstall.\n",
-				target.name, target.arch)
+				job.name, job.arch)
 			continue
 		}
-		toFetch[index] = true
+		job.fetch = true
 		fetchCount++
 	}
 
-	phase2 := time.Now()
 	var downloadGroup errgroup.Group
 	downloadGroup.SetLimit(maxParallel)
 	if fetchCount > 0 {
 		fmt.Printf("> Downloading %d package(s)...\n", fetchCount)
-		progress := mpb.New(mpb.WithWidth(64))
-		for index, target := range plan {
-			if !toFetch[index] {
+		for index := range jobs {
+			job := &jobs[index]
+			if !job.fetch {
 				continue
 			}
-			index, target := index, target
 			downloadGroup.Go(func() error {
-				logger.Debug("download started", "package", target.name)
-				var bar *mpb.Bar
-				wrap := func(size int64, reader io.ReadCloser) io.ReadCloser {
-					bar = progress.New(size,
-						mpb.BarStyle().Rbound("|"),
-						mpb.PrependDecorators(
-							decor.Name(target.name, decor.WC{
-								C: decor.DindentRight | decor.DextraSpace, W: 22,
-							}),
-							decor.CountersKibiByte("% .2f / % .2f"),
-						),
-						mpb.AppendDecorators(
-							decor.Percentage(decor.WC{W: 5}),
-							decor.Name(" "),
-							decor.AverageSpeed(decor.SizeB1024(0), "% .2f"),
-						),
-					)
-					return bar.ProxyReader(reader)
-				}
-				err := downloadLayer(layers[index], cachePath(target.arch, target.name), wrap)
+				err := downloadLayer(job.layer, cachePath(job.arch, job.name))
 				if err != nil {
-					if bar != nil {
-						bar.Abort(false)
-					}
-					logger.Error("download failed", "package", target.name, "err", err)
-				} else {
-					logger.Debug("download done", "package", target.name)
+					return fmt.Errorf("%s: %w", job.name, err)
 				}
-				return err
+				return nil
 			})
 		}
-		err := downloadGroup.Wait()
-		progress.Wait()
-		if err != nil {
+		if err := downloadGroup.Wait(); err != nil {
 			return fmt.Errorf("download failed: %w", err)
 		}
 	}
-	logger.Info("phase 2 (download) done", "count", fetchCount, "took", time.Since(phase2).String())
 
-	phase3 := time.Now()
-	for index, target := range plan {
-		store := storePath(prefix, target.name)
-		currentLinked := haveMeta[index] && metas[index].Linked
-		if toFetch[index] {
+	for index := range jobs {
+		job := &jobs[index]
+		store := storePath(prefix, job.name)
+		currentLinked := job.current != nil && job.current.Linked
+		if job.fetch {
 			fmt.Printf("> Installing %s (%s) -> %s (linked=%t)\n",
-				target.name, target.arch, store, target.linked)
-			logger.Info("extract started", "package", target.name, "store", store, "linked", target.linked)
+				job.name, job.arch, store, job.linked)
 			parent := filepath.Dir(store)
 			if err := os.MkdirAll(parent, 0o755); err != nil {
 				return err
 			}
-			staged, err := os.MkdirTemp(parent, "."+target.name+".stage-")
+			staged, err := os.MkdirTemp(parent, "."+job.name+".stage-")
 			if err != nil {
 				return err
 			}
 			defer os.RemoveAll(staged)
-			if err := extractTarGz(cachePath(target.arch, target.name), staged); err != nil {
-				logger.Error("extract failed", "package", target.name, "err", err)
-				return fmt.Errorf("%s: extract failed: %w", target.name, err)
+			if err := extractTarGz(cachePath(job.arch, job.name), staged); err != nil {
+				return fmt.Errorf("%s: extract failed: %w", job.name, err)
 			}
 			nextMeta := meta{
-				Name: target.name, Arch: target.arch, Digest: digests[index], Linked: target.linked,
+				Name: job.name, Arch: job.arch, Digest: job.digest, Linked: job.linked,
 			}
 			if err := writeMetaAt(staged, nextMeta); err != nil {
 				return err
 			}
-			if err := replaceStore(prefix, target.name, staged, currentLinked, target.linked); err != nil {
+			if err := replaceStore(prefix, job.name, staged, currentLinked, job.linked); err != nil {
 				return err
 			}
 		} else {
-			linkStateChanged := currentLinked != target.linked
-			if currentLinked && !target.linked {
-				if err := unlinkPkg(prefix, target.name); err != nil {
-					logger.Error("unlink failed", "package", target.name, "err", err)
-					return fmt.Errorf("%s: unlink failed: %w", target.name, err)
+			linkStateChanged := currentLinked != job.linked
+			if currentLinked && !job.linked {
+				if err := unlinkPkg(prefix, job.name); err != nil {
+					return fmt.Errorf("%s: unlink failed: %w", job.name, err)
 				}
 			}
-			if target.linked {
-				if err := linkPkg(prefix, target.name); err != nil {
-					logger.Error("link failed", "package", target.name, "err", err)
-					return fmt.Errorf("%s: link failed: %w", target.name, err)
+			if job.linked {
+				if err := linkPkg(prefix, job.name); err != nil {
+					return fmt.Errorf("%s: link failed: %w", job.name, err)
 				}
 			}
-			if !haveMeta[index] || metas[index].Arch != target.arch ||
-				metas[index].Digest != digests[index] || metas[index].Linked != target.linked {
+			if job.current.Arch != job.arch || job.current.Linked != job.linked {
 				if err := writeMeta(prefix, meta{
-					Name: target.name, Arch: target.arch, Digest: digests[index], Linked: target.linked,
+					Name: job.name, Arch: job.arch, Digest: job.digest, Linked: job.linked,
 				}); err != nil {
 					if linkStateChanged {
-						if target.linked {
-							_ = unlinkPkg(prefix, target.name)
+						if job.linked {
+							_ = unlinkPkg(prefix, job.name)
 						} else {
-							_ = linkPkg(prefix, target.name)
+							_ = linkPkg(prefix, job.name)
 						}
 					}
 					return err
 				}
 			}
 		}
-		if toFetch[index] {
-			logger.Info("package installed", "package", target.name, "digest", digests[index])
-			fmt.Printf("> Installed %s.\n", target.name)
+		if job.fetch {
+			fmt.Printf("> Installed %s.\n", job.name)
 		}
 	}
-	logger.Info("phase 3 (extract+reconcile) done", "count", len(plan), "took", time.Since(phase3).String())
 
 	total := time.Since(start)
 	logger.Info("install finished", "installed", fetchCount, "skipped", skipped, "took", total.String())

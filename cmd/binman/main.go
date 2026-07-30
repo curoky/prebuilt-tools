@@ -1,26 +1,4 @@
-// Command bm is a tiny package manager for the standalone-binaries
-// published at ghcr.io/curoky/standalone-binaries.
-//
-// Design goals (see CLAUDE.md "Client Install / Upgrade Model"):
-//
-//   - Single static binary. bm is one statically-linked binary (built with
-//     CGO_ENABLED=0), cross-compiled for linux-x86_64 and darwin-arm64. OCI
-//     access is delegated to go-containerregistry, so neither curl, tar, oras
-//     nor jq is required on the target host.
-//   - Relocatable installs. Packages live under <prefix>/store/<name> and are
-//     exposed through *relative* symlinks in <prefix>/{bin,lib,share,...}.
-//     Because every link is relative, the whole prefix can be moved anywhere
-//     with zero repair.
-//   - Independent packages. Every package is treated as fully self-contained;
-//     bm performs no dependency resolution.
-//
-// Commands: install | remove | upgrade | info | list | outdated | sync
-//
-// `install` accepts multiple packages and runs in three phases:
-//  1. resolve every package's remote layer digest in parallel (a missing
-//     package is an error; if any package is missing, nothing is installed);
-//  2. download the needed layers in parallel into the cache;
-//  3. extract + link them serially.
+// Command bm installs standalone binaries published as OCI artifacts.
 package main
 
 import (
@@ -45,14 +23,8 @@ const (
 
 var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
-// logger carries the detailed, structured log. It always writes to
-// <prefix>/binman.log; with --verbose it also mirrors to stderr. CLI key-step
-// output (the "> ..." lines) keeps going straight to stdout via fmt.
 var logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
-// setupLogger points logger at <prefix>/binman.log, creating the prefix if needed.
-// When verbose is set, log records are also written to stderr. The returned
-// closer flushes/closes the underlying file.
 func setupLogger(prefix string, verbose bool) (io.Closer, error) {
 	if err := os.MkdirAll(prefix, 0o755); err != nil {
 		return nil, fmt.Errorf("cannot create prefix %s: %w", prefix, err)
@@ -70,9 +42,6 @@ func setupLogger(prefix string, verbose bool) (io.Closer, error) {
 	return f, nil
 }
 
-// detectArch returns the publish arch tag for the current platform. Only
-// linux-x86_64 and darwin-arm64 are published; anything else must be passed
-// explicitly via --arch.
 func detectArch() (string, error) {
 	switch {
 	case runtime.GOOS == "linux" && runtime.GOARCH == "amd64":
@@ -101,10 +70,6 @@ func validateName(kind, name string) error {
 func validatePackageName(name string) error { return validateName("package", name) }
 func validateProfileName(name string) error { return validateName("profile", name) }
 
-// ---------------------------------------------------------------------------
-// CLI (cobra).
-// ---------------------------------------------------------------------------
-
 func main() {
 	var (
 		prefix  string
@@ -115,7 +80,6 @@ func main() {
 	)
 	var logCloser io.Closer
 
-	// resolveArch returns the explicit --arch or the auto-detected platform.
 	resolveArch := func() (string, error) {
 		if arch != "" {
 			return arch, nil
