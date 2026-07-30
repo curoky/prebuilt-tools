@@ -47,7 +47,7 @@ let
         # The bundled core XS module Compress::Raw::Zlib links zlib dynamically
         # from /nix (the only /nix Mach-O dependency perl ships). zlib is a
         # macOS system library, so repoint that load command at the system
-        # /usr/lib/libz.1.dylib, leaving only /usr/lib deps (CLAUDE.md rule).
+        # /usr/lib/libz.1.dylib, leaving only /usr/lib dependencies.
         zbundle=$(find "$out/lib" -name Zlib.bundle -print -quit)
         if [ -n "$zbundle" ]; then
           oldZ=$(${stdenv.cc.targetPrefix}otool -L "$zbundle" | awk '/\/nix\/.*libz/ {print $1; exit}')
@@ -55,7 +55,7 @@ let
 
           # Repointing the load command still leaves the compile-time LC_RPATH
           # that pointed at the /nix zlib; drop every /nix rpath so the bundle
-          # carries no store references (CLAUDE.md rule 1).
+          # carries no store references.
           ${stdenv.cc.targetPrefix}otool -l "$zbundle" \
             | awk '/LC_RPATH/{r=1} r&&/path /{print $2; r=0}' \
             | grep '^/nix/' \

@@ -2,17 +2,18 @@
 
 默认路径是在 `manifests/default.nix` 选择 unstable `pkgsStatic`，再由
 `cmd/artifact/` 完成 assembly、校验和归档。专题文档只解释不能从代码表面看出的
-设计约束；具体包清单和回归状态分别以实现和 [`TODO.md`](../TODO.md) 为准。
+设计约束；具体包清单和回归状态分别以实现和 [`TODO.md`](../../TODO.md) 为准。
 
 | 生态 | 文档 | 主要案例 |
 | --- | --- | --- |
-| C / autotools | [c-autotools.md](package-strategies/c-autotools.md) | 静态链接、资源路径、s6 |
-| Go | [go.md](package-strategies/go.md) | podman、macOS CGO |
-| Node.js | [nodejs.md](package-strategies/nodejs.md) | 静态 runtime、同级 Node wrapper |
-| Perl | [perl.md](package-strategies/perl.md) | 平台拆分解释器、纯 Perl 工具、XS 模块 |
-| Python | [python.md](package-strategies/python.md) | 静态解释器、同级 Python wrapper |
-| Rust | [rust.md](package-strategies/rust.md) | miniserve、zellij |
-| 特殊案例 | [special-cases.md](package-strategies/special-cases.md) | 非默认产物与动态例外 |
+| C / autotools | [c-autotools.md](c-autotools.md) | 静态链接、资源路径、s6 |
+| Go | [go.md](go.md) | podman、macOS CGO |
+| Node.js | [nodejs.md](nodejs.md) | 静态 runtime、同级 Node wrapper |
+| `pkgsStatic.extend` | [pkgsstatic-extend.md](pkgsstatic-extend.md) | target 与 build platform 边界 |
+| Perl | [perl.md](perl.md) | 平台拆分解释器、纯 Perl 工具、XS 模块 |
+| Python | [python.md](python.md) | 静态解释器、同级 Python wrapper |
+| Rust | [rust.md](rust.md) | miniserve、zellij |
+| 特殊案例 | [special-cases.md](special-cases.md) | 非默认产物与动态例外 |
 
 ## 共用模式
 

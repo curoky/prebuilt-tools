@@ -14,9 +14,9 @@
 #      patch moves the definition into d3_aead.c so it is always pulled.
 #
 # With both fixes the static set links cleanly; the resulting binaries depend
-# only on /usr/lib system libs (libSystem, libresolv), matching the darwin
-# portability rule in CLAUDE.md (every nix dependency statically linked; only
-# macOS system libraries stay dynamic).
+# only on /usr/lib system libraries (libSystem, libresolv): every Nix
+# dependency is statically linked, and only macOS system libraries stay
+# dynamic.
 { krb5 }:
 
 krb5.overrideAttrs (old: {

@@ -190,7 +190,8 @@ jobs:
 
       - run: |
           # Both outputs come from one multi-output derivation, so the second
-          # build reuses the artifact assembly performed by the first.
+          # build reuses the artifact assembly performed by the first. Nix
+          # suffixes non-default output links with the output name.
           nix build \
             --option extra-substituters "$NIXCACHE_STORE" \
             --option require-sigs false \
@@ -199,7 +200,7 @@ jobs:
             --option extra-substituters "$NIXCACHE_STORE" \
             --option require-sigs false \
             .#tarballs.x86_64-linux.${{ matrix.name }} --out-link tarball
-          cp -L tarball ./${{ matrix.name }}.linux-x86_64.tar.gz
+          cp -L tarball-archive ./${{ matrix.name }}.linux-x86_64.tar.gz
 
       - name: Push Nix closure to GHCR
         env:

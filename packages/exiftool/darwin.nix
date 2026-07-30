@@ -15,8 +15,8 @@ let
   # dependency load commands, so those /nix references would survive and break
   # the portability rule.
   #
-  # Fix per the darwin portability ladder (CLAUDE.md strategy 2): link every
-  # nix dependency statically and leave only system libs dynamic. Each XS
+  # Link every Nix dependency statically and leave only system libraries
+  # dynamic. Each XS
   # module's nixpkgs definition points its build at `pkgs.<lib>` dirs that
   # contain a .dylib; we re-point those at the matching `pkgsStatic.<lib>` lib
   # dirs, which only ship a static .a, so the linker statically embeds the

@@ -25,4 +25,4 @@ onlyStatic =
 - 最终 target 产物仍通过静态链接校验。
 
 Node.js 的具体应用见
-[`packages/nodejs/26/linux.nix`](../packages/nodejs/26/linux.nix)。
+[`packages/nodejs/26/linux.nix`](../../packages/nodejs/26/linux.nix)。

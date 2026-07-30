@@ -1,7 +1,10 @@
-# 包发布模型
+# 发布与 Cache 模型
 
 Linux 和 Darwin workflow 共享同一发布契约：按当前 `outPath` 发现缺失包，构建 standalone
 目录及归档，再分别发布 Nix cache 和工具 OCI artifact。
+
+Nix cache 的 segment schema、serving 和 retention 细节见
+[Nix Cache 设计](nix-cache.md)。
 
 ## 发布流程
 
@@ -18,8 +21,9 @@ Linux 和 Darwin workflow 共享同一发布契约：按当前 `outPath` 发现�
 归档必须由 `lib/make-artifacts.nix` 在 Nix build 内生成。workflow 不得自行重新打包或修改
 归档内容。
 
-cache segment 使用 matrix package 名作为稳定的 `NIXCACHE_PACKAGE_KEY`。prune 据此在增量 run
-中按 package 保留最新 segment；不得改用 run ID 或 snapshot 内的 tag 数量表示包 identity。
+Cache segment 使用 matrix package 名作为稳定的 `NIXCACHE_PACKAGE_KEY`。Prune 据此在增量
+run 中按 package 保留最新 segment；不得改用 run ID 或 snapshot 内的 tag 数量表示 package
+identity。
 
 ## Cache 命中判定
 
@@ -46,4 +50,4 @@ cache segment 使用 matrix package 名作为稳定的 `NIXCACHE_PACKAGE_KEY`。
 同步 Linux、Darwin workflow 和本表。
 
 LLVM 工具 workflow 按版本矩阵直接构建，不经过普通包的 `discover`，但使用相同的 artifact
-和 cache 发布契约。
+和 cache 发布契约。`.github/workflows/prune-nix-cache.yaml` 只允许手动触发。

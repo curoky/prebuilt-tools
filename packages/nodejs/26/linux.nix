@@ -65,7 +65,7 @@ let
   # from source. Guard every override with `hostPlatform.isStatic` so it only
   # applies to the musl-static target copy; the glibc build-platform copies are
   # left untouched and keep hitting the upstream cache.
-  # Full write-up: ../../../docs/pkgsstatic-extend-toolchain-pollution.md
+  # Full write-up: ../../../docs/package-strategies/pkgsstatic-extend.md
   onlyStatic = pkg: overrides: if pkg.stdenv.hostPlatform.isStatic then pkg.overrideAttrs overrides else pkg;
   pkgsStaticNode = pkgsStatic.extend (
     _: prev: {
