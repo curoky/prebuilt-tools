@@ -93,7 +93,6 @@ unstable pin、本地 derivation、override、禁用检查或动态例外时，�
 | `python314` | 📦 本地 | — | ❌ | 静态 CPython 与内建扩展模块 | 多版本静态 runtime 是产品决策 | `packages/python/` |
 | `python315` | 🩹 + 📦 本地 | — | 🟡 | 保留静态 runtime；临时修正 musl `statx` 字段拼写 | 只删除字段替换，保留静态 modules | `packages/python/` |
 | `rime-plugins` | 📦 本地 | 📦 本地 | ❌ | 聚合多个 Rime 词库与转换结果 | 数据 bundle 是产品 | `packages/rime-plugins/` |
-| `rsync` | — | 🩹 本地 | 🟡 | Linux 已回归 unstable 上游（完整 check phase 44 passed / 0 failed，musl-static 通过）；macOS 仍保留跳过 `itemize` test 的本地 workaround，未在 darwin 验证 | darwin 上游完整 check phase 与 portability 通过后删除本地 override | `packages/rsync/`, `manifests/default.nix` |
 | `s6` | 🩹 本地 | — | 🟡 | 去掉 baked Nix prefixes 并接入 patched execline | stock 输出不再写入 Nix store 路径 | `packages/s6/` |
 | `s6-linux-init` | 🩹 本地 | — | 🟡 | 去掉 baked prefixes 并合并 outputs | stock 产物与生成脚本无 Nix store 路径 | `packages/s6-linux-init/` |
 | `s6-rc` | 🩹 本地 | — | 🟡 | 去掉自身和依赖 baked prefixes | stock 产物与生成服务无 Nix store 路径 | `packages/s6-rc/` |

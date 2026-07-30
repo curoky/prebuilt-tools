@@ -14,9 +14,6 @@ in
   # Partial-static C packages.
   ffmpeg = pkgsStatic.callPackage ../ffmpeg/darwin.nix { };
   krb5 = pkgsStatic.callPackage ../krb5/darwin.nix { };
-  # rsync's stock checkPhase runs a failing itemize test; kept as a local
-  # workaround on darwin only. Linux uses stock unstable via the manifest.
-  rsync = pkgsStatic.callPackage ../rsync { };
   wget = pkgsStatic.callPackage ../wget/darwin-static.nix {
     inherit (pkgs) perlPackages;
   };

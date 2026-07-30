@@ -186,9 +186,7 @@
   procps = {
     platforms = [ "x86_64-linux" ];
   };
-  rsync = {
-    platforms = [ "x86_64-linux" ];
-  };
+  rsync = { };
   strace = {
     platforms = [ "x86_64-linux" ];
   };
