@@ -41,6 +41,7 @@ func TestServeCache(t *testing.T) {
 	if _, err := index.refresh(); err != nil {
 		t.Fatal(err)
 	}
+	index.ready.Store(true)
 	server := httptest.NewServer(http.HandlerFunc(index.serveHTTP))
 	t.Cleanup(server.Close)
 

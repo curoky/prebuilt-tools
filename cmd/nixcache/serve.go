@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -21,6 +22,11 @@ const (
 
 type cacheIndex struct {
 	client *registryClient
+
+	// ready flips to true after the first successful index load. The
+	// nix-cache-info readiness endpoint reports 503 until then so a probe only
+	// passes once entries are queryable, without keeping the port closed.
+	ready atomic.Bool
 
 	mu      sync.RWMutex
 	entries map[string]cacheEntry
@@ -61,6 +67,13 @@ func (index *cacheIndex) serveHTTP(writer http.ResponseWriter, request *http.Req
 	path := strings.TrimPrefix(request.URL.Path, "/")
 	switch {
 	case path == "nix-cache-info":
+		// Report not-ready until the first index load finishes, so a readiness
+		// probe waits for a queryable index rather than passing against an
+		// empty one (which would misreport every cache hit as a miss).
+		if !index.ready.Load() {
+			http.Error(writer, "cache index not ready", http.StatusServiceUnavailable)
+			return
+		}
 		serveBytes(writer, request, "text/x-nix-cache-info", nixCacheInfo)
 	case strings.HasSuffix(path, narInfoSuffix):
 		hash := strings.TrimSuffix(path, narInfoSuffix)
@@ -117,28 +130,38 @@ func setNARHeaders(writer http.ResponseWriter, entry cacheEntry) {
 func serveCache(client *registryClient) error {
 	index := newCacheIndex(client)
 
-	// Load the index synchronously before opening the listener so that a
-	// successful nix-cache-info readiness probe implies the entries are already
-	// queryable. An async first load would let CI start path-info lookups while
-	// the index is still empty, turning every cache hit into a spurious miss.
-	//
-	// A load failure must NOT be fatal: the port still has to open so the
-	// readiness probe and substituter can proceed. A transient GHCR error
-	// (auth, throttling, a malformed segment) would otherwise take down the
-	// whole build job. On failure the index simply starts empty (every lookup
-	// misses, degrading to a rebuild), and the periodic refresh retries. A
-	// missing cache repository is not an error (listSegments maps NAME_UNKNOWN
-	// to an empty set), so a fresh repo also starts empty.
+	// Open the listener first so the port is immediately connectable: the CI
+	// readiness probe polls nix-cache-info, which reports 503 until the first
+	// index load completes. Blocking the listen on that load instead (a full
+	// GHCR segment fetch) would keep the port closed past the probe's retry
+	// window, so every connection is refused and the job fails before the
+	// cache is ever usable.
+	listener, err := net.Listen("tcp", defaultListen)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", defaultListen, err)
+	}
+
+	server := &http.Server{
+		Handler:           withAccessLog(http.HandlerFunc(index.serveHTTP)),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+	}
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- server.Serve(listener) }()
+	log.Printf("serving Nix cache at http://%s", defaultListen)
+
+	// Load the index once, then mark ready so nix-cache-info starts answering.
+	// A load failure is not fatal: readiness still flips so the probe passes
+	// and the substituter proceeds against an empty index (every lookup misses,
+	// degrading to a rebuild); the periodic refresh retries. A missing cache
+	// repository is likewise not an error (listSegments maps NAME_UNKNOWN to an
+	// empty set).
 	if count, err := index.refresh(); err != nil {
 		log.Printf("initial cache index load failed, starting with empty index: %v", err)
 	} else {
 		log.Printf("loaded cache index: %d entries", count)
 	}
-
-	listener, err := net.Listen("tcp", defaultListen)
-	if err != nil {
-		return fmt.Errorf("listen on %s: %w", defaultListen, err)
-	}
+	index.ready.Store(true)
 
 	go func() {
 		ticker := time.NewTicker(refreshEvery)
@@ -152,13 +175,7 @@ func serveCache(client *registryClient) error {
 		}
 	}()
 
-	log.Printf("serving Nix cache at http://%s", defaultListen)
-	server := &http.Server{
-		Handler:           withAccessLog(http.HandlerFunc(index.serveHTTP)),
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       2 * time.Minute,
-	}
-	return server.Serve(listener)
+	return <-serveErr
 }
 
 // statusRecorder captures the response status so the access log can report it;
