@@ -156,10 +156,16 @@ for f in "${files[@]}"; do
     fi
     echo "$deps"
 
+    # A dylib's own install name (LC_ID_DYLIB) shows up as the first entry in
+    # `otool -L` but is not a runtime dependency, so drop it before scanning.
+    # `otool -D` prints the install id (empty for executables / bundles).
+    install_id=$(otool -D "$f" 2>/dev/null | tail -n +2 | head -n 1)
+
     while IFS= read -r dependency_line; do
       dependency_line=${dependency_line#"${dependency_line%%[![:space:]]*}"}
       dependency=${dependency_line%% *}
       [[ -z $dependency ]] && continue
+      [[ -n $install_id && $dependency == "$install_id" ]] && continue
 
       case "$dependency" in
         /usr/lib/* | /System/Library/Frameworks/* | @loader_path/* | @rpath/*) ;;
