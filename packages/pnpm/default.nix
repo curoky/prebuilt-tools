@@ -9,8 +9,8 @@
 #
 # This derivation just re-exposes that pnpm with a deploy-friendly entry point:
 # upstream's $out/bin/pnpm is a symlink to libexec/pnpm/bin/pnpm.mjs that relies
-# on the .mjs shebang to locate node. After the standalone normalize pass that
-# shebang's /nix/store path is rewritten to `/usr/bin/env node`, which would
+# on the .mjs shebang to locate node. Artifact assembly rewrites that shebang's
+# /nix/store path to `/usr/bin/env node`, which would
 # make the deployed pnpm depend on a node on the host PATH. Instead we ship a
 # relative-path wrapper that invokes the sibling `nodejs-slim26` package
 # explicitly, so the static node travels with pnpm:

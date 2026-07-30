@@ -1,75 +1,28 @@
-# Python 构建案例
+# Python Runtime 与脚本工具
 
-Python 生态分两层：**静态 CPython 解释器**（作为共享 runtime 独立成包）和**纯 Python 脚本工具**
-（用 shared-sibling wrapper 运行期绑定那个解释器）。工具本身不做任何静态链接。
+Linux 发布多个 musl 全静态 CPython runtime；纯 Python 工具由 wrapper 绑定明确的运行时。
+版本、补丁和包状态见 [`TODO.md`](../../TODO.md)。
 
-- 解释器 factory：`packages/python/default.nix`；版本资源：
-  `packages/python/{311,312,313,314,315}/Setup.local`（Linux-only）。
-- 工具：`packages/{git-filter-repo,netron}`（跨平台 common）、`packages/dool`（Linux-only）。
+## 静态 CPython
 
-## Python 解释器（311 / 312 / 313 / 314 / 315）
+每个版本使用独立 `Modules/Setup.local`，把所需 C 扩展静态编入解释器。全静态解释器不能依赖
+运行期加载的 `.so`，因此新增模块时必须：
 
-`packages/local/linux.nix` 通过 `packages/python/default.nix` 的共享 factory 接入五个 Linux-only
-解释器。factory 接收对应的上游 musl-static `pythonNNN` 和版本专属 `Setup.local`，统一执行
-`overrideAttrs`；Python 3.15 额外启用 musl `statx` patch。
+- 在对应 `Setup.local` 中声明静态扩展；
+- 对外部库使用静态归档；
+- 保证解释器和扩展均不残留 `/nix/store` 运行期引用。
 
-### Linux：musl 纯静态
+共享 factory 只承载所有版本一致的构建规则；版本专属差异留在对应资源文件或显式参数中，
+不在 factory 中按版本号分支。
 
-核心机制：把仓库自带的 `Setup.local` 复制进 CPython 源码树的 `Modules/Setup.local`
-（`postPatch` 里 `cp ${Modules_Setup_local} Modules/Setup.local`），让 `makesetup` 把可选扩展模块
-**静态编译进解释器**而非做成 `.so`——因为 musl 全静态解释器运行期无法 dlopen `.so`。
+## 同级 Runtime Wrapper
 
-`Setup.local` 关键点：
+Linux 的 Python 工具把入口和 `site-packages` 放在工具自身包内。wrapper 根据自身路径定位
+同级 `python314`，设置 `PYTHONHOME` 和 `PYTHONPATH`，再显式执行该解释器。上游 shebang 不参与
+运行期解析。
 
-- stdlib C 扩展列为 static（无 `*shared*` 标签即静态）：`_socket`、`_ctypes`、`_bz2`、`_lzma`、
-  `zlib`、`_curses`、`readline` 等。
-- **OpenSSL 显式静态归档链接**：`_ssl` / `_hashlib` 用 `-l:libssl.a -l:libcrypto.a` 强制静态归档、
-  配 `-Wl,--exclude-libs,libssl.a`（隐藏归档符号）。
-- `configureFlags` 追加 `LDFLAGS=-L${termcap}/lib`，为 `readline`/`_curses` 的 `-ltermcap` 提供
-  静态库路径。
+Darwin 当前不发布 Python runtime，`git-filter-repo` 和 `netron` 使用宿主 `python3`。这是明确的
+宿主依赖；新增 Darwin Python 工具不得静默采用同一做法。
 
-瘦身开关：`stripIdlelib = true; stripTests = true; stripTkinter = true;`；`_tkinter`/`_scproxy`/
-`nis`/`_uuid` 保持禁用。
-
-### 临时编译修复（待回归）
-
-**python315 的 musl `statx` 拼写 patch**（仅 `stdenv.hostPlatform.isMusl` 时）：
-
-```bash
-substituteInPlace Modules/posixmodule.c --replace-fail stx_dio_offset_align stx_dio_offet_align
-```
-
-根因：musl 的 `<bits/statx.h>` 把 `struct statx` 成员误拼为 `stx_dio_offet_align`（少一个 `s`），
-而 CPython 3.15 的 `posixmodule.c` 用正确的内核名 `stx_dio_offset_align`；`configure` 只探测到拼写
-正确的 `stx_dio_mem_align`，导致同一 `#ifdef` 块里的 offset-align 引用编译失败。这是典型的**临时
-编译修复**。musl 或 CPython 修好后应删除；回归流程见根 `CLAUDE.md`。
-
-## Python 脚本工具（sibling-wrapper：git-filter-repo / netron / dool）
-
-**base：** 一律 native `pkgs.callPackage`（`git-filter-repo`/`netron` 在 common、`dool` 在 linux）。
-它们不含需静态化的编译产物，只打包纯 Python 脚本 + 一个 bash wrapper。
-
-### Sibling wrapper
-
-三者共享同一套 wrapper 模式：
-
-- wrapper 解析自身真实路径 → 计算 `root`（包根）与 `store`（上级 store 目录）。
-- **Linux 分支**：显式设 `PYTHONHOME=$store/python314`，逐段拼 `PYTHONPATH`（`lib/python3.14`、
-  `site-packages`、`lib-dynload`，以及本包 `$root/lib/python3.14/site-packages`），再 `exec` 同级
-  `python314` 包里的 `$PYTHONHOME/bin/python3.14` 运行主脚本——**运行期解析 sibling 静态解释器**。
-- **darwin 分支**：`exec -a "$0" python3 "$root/bin/_<name>_main.py"`，使用宿主 `python3`；
-  当前 Darwin 不发布 Python runtime。
-
-因为 wrapper 显式指定相对解释器，上游写死的 nix-store shebang 全部失效。
-
-注意：Darwin 分支依赖宿主 `python3`，与根 `CLAUDE.md` 的“包独立”长期目标存在差距。修改这些
-工具时不要把这一现状误写成完全自包含；若新增 Darwin Python runtime，应同步改三个 wrapper。
-
-### 各自的打包细节
-
-- **git-filter-repo**：`version` 取自 `python3Packages.git-filter-repo`；从上游包复制 site-packages，
-  把上游 `.git-filter-repo-wrapped` 拷成 `_git_filter_repo_main.py` 作真实入口。
-- **netron**：从 PyPI `.whl`（`fetchurl` + `unzip`）解包成 site-packages；`writeText` 生成
-  `_netron_main.py`（`import netron; main()`，含 `sys.argv[0]` 清洗）。
-- **dool**：dool 是单文件、纯 stdlib 的 Python 脚本，直接把 `${dool}/bin/dool` 复制成
-  `_dool_main.py` 当入口，wrapper 默认追加 `--bytes`。
+工具应保持纯脚本分发。若加入 native extension，必须改为平台拆分，并分别满足 Linux 静态链接
+和 macOS 系统 dylib 边界。

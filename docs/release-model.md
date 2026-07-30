@@ -1,47 +1,30 @@
 # 包发布模型
 
-普通 Linux（`build-linux.yaml`）和 Darwin（`build-darwin.yaml`）workflow 的发布流程、
-cache 命中判定和各 CI 触发条件下的排列组合。LLVM 工具的专用 workflow（`build-llvm-tools.yaml`）
-按 version 矩阵直接构建、无 `discover` job，但复用同一套 cache 流程。
+Linux 和 Darwin workflow 共享同一发布契约：按当前 `outPath` 发现缺失包，构建 standalone
+目录及归档，再分别发布 Nix cache 和工具 OCI artifact。
 
 ## 发布流程
 
-每个 workflow 分 `discover`、`build` 和 `summary` 三个 job：
-
-1. `discover` 一次 `nix eval` 当前平台全部包名与 `outPath`（排除 `all`、`all-fast`
-   聚合），产出 `<name>\t<outPath>` 的 TSV。
-2. 通过 `cmd/nixcache/install.sh` 下载已发布的 `nixcache`，启动本地 GHCR-backed
-   substituter（`127.0.0.1:37515`）。
-3. `discover` 按[触发矩阵](#触发矩阵)决定候选范围与是否做 cache 命中过滤，把需要重建的
-   包名写入 build matrix；命中 cache 的包不进 matrix。
-4. `build` 对 matrix 中每个包，以本地 substituter 执行 `nix build .#<name>`（standalone
-   产物）与 `nix build .#tarballs.<system>.<name>`（发布归档），unsigned cache 仅在 workflow
-   命令上显式设置 `require-sigs=false`。
-5. 归档由 `lib/make-tarball.nix` 在 Nix 内生成，workflow 只 `cp -L` 出
-   `<name>.linux-x86_64.tar.gz` 或 `<name>.darwin-arm64.tar.gz`，不依赖宿主 `rsync`/`tar`。
-6. 用 `nixcache push` 把 standalone closure 发布到 cache repository，再把工具 tarball 发布到
+1. `discover` eval 当前平台的包名和 `outPath`，排除聚合输出。
+2. 本地 `nixcache serve` 作为 GHCR-backed substituter，按 `outPath` 检查 cache。
+3. 未命中的包进入 build matrix。
+4. 每个包构建 `packages.<system>.<name>` 和
+   `tarballs.<system>.<name>`。两者是同一 multi-output derivation 的 `out` 与
+   `archive` output。
+5. standalone closure 推送到 cache repository；归档发布为
    `ghcr.io/curoky/standalone-binaries:<name>-<arch>`。
-7. 每个 `build` matrix leg 以 `always()` 把 `<name>\t<job.status>` 写成
-   `build-result-<name>` artifact。`summary` job（`needs: [discover, build]` +
-   `always() && !cancelled()`）下载全部 `build-result-*`，汇总触发/平台/commit/`flake.lock`
-   snapshot 元信息、`discover` 的候选/命中/选中数量、`build` 各包成功失败统计与失败包清单，
-   写入 `$GITHUB_STEP_SUMMARY`（Actions 页面可见）。
+6. `summary` 汇总发现数量和各 matrix leg 的最终状态。
 
-`nix-installer-action` 的 `summarize` 一律设为 `false`，关闭 Determinate Nix 自带的
-build summary 与 timeline chart，避免与自定义 `summary` job 的输出重复。
+归档必须由 `lib/make-artifacts.nix` 在 Nix build 内生成。workflow 不得自行重新打包或修改
+归档内容。
+
+cache segment 使用 matrix package 名作为稳定的 `NIXCACHE_PACKAGE_KEY`。prune 据此在增量 run
+中按 package 保留最新 segment；不得改用 run ID 或 snapshot 内的 tag 数量表示包 identity。
 
 ## Cache 命中判定
 
-`discover` 对每个候选包用 `nix path-info --store <本地 substituter> --option require-sigs false <outPath>`
-探测：
-
-- 探测成功 = cache 命中：该包已发布，跳过，不进 build matrix。
-- 探测失败 = cache 未命中：该包需要重建，进 build matrix。
-
-命中判定基于 `outPath`，即当前 `flake.lock` 与包定义 eval 出的确切 store path；上游或本地
-包定义变化会改变 `outPath`，从而自然表现为未命中。
-
-**强制重建**指跳过上述探测、把候选范围内每个包都当作未命中直接进 matrix。以下情形强制重建：
+命中判定只使用当前 `flake.lock` 和包定义产生的确切 `outPath`。探测成功则跳过，探测失败则
+构建。以下情形跳过 cache 探测并强制构建候选范围：
 
 - `schedule` 触发（每周定时全量刷新）；
 - `workflow_dispatch` 且 `skip_discover=true`。
@@ -55,24 +38,12 @@ build summary 与 timeline chart，避免与自定义 `summary` job 的输出重
 | --- | --- | --- | --- | --- |
 | `push` | 运行 | 全部包 | 做 | `discover` 输出 |
 | `schedule` | 运行 | 全部包 | 跳过（强制重建） | `discover` 输出 |
-| `workflow_dispatch`，`name` 为空或 `*`，`skip_discover=false` | 运行 | 全部包 | 做 | `discover` 输出 |
-| `workflow_dispatch`，`name` 为空或 `*`，`skip_discover=true` | 运行 | 全部包 | 跳过（强制重建） | `discover` 输出 |
-| `workflow_dispatch`，`name` 为具体包 | 整个跳过 | 仅该包 | 不适用 | 由 `inputs.name` 直接构造单包 matrix |
+| dispatch 全部，普通 | 运行 | 全部包 | 做 | `discover` 输出 |
+| dispatch 全部，强制 | 运行 | 全部包 | 跳过 | `discover` 输出 |
+| dispatch 具体包 | 跳过 | 仅该包 | 不适用 | `inputs.name` |
 
-要点：
+具体包 dispatch 直接构造单包 matrix，不做 cache 探测。新增触发方式或改变选择语义时，必须
+同步 Linux、Darwin workflow 和本表。
 
-- `name` 为具体包时 `discover` 整个 job 被 skip，`skip_discover` 无意义；该包由 `build`
-  直接构建，不做 cache 探测。
-- `schedule` 恒等于强制重建，与 `skip_discover` 无关。
-- `build` job 用 `always()` + `needs.discover.result` 区分 `discover` 是运行选包（用其
-  输出的 matrix）还是被跳过（用 `inputs.name` 构造单包 matrix）。
-
-## 实现锚点
-
-- `discover` job 的 `if`：`workflow_dispatch` 且 `name` 为具体包时整个跳过。
-- `discover` 的 shell 分支：`skip_discover=true` 或 `schedule` 时 `cut -f1 pkgs.tsv`
-  取全部候选，否则并行 `nix path-info` 过滤。
-- `build` job 的 `if` 与 `matrix`：`always()` + `needs.discover.result` 判断。
-
-新增触发方式或调整跳过逻辑时以本文触发矩阵为准，并同步 `build-linux.yaml` 与
-`build-darwin.yaml` 两个 workflow 的对应表达式。
+LLVM 工具 workflow 按版本矩阵直接构建，不经过普通包的 `discover`，但使用相同的 artifact
+和 cache 发布契约。

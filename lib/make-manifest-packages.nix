@@ -39,15 +39,22 @@ lib.concatMapAttrs (
     env = envs.${targetVer};
     base = if conf.isStatic or true then env.pkgsStatic else env.pkgs;
 
-    rawPkg = base.${name} or (lib.attrByPath (lib.splitString "." name) null base);
+    rawPkg = lib.getAttrFromPath (lib.splitString "." name) base;
 
     selectedOutputs = conf.output or [ "out" ];
+    selectedPaths = map (output: lib.getOutput output rawPkg) selectedOutputs;
     finalName = conf.alias or name;
 
-    finalDrv = env.pkgs.symlinkJoin {
-      name = finalName;
-      paths = map (o: lib.getOutput o rawPkg) selectedOutputs;
-    };
+    # A single output is already a complete tree; only pay for an lndir-based
+    # symlinkJoin when multiple outputs actually need to be merged.
+    finalDrv =
+      if lib.length selectedPaths == 1 then
+        lib.head selectedPaths
+      else
+        env.pkgs.symlinkJoin {
+          name = finalName;
+          paths = selectedPaths;
+        };
   in
   lib.optionalAttrs enabled {
     "${finalName}" = finalDrv;

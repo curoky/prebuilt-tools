@@ -19,8 +19,8 @@ let
       +
       # On macOS perl is built natively (not fully static), so libperl.dylib
       # stays a dynamic library and the interpreter loads it by its absolute
-      # /nix/store install path. normalize.sh does not rewrite Mach-O install
-      # names, so repoint every consumer (and the dylib's own id) to a
+      # /nix/store install path. Artifact assembly does not rewrite Mach-O
+      # install names, so repoint every consumer (and the dylib's own id) to a
       # @loader_path-relative location inside this package, keeping the payload
       # self-contained and relocatable after deployment.
       ''

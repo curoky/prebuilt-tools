@@ -1,31 +1,24 @@
-# Rust 构建案例
+# Rust 包
 
-普通 Rust 包使用 manifest 的 `pkgsStatic`。本地 Rust 包目前有 `miniserve` 和 `zellij`。
+普通 Rust CLI 直接使用 unstable `pkgsStatic`。本地 derivation 只保留产品 wrapper 或当前
+静态构建所需的最小 override；状态见 [`TODO.md`](../../TODO.md)。
 
-## miniserve
+## 产品 Wrapper
 
-`packages/miniserve` 从当前 `pkgsStatic.miniserve` 构建，保留静态真实二进制并增加 wrapper。
-wrapper 默认打开 tar、tar.gz、zip、目录优先、symlink 信息和 wget footer 等环境开关，再执行
-`_miniserve`。
+`miniserve` 的 wrapper 设置仓库定义的默认功能开关，再执行包内真实二进制。这些默认值属于
+发布产品行为，不应在上游包可直接构建时一并删除。
 
-这是产品行为 wrapper，不是编译 workaround。回归上游时不能只比较构建成功，还要确认这些默认行为
-是否仍然需要。
+## 直接使用 Unwrapped 输出
 
-## zellij
+`zellij` 直接构建 unstable `zellij-unwrapped`。上游 `zellij` 仅在注入额外 PATH 内容时提供
+价值，本仓库不需要该 wrapper 层。
 
-`packages/zellij` 使用 pinned 静态集 `pkgs2605Static`，不是默认 unstable。
-直接构建 `zellij-unwrapped`（nixpkgs 的 `zellij` 只是 symlinkJoin wrapper，无 `extraPackages` 时不增值），
-少一层 derivation。
+当前构建关闭 checks；具体原因和回归条件只在 `TODO.md` 维护。最终可执行文件仍必须通过 Linux
+musl 全静态校验。
 
-- Linux musl64 cross 静态集；`build==host==x86-64` 导致 checkPhase 不自动跳过。
-- 临时 workaround：`doCheck = false` / `doInstallCheck = false`。根因：cargoCheckHook 会构建 `zellij` 测试
-  target，其静态链 libcurl against libssh2，libssh2 1.11 符号因链接顺序未解析而失败。
+## 构建工具链
 
-回归条件：unstable 的 `zellij-unwrapped` 在当前 musl cross static 环境可构建，且 test target
-不再因 libcurl/libssh2 链接顺序失败。回归时删除 `pkgs2605Static` 参数和禁用检查的 override。
-
-## Rust runtime 依赖
-
-一些非 Rust 主体的包会链入 Rust 编译的 runtime 依赖，其静态构建坑归在对应生态文档：node26 的
-`temporal_capi`、pydantic-core（lief 的 Python bindings 拖进）等见
+Rust 依赖在 Linux musl cross 环境中应复用 build 平台可 substitute 的 glibc rustc/LLVM。
+局部 overlay 不得修改 `buildPackages` 中的同名依赖；只针对 target 的 override 必须以
+`stdenv.hostPlatform.isStatic` 限定。Node.js 中的 Rust 依赖遵守同一规则，见
 [Node.js](nodejs.md)。

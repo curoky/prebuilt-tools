@@ -7,8 +7,7 @@ on:
       - 'packages/**'
       - 'manifests/**'
       - 'lib/**'
-      - 'scripts/**'
-      - 'cmd/nixcache/install.sh'
+      - 'cmd/artifact/**'
       - 'flake*'
   workflow_dispatch:
     inputs:
@@ -199,11 +198,8 @@ jobs:
           tail -n +1 -f "$RUNNER_TEMP/nixcache.log" | sed 's/^/[nixcache] /' &
 
       - run: |
-          # Build the standalone payload (pushed to the Nix cache) and the
-          # published tarball. The tarball is packed inside Nix
-          # (lib/make-tarball.nix): archiving (symlink handling, deterministic
-          # tar) no longer needs host rsync/tar/coreutils, and the layer is
-          # reproducible.
+          # Both outputs come from one multi-output derivation, so the second
+          # build reuses the artifact assembly performed by the first.
           nix build \
             --option extra-substituters "$NIXCACHE_STORE" \
             --option require-sigs false \
@@ -218,6 +214,7 @@ jobs:
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NIXCACHE_PACKAGE_KEY: ${{ matrix.name }}
         run: '"$RUNNER_TEMP/bin/nixcache" push "$(readlink -f ./standalone)"'
 
       - uses: oras-project/setup-oras@v1

@@ -61,16 +61,27 @@
           pkgsStatic = envs.unstable.pkgsStatic;
 
           # --- helpers -----------------------------------------------------
+          artifactTool =
+            pkgs.runCommand "standalone-artifact-tool"
+              {
+                nativeBuildInputs = [ pkgs.buildPackages.go ];
+              }
+              ''
+                cp -R ${./cmd/artifact} source
+                chmod -R u+w source
+                cd source
+                export CGO_ENABLED=0
+                export GO111MODULE=off
+                export GOCACHE=$TMPDIR/go-cache
+                mkdir -p "$out/bin"
+                go build -trimpath -ldflags="-s -w" -o "$out/bin/artifact"
+              '';
           makeManifestPackages = import ./lib/make-manifest-packages.nix {
             inherit lib envs;
             allSystems = systems;
           };
-          makeStandalone = import ./lib/make-standalone.nix {
-            inherit pkgs;
-            normalizeScript = ./scripts/normalize.sh;
-          };
-          makeTarball = import ./lib/make-tarball.nix {
-            inherit pkgs;
+          makeArtifacts = import ./lib/make-artifacts.nix {
+            inherit pkgs artifactTool;
           };
 
           # --- upstream packages (manifest-driven) -------------------------
@@ -88,17 +99,9 @@
             // lib.optionalAttrs isDarwin localPackages.darwin
             // lib.optionalAttrs (!isDarwin) localPackages.linux;
 
-          # Normalize every derivation into a standalone payload.
-          standalonePackages = lib.mapAttrs (
-            name: drv: if lib.isDerivation drv then makeStandalone name drv else drv
-          ) allPackages;
-
-          # Pack each standalone payload into its published `<name>.<arch>.tar.gz`
-          # artifact. Exposed under the separate `tarballs` flake output so the
-          # flat `packages` namespace (which `discover` enumerates) is unchanged.
-          tarballPackages = lib.mapAttrs (
-            name: drv: if lib.isDerivation drv then makeTarball name standalonePackages.${name} else drv
-          ) allPackages;
+          artifacts = lib.mapAttrs makeArtifacts allPackages;
+          standalonePackages = artifacts;
+          tarballPackages = lib.mapAttrs (_: artifact: artifact.archive) artifacts;
 
           # Slow-to-build LLVM toolchain packages (clang-tools / clang / lld).
           # Excluded from `all-fast` so local `nix build .#all-fast` is quick.
@@ -113,21 +116,19 @@
             label: pred:
             pkgs.linkFarm label (
               lib.mapAttrsToList (name: path: { inherit name path; }) (
-                lib.filterAttrs (n: v: lib.isDerivation v && pred n) standalonePackages
+                lib.filterAttrs (name: _: pred name) standalonePackages
               )
             );
         in
         {
-          packages =
-            standalonePackages
-            // {
-              # Convenience aggregate of all standalone packages.
-              all = mkAll "all-standalone-tools" (_: true);
+          packages = standalonePackages // {
+            # Convenience aggregate of all standalone packages.
+            all = mkAll "all-standalone-tools" (_: true);
 
-              # Same as `all` but skips slow LLVM toolchain packages; handy for
-              # quick local verification: `nix build .#all-fast`.
-              all-fast = mkAll "all-standalone-tools-fast" (name: !isSlowLLVM name);
-            };
+            # Same as `all` but skips slow LLVM toolchain packages; handy for
+            # quick local verification: `nix build .#all-fast`.
+            all-fast = mkAll "all-standalone-tools-fast" (name: !isSlowLLVM name);
+          };
           tarballs = tarballPackages;
         };
     in

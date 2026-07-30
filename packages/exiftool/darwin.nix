@@ -11,9 +11,9 @@ let
   # modules. The only portability problem is its optional compression XS deps
   # (Archive::Zip, Compress::Raw::{Lzma,Bzip2,Zlib}, IO::Compress::Brotli),
   # whose .bundle/.so files dynamically link /nix/store compression dylibs
-  # (libz/liblzma/libbz2/libbrotli). normalize.sh does not rewrite Mach-O load
-  # commands, so those /nix references would survive and break the portability
-  # rule.
+  # (libz/liblzma/libbz2/libbrotli). Artifact assembly does not rewrite Mach-O
+  # dependency load commands, so those /nix references would survive and break
+  # the portability rule.
   #
   # Fix per the darwin portability ladder (CLAUDE.md strategy 2): link every
   # nix dependency statically and leave only system libs dynamic. Each XS

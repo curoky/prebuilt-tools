@@ -52,8 +52,8 @@ let
   # `runc` (it references a /nix musl interpreter + rpath). podman's helpersBin
   # ships that launcher, so the copied `runc` ends up dynamic and depends on
   # /nix, tripping the standalone portability check. (The standalone `.#runc`
-  # output avoids this only because normalize.sh renames `.runc-wrapped` back
-  # over the launcher.) Drop the wrapper here and install the static binary
+  # output avoids this because artifact assembly restores `.runc-wrapped` over
+  # the launcher.) Drop the wrapper here and install the static binary
   # directly; the PATH prefix it adds is not needed for the shipped runtime.
   runcStatic = runc.overrideAttrs (_: {
     installPhase = ''

@@ -8,7 +8,7 @@
 # derivation reuses that prettier's JS distribution and ships a relative-path
 # wrapper that invokes the sibling static node explicitly, so the static node
 # travels with the deployed tool instead of depending on a node on the host
-# PATH after the standalone normalize pass.
+# PATH after artifact assembly rewrites the upstream shebang.
 #
 # Upstream nixpkgs ships prettier as:
 #   $out/bin/prettier                                  (wrapper invoking node)
