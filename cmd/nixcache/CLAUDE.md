@@ -143,7 +143,7 @@ workflow 中报告 `prune` 前后的大小变化。只读，不修改 registry�
 每个 matrix job 发布一个完整 closure segment，可以并发执行，不增加共享 index 汇总 job。
 不保留其他 backend fallback 或 dual-write。
 
-`.github/workflows/cleanup.yaml` 的 `cache-prune` job 定时（每周）与手动触发：用
+`.github/workflows/prune-nix-cache.yaml` 的 `cache-prune` job 定时（每周）与手动触发：用
 `cmd/nixcache/install.sh` 下载二进制，先 `nixcache size` 记录清理前大小，再
 `nixcache prune --keep 2` 删除旧 snapshot，最后再次 `nixcache size` 并把前后大小写入
 `$GITHUB_STEP_SUMMARY`。该 job 需要 `packages: write` 才能删除 cache repository 的
