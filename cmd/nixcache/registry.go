@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"maps"
 	"os"
 	"slices"
@@ -177,6 +178,7 @@ func (client *registryClient) pushSegment(state snapshot, entries map[string]cac
 	hashes := slices.Sorted(maps.Keys(entries))
 	layers := make([]ocispec.Descriptor, 1, len(entries)+1)
 	layers[0] = metadataDescriptor
+	var uploaded, skipped int
 	for _, hash := range hashes {
 		entry := entries[hash]
 		descriptor := ocispec.Descriptor{
@@ -185,11 +187,18 @@ func (client *registryClient) pushSegment(state snapshot, entries map[string]cac
 			Size:      entry.NARSize,
 		}
 		descriptor.Annotations = map[string]string{"org.nixos.store.hash": hash}
-		if err := client.pushFile(ctx, descriptor, entry.NARPath); err != nil {
+		pushed, err := client.pushFile(ctx, descriptor, entry.NARPath)
+		if err != nil {
 			return err
+		}
+		if pushed {
+			uploaded++
+		} else {
+			skipped++
 		}
 		layers = append(layers, descriptor)
 	}
+	log.Printf("pushed %d NAR blob(s), skipped %d already present", uploaded, skipped)
 
 	manifest, err := json.Marshal(ocispec.Manifest{
 		Versioned: specs.Versioned{SchemaVersion: 2},
@@ -205,20 +214,24 @@ func (client *registryClient) pushSegment(state snapshot, entries map[string]cac
 	if err := client.repo.PushReference(ctx, manifestDescriptor, bytes.NewReader(manifest), tag); err != nil {
 		return fmt.Errorf("publish segment %s: %w", tag, err)
 	}
+	log.Printf("published segment %s (%d entries)", tag, len(entries))
 	return nil
 }
 
-func (client *registryClient) pushFile(ctx context.Context, descriptor ocispec.Descriptor, path string) error {
+func (client *registryClient) pushFile(ctx context.Context, descriptor ocispec.Descriptor, path string) (bool, error) {
 	exists, err := client.repo.Blobs().Exists(ctx, descriptor)
 	if err != nil || exists {
-		return err
+		return false, err
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer file.Close()
-	return client.repo.Blobs().Push(ctx, descriptor, file)
+	if err := client.repo.Blobs().Push(ctx, descriptor, file); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (client *registryClient) segmentTag(state snapshot) string {

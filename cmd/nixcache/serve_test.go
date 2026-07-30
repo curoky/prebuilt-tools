@@ -38,7 +38,7 @@ func TestServeCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	index := newCacheIndex(client)
-	if err := index.refresh(); err != nil {
+	if _, err := index.refresh(); err != nil {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(index.serveHTTP))

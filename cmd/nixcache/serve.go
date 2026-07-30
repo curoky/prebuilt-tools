@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -34,10 +35,10 @@ func newCacheIndex(client *registryClient) *cacheIndex {
 	}
 }
 
-func (index *cacheIndex) refresh() error {
+func (index *cacheIndex) refresh() (int, error) {
 	entries, err := index.client.loadEntries()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	nars := make(map[string]cacheEntry, len(entries))
 	for _, entry := range entries {
@@ -48,7 +49,7 @@ func (index *cacheIndex) refresh() error {
 	index.entries = entries
 	index.nars = nars
 	index.mu.Unlock()
-	return nil
+	return len(entries), nil
 }
 
 func (index *cacheIndex) serveHTTP(writer http.ResponseWriter, request *http.Request) {
@@ -86,6 +87,7 @@ func (index *cacheIndex) serveHTTP(writer http.ResponseWriter, request *http.Req
 		}
 		reader, err := index.client.blobReader(entry.NARDigest)
 		if err != nil {
+			log.Printf("read cache blob %s: %v", entry.NARDigest, err)
 			http.Error(writer, "read cache blob", http.StatusBadGateway)
 			return
 		}
@@ -112,26 +114,61 @@ func setNARHeaders(writer http.ResponseWriter, entry cacheEntry) {
 
 func serveCache(client *registryClient) error {
 	index := newCacheIndex(client)
-	if err := index.refresh(); err != nil {
-		return fmt.Errorf("load cache index: %w", err)
+
+	// Open the listener before loading the index so that nix-cache-info answers
+	// immediately: readiness probes should not wait on a registry round-trip,
+	// and a slow or failing refresh must not keep the port closed. A cache miss
+	// simply falls through to the upstream substituter.
+	listener, err := net.Listen("tcp", defaultListen)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", defaultListen, err)
 	}
 
 	go func() {
+		if count, err := index.refresh(); err != nil {
+			log.Printf("initial cache index load: %v", err)
+		} else {
+			log.Printf("loaded cache index: %d entries", count)
+		}
 		ticker := time.NewTicker(refreshEvery)
 		defer ticker.Stop()
 		for range ticker.C {
-			if err := index.refresh(); err != nil {
+			if count, err := index.refresh(); err != nil {
 				log.Printf("refresh cache index: %v", err)
+			} else {
+				log.Printf("refreshed cache index: %d entries", count)
 			}
 		}
 	}()
 
 	log.Printf("serving Nix cache at http://%s", defaultListen)
 	server := &http.Server{
-		Addr:              defaultListen,
-		Handler:           http.HandlerFunc(index.serveHTTP),
+		Handler:           withAccessLog(http.HandlerFunc(index.serveHTTP)),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 	}
-	return server.ListenAndServe()
+	return server.Serve(listener)
+}
+
+// statusRecorder captures the response status so the access log can report it;
+// net/http does not expose the code written to a ResponseWriter otherwise.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (recorder *statusRecorder) WriteHeader(status int) {
+	recorder.status = status
+	recorder.ResponseWriter.WriteHeader(status)
+}
+
+// withAccessLog logs one line per request so cache hits and misses are visible
+// in CI logs, which is the main signal for confirming the substituter works.
+func withAccessLog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		recorder := &statusRecorder{ResponseWriter: writer, status: http.StatusOK}
+		start := time.Now()
+		next.ServeHTTP(recorder, request)
+		log.Printf("%s %s -> %d (%s)", request.Method, request.URL.Path, recorder.status, time.Since(start).Round(time.Millisecond))
+	})
 }

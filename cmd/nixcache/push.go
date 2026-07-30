@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"os/exec"
@@ -19,6 +20,7 @@ func pushPaths(client *registryClient, repoRoot string, storePaths []string) err
 	if err != nil {
 		return err
 	}
+	log.Printf("pushing %d store path(s) for %s snapshot %s", len(storePaths), state.System, state.ID)
 
 	cacheDir, err := os.MkdirTemp("", "nixcache-*")
 	if err != nil {
@@ -49,6 +51,7 @@ func pushPaths(client *registryClient, repoRoot string, storePaths []string) err
 	if err != nil {
 		return err
 	}
+	log.Printf("collected %d cache entr(ies) from nix copy", len(entries))
 	return client.pushSegment(state, entries)
 }
 
