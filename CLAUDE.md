@@ -156,7 +156,8 @@ derivation 或 wrapper 中解决。修改 normalization 会影响几乎全部包
 
 1. 一次 eval 当前平台的包名与 `outPath`；
 2. 通过 `cmd/nixcache/install.sh` 下载已发布的 `nixcache`，启动本地 GHCR-backed
-   substituter；push 时只选择 cache 缺失包，定时和手工全量模式选择全部包；
+   substituter；所有触发方式（push、定时、手工）都只选择 cache 缺失包，手工可用包名或
+   `*` 限定候选范围，命中 cache 的包不进 build matrix；
 3. 以本地 substituter 执行 `nix build .#<name>`，unsigned cache 仅在 workflow 命令上
    显式设置 `require-sigs=false`；
 4. 复制 output 并生成 `<name>.linux-x86_64.tar.gz` 或

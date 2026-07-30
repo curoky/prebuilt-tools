@@ -84,41 +84,30 @@ jobs:
             grep -vP "^${name}\t" pkgs.tsv > pkgs.tsv.tmp && mv pkgs.tsv.tmp pkgs.tsv
           done
 
-          # Decide which packages to consider.
-          # - workflow_dispatch with a specific name  -> only that package
-          # - workflow_dispatch with "*", or schedule  -> force build all
-          # - push                                     -> only packages missing from the binary cache
-          force_all=false
-          if [ "$EVENT_NAME" = "schedule" ]; then
-            force_all=true
-          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            if [ "$INPUT_NAME" = "*" ] || [ -z "$INPUT_NAME" ]; then
-              force_all=true
-            elif [ -n "$INPUT_NAME" ]; then
-              # Keep only the requested package.
-              grep -P "^${INPUT_NAME}\t" pkgs.tsv > pkgs.tsv.tmp && mv pkgs.tsv.tmp pkgs.tsv
-            fi
+          # Narrow the candidate packages by trigger:
+          # - workflow_dispatch with a specific name -> only that package
+          # - "*" / empty input / schedule / push    -> all packages
+          # Every trigger then goes through the binary-cache check below, so a
+          # cache hit never spawns a build job.
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$INPUT_NAME" ] && [ "$INPUT_NAME" != "*" ]; then
+            grep -P "^${INPUT_NAME}\t" pkgs.tsv > pkgs.tsv.tmp && mv pkgs.tsv.tmp pkgs.tsv
           fi
 
-          if [ "$force_all" = true ]; then
-            cut -f1 pkgs.tsv > selected.txt
-          else
-            # Query the binary cache in parallel; a cache miss means the package
-            # must be rebuilt. Print the name only for misses.
-            check() {
-              local name="${1%%$'\t'*}"
-              local out_path="${1#*$'\t'}"
-              if nix path-info --store "$NIXCACHE_STORE" --option require-sigs false "$out_path" >/dev/null 2>&1; then
-                echo "cache hit : $name" >&2
-              else
-                echo "need build: $name" >&2
-                echo "$name"
-              fi
-            }
-            export -f check
-            export NIXCACHE_STORE
-            xargs -P 16 -d '\n' -I {} bash -c 'check "$@"' _ {} < pkgs.tsv > selected.txt
-          fi
+          # Query the binary cache in parallel; a cache miss means the package
+          # must be rebuilt. Print the name only for misses.
+          check() {
+            local name="${1%%$'\t'*}"
+            local out_path="${1#*$'\t'}"
+            if nix path-info --store "$NIXCACHE_STORE" --option require-sigs false "$out_path" >/dev/null 2>&1; then
+              echo "cache hit : $name" >&2
+            else
+              echo "need build: $name" >&2
+              echo "$name"
+            fi
+          }
+          export -f check
+          export NIXCACHE_STORE
+          xargs -P 16 -d '\n' -I {} bash -c 'check "$@"' _ {} < pkgs.tsv > selected.txt
 
           # Build a matrix JSON: {"include":[{"name":"foo"},...]}
           matrix=$(nix run nixpkgs#jq -- -R -s -c \
