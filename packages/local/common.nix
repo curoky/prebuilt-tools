@@ -30,7 +30,6 @@
   p7zip = pkgsStatic.callPackage ../p7zip { };
   protobuf_3_8_0 = pkgsStatic.callPackage ../protobuf/3_8_0 { };
   protobuf_3_9_2 = pkgsStatic.callPackage ../protobuf/3_9_2 { };
-  rsync = pkgsStatic.callPackage ../rsync { };
   vim = pkgsStatic.callPackage ../vim { };
   zsh = pkgsStatic.callPackage ../zsh { };
 
