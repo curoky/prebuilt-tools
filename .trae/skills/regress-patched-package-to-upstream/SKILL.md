@@ -80,9 +80,13 @@ shellcheck = {
 
 - 不在批量执行时重新扫描 `packages/` 或 `manifests/default.nix` 猜测候选。仓库扫描只用于维护
   `TODO.md`、核对队列完整性，或用户明确要求全量审计时。
-- 每次只消费一行。先读包名、Linux、macOS、回归、原因与保留边界、回归判据、来源，再读取实现。
-  表内判据是最低验收条件，不替代根 `CLAUDE.md` 的通用 portability 检查。
-- `✅` 可以尝试整项回到 unstable；`🟡` 只回归原因栏所述 workaround，保留 wrapper、资源打包、
+- 每次只消费一行。先读包名、Linux、macOS、回归、`Linux 原因与保留边界`、`macOS 原因与保留边界`、
+  回归判据、`Linux commit`、`macOS commit`、来源，再读取实现。表内判据是最低验收条件，不替代根
+  `CLAUDE.md` 的通用 portability 检查。原因与保留边界按平台拆成两列，只读目标平台那一列。
+- `Linux commit` / `macOS commit` 记录该平台最后一次回归测试时 `flake.lock` 里 `nixpkgs-unstable`
+  的 rev（短 hash），未测过填 `—`。消费前先对比该列与当前 `flake.lock` 的 unstable rev：若相同，说明
+  该平台在当前 channel 已验证过、本轮可跳过；rev 不同（含 `—`）才需要重新构建验证。
+- `✅` 可以尝试整项回到 unstable；`🟡` 只回归对应平台原因栏所述 workaround，保留 wrapper、资源打包、
   产品行为与多版本发布；`❌` 不进入批量回归；`⏳` 只做长期例外审计。
 - `✅` 和 `🟡` 只表示值得验证，不表示当前已经可以安全回归。仍需实际构建和 portability 验证。
 - 回归失败时保留状态；若得到更准确的失败证据，更新原因和判据。不要用 checkbox 表示“已测试”。
@@ -149,7 +153,10 @@ shellcheck = {
    - mixed 包回归掉全部 workaround、但仍有 packaging：保留行，平台列只写 `📦`，回归状态改成
      `❌`，原因和判据改为结构性保留说明。
    - 只回归部分 workaround：保留 `✅` 或 `🟡`，原因和判据只留下仍未解决的部分。
-   - 验证失败：保留状态；若本次得到比原记录更具体的错误，更新原因和判据。
+   - 验证失败：保留状态；若本次得到比原记录更具体的错误，更新对应平台的原因和判据。
+   - 无论成功或失败，只要在某平台实际构建验证过，就把该平台的 `Linux commit` / `macOS commit`
+     刷新为本次 `flake.lock` 的 `nixpkgs-unstable` 短 rev，标记该 channel 已测过。只有整项回归删行时
+     无需再填 commit。
    - 若回归改变稳定 package selection、例外或协议，更新根
    `CLAUDE.md`；若只删除包级非默认策略，更新或删除对应 case study。不要在根文档维护易漂移的
    当前包枚举。
