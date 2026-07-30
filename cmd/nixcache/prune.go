@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"sync"
 
 	"github.com/opencontainers/go-digest"
 )
@@ -90,21 +91,63 @@ func pruneCache(client *registryClient, keep, keepTags int, dryRun bool) error {
 		return fmt.Errorf("list package versions: %w", err)
 	}
 
-	var deleted int
+	if err := deleteVersions(ctx, ghcr, toDelete, versionByTag); err != nil {
+		return err
+	}
+	log.Printf("prune complete: deleted %d segment(s), retained %d", len(toDelete), retained)
+	return nil
+}
+
+// segmentDeleteConcurrency bounds how many package versions are deleted in
+// parallel. Deletions are independent REST calls; a large prune faces hundreds
+// of tags and serial deletion takes minutes. Kept modest to stay clear of the
+// GitHub API secondary rate limit.
+const segmentDeleteConcurrency = 8
+
+// deleteVersions deletes every segment in toDelete concurrently, capped at
+// segmentDeleteConcurrency, and logs one summary line per 100 deletions rather
+// than one per tag. Tags without a matching package version are skipped. The
+// first error cancels the batch.
+func deleteVersions(ctx context.Context, ghcr *ghcrClient, toDelete []segmentRef, versionByTag map[string]int64) error {
+	results := make(chan error, len(toDelete))
+	sem := make(chan struct{}, segmentDeleteConcurrency)
+	var wg sync.WaitGroup
 	for _, ref := range toDelete {
 		versionID, ok := versionByTag[ref.Tag]
 		if !ok {
 			log.Printf("skip segment %s: no matching package version", ref.Tag)
+			results <- nil
 			continue
 		}
-		if err := ghcr.deleteVersion(ctx, versionID); err != nil {
-			return fmt.Errorf("delete segment %s (version %d): %w", ref.Tag, versionID, err)
-		}
-		log.Printf("deleted segment %s (snapshot %s, %s)", ref.Tag, shortSnapshot(ref.Snapshot), ref.System)
-		deleted++
+		wg.Add(1)
+		go func(ref segmentRef, versionID int64) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if err := ghcr.deleteVersion(ctx, versionID); err != nil {
+				results <- fmt.Errorf("delete segment %s (version %d): %w", ref.Tag, versionID, err)
+				return
+			}
+			results <- nil
+		}(ref, versionID)
 	}
-	log.Printf("prune complete: deleted %d segment(s), retained %d", deleted, retained)
-	return nil
+	go func() { wg.Wait(); close(results) }()
+
+	var deleteErr error
+	var done int
+	for err := range results {
+		if err != nil {
+			if deleteErr == nil {
+				deleteErr = err
+			}
+			continue
+		}
+		done++
+		if done%100 == 0 || done == len(toDelete) {
+			log.Printf("deleted %d/%d segments", done, len(toDelete))
+		}
+	}
+	return deleteErr
 }
 
 // keptSnapshots returns, per system, the set of snapshot IDs to keep: the keep

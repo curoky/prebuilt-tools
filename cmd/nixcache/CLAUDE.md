@@ -123,10 +123,11 @@ segment 的 tag 和 NAR blob 仍物理留在 GHCR。`prune` 是唯一的物理�
 GHCR 不实现 OCI 的 `DELETE /v2/.../manifests/<digest>`（返回 `405 UNSUPPORTED`），因此删除
 不走 `oras-go`，而是用 `go-github` 调 GitHub Packages REST API：先 `versionsByTag` 列出
 container package 的所有 version，建立 tag → numeric version id 映射，再按 id
-`deleteVersion`。client 首次列举时自动在 user / org owner 间回退。删除 version 需要 token 对
-package 有 admin 权限（Actions 里发布该 package 的 repo 的 `GITHUB_TOKEN` 默认满足；classic
-PAT 需 `delete:packages`）。删 version 后 GHCR 移除对应 tag，未被任何存活 manifest 引用的 NAR
-blob 由 GHCR 自身 GC 回收。
+`deleteVersion`。client 首次列举时自动在 user / org owner 间回退，删除走有限并发
+（`segmentDeleteConcurrency`），并按批打印汇总（每 100 个一行）而非逐 tag 刷屏。删除 version
+需要 token 对 package 有 admin 权限（Actions 里发布该 package 的 repo 的 `GITHUB_TOKEN` 默认
+满足；classic PAT 需 `delete:packages`）。删 version 后 GHCR 移除对应 tag，未被任何存活
+manifest 引用的 NAR blob 由 GHCR 自身 GC 回收。
 
 因为不变量 6，被保留 snapshot 的 manifest 自带完整 closure，删旧 snapshot 不会造成缺
 NAR。`--dry-run` 只打印将删除的 tag，不发起删除，也不需要 `GITHUB_TOKEN`。保留判据是
