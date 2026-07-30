@@ -18,11 +18,10 @@ let
   # pkgsStatic.perl already builds in). So this package only needs to ship the
   # pure-Perl pieces: the exiftool script, the Image::ExifTool modules, and
   # Archive::Zip (pure Perl, which uses the perl-builtin Compress::Raw::Zlib).
-  exiftool = perlPackages.ImageExifTool.overrideAttrs (_: {
-    propagatedBuildInputs = with perlPackages; [
-      ArchiveZip
-    ];
-  });
+  # Upstream Image::ExifTool already declares Archive::Zip (and the other
+  # compression modules) in its propagatedBuildInputs, so we use it directly;
+  # the module bundling below is done explicitly in postInstall regardless.
+  exiftool = perlPackages.ImageExifTool;
 
   # The shipped script runs against the sibling static `perl` package at deploy
   # time (like cloc) instead of the host perl. PERL5LIB is pointed at the

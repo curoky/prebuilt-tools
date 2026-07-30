@@ -5,8 +5,8 @@
 # as a sibling directory at deploy time (the same convention dool/netron use for
 # the `python311` package: $store/<pkg-name>/bin/<interpreter>).
 #
-# This package owns the static-build patches. The ada / libuv / uvwasi tweaks
-# must be applied to the *dependencies* node is compiled against, which are not
+# This package owns the static-build patches. The ada / libuv / hdrhistogram_c
+# tweaks must be applied to the *dependencies* node is compiled against, which are not
 # exposed as overridable args of nodejs-slim (they are args of the inner
 # nodejs.nix, pulled in via callPackage). So `.override` can't reach them and we
 # extend the static package set with an overlay, then take its patched
@@ -41,14 +41,9 @@ let
   #     inside the Nix build sandbox (ada's `basic_fuzzer` exe isn't built in
   #     the static toolchain; libuv's `udp_try_send` fails with -98/EADDRINUSE
   #     due to the sandbox's restricted network).
-  #   - uvwasi: its CMakeLists hardcodes `add_library(uvwasi SHARED ...)`,
-  #     ignoring BUILD_SHARED_LIBS, so the static toolchain fails to link the
-  #     unwanted libuvwasi.so (R_X86_64_32 against crtbeginT.o). Force that
-  #     target to STATIC (renamed output to avoid clashing with the existing
-  #     uvwasi_a static lib); node only needs the static lib anyway.
   #   - hdrhistogram_c: its CMakeLists builds a SHARED `hdr_histogram` target by
   #     default; under the static toolchain linking that .so fails (R_X86_64_32
-  #     against crtbeginT.o, same as uvwasi). Disable the shared target via the
+  #     against crtbeginT.o). Disable the shared target via the
   #     upstream CMake option, which leaves only the static archive — but CMake
   #     names it `libhdr_histogram_static.a`, whereas node's gyp link line uses
   #     plain `-lhdr_histogram` (the shared lib's name). With the shared lib gone
@@ -71,15 +66,6 @@ let
           ln -s $out/lib/libhdr_histogram_static.a $out/lib/libhdr_histogram.a
         '';
         doCheck = false;
-      });
-      uvwasi = prev.uvwasi.overrideAttrs (old: {
-        postPatch = (old.postPatch or "") + ''
-          substituteInPlace CMakeLists.txt \
-            --replace-fail \
-              'add_library(uvwasi SHARED ''${uvwasi_sources})' \
-              'add_library(uvwasi STATIC ''${uvwasi_sources})
-          set_target_properties(uvwasi PROPERTIES OUTPUT_NAME "uvwasi_noshared")'
-        '';
       });
     }
   );

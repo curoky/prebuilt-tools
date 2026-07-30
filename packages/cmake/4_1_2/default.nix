@@ -85,7 +85,6 @@ stdenv.mkDerivation (finalAttrs: {
     (lib.cmakeBool "BUILD_CursesDialog" false)
 
     (lib.cmakeBool "BUILD_TESTING" false)
-    (lib.cmakeFeature "CMAKE_EXE_LINKER_FLAGS" "-static")
   ];
 
   dontAddStaticConfigureFlags = true;

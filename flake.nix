@@ -80,7 +80,6 @@
           # --- local packages (patched / wrapped / pinned) -----------------
           localPackages = import ./packages/local.nix {
             inherit pkgs pkgsStatic;
-            pkgs2605Static = envs."26.05".pkgsStatic;
           };
 
           allPackages =

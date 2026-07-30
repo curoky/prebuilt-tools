@@ -283,6 +283,10 @@
       isStatic = false;
     };
   };
+  cmakeMinimal = {
+    alias = "cmake";
+    platforms = [ "x86_64-linux" ];
+  };
   delve = {
     platforms = [ "x86_64-linux" ];
   };
@@ -310,9 +314,6 @@
     };
   };
   git-lfs = {
-    "x86_64-linux" = {
-      version = "25.11";
-    };
     "aarch64-darwin" = {
       isStatic = false;
     };

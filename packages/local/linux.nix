@@ -1,7 +1,6 @@
 {
   pkgs,
   pkgsStatic,
-  pkgs2605Static,
 }:
 let
   mkClangTools = pkgsStatic.callPackage ../clang-tools { };
@@ -18,7 +17,6 @@ rec {
   nsight-systems = pkgsStatic.callPackage ../nsight-systems { };
 
   # C / autotools.
-  cmake = pkgsStatic.callPackage ../cmake/default { };
   cmake_3_27_9 = pkgsStatic.callPackage ../cmake/3_27_9 { };
   cmake_4_1_2 = pkgsStatic.callPackage ../cmake/4_1_2 { };
   git = pkgsStatic.callPackage ../git { };
@@ -29,9 +27,10 @@ rec {
 
   # Rust.
   miniserve = pkgsStatic.callPackage ../miniserve { };
-  # zellij is pinned to the 26.05 static set (unstable checks fail to link);
+  # zellij builds against unstable but keeps checks disabled (the test target
+  # statically links libcurl against libssh2 and fails on unresolved symbols);
   # see docs/package-strategies/rust.md.
-  zellij = pkgs2605Static.callPackage ../zellij { };
+  zellij = pkgsStatic.callPackage ../zellij { };
 
   # Perl.
   perl = pkgsStatic.callPackage ../perl/linux.nix { };

@@ -5,14 +5,13 @@
 {
   pkgs,
   pkgsStatic,
-  pkgs2605Static,
 }:
 {
   common = import ./local/common.nix {
     inherit pkgs pkgsStatic;
   };
   linux = import ./local/linux.nix {
-    inherit pkgs pkgsStatic pkgs2605Static;
+    inherit pkgs pkgsStatic;
   };
   darwin = import ./local/darwin.nix {
     inherit pkgs pkgsStatic;
