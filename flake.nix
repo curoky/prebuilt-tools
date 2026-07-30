@@ -69,6 +69,9 @@
             inherit pkgs;
             normalizeScript = ./scripts/normalize.sh;
           };
+          makeTarball = import ./lib/make-tarball.nix {
+            inherit pkgs;
+          };
 
           # --- upstream packages (manifest-driven) -------------------------
           manifest = import ./manifests/default.nix;
@@ -91,6 +94,13 @@
             name: drv: if lib.isDerivation drv then makeStandalone name drv else drv
           ) allPackages;
 
+          # Pack each standalone payload into its published `<name>.<arch>.tar.gz`
+          # artifact. Exposed under the separate `tarballs` flake output so the
+          # flat `packages` namespace (which `discover` enumerates) is unchanged.
+          tarballPackages = lib.mapAttrs (
+            name: drv: if lib.isDerivation drv then makeTarball name standalonePackages.${name} else drv
+          ) allPackages;
+
           # Slow-to-build LLVM toolchain packages (clang-tools / clang / lld).
           # Excluded from `all-fast` so local `nix build .#all-fast` is quick.
           # CI still builds these via the dedicated build-llvm-tools workflow.
@@ -108,17 +118,25 @@
               )
             );
         in
-        standalonePackages
-        // {
-          # Convenience aggregate of all standalone packages.
-          all = mkAll "all-standalone-tools" (_: true);
+        {
+          packages =
+            standalonePackages
+            // {
+              # Convenience aggregate of all standalone packages.
+              all = mkAll "all-standalone-tools" (_: true);
 
-          # Same as `all` but skips slow LLVM toolchain packages; handy for
-          # quick local verification: `nix build .#all-fast`.
-          all-fast = mkAll "all-standalone-tools-fast" (name: !isSlowLLVM name);
+              # Same as `all` but skips slow LLVM toolchain packages; handy for
+              # quick local verification: `nix build .#all-fast`.
+              all-fast = mkAll "all-standalone-tools-fast" (name: !isSlowLLVM name);
+            };
+          tarballs = tarballPackages;
         };
     in
+    let
+      perSystemOutputs = lib.genAttrs systems perSystem;
+    in
     {
-      packages = lib.genAttrs systems perSystem;
+      packages = lib.mapAttrs (_: o: o.packages) perSystemOutputs;
+      tarballs = lib.mapAttrs (_: o: o.tarballs) perSystemOutputs;
     };
 }

@@ -150,13 +150,6 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
     steps:
-      - uses: Homebrew/actions/setup-homebrew@main
-
-      - run: echo "/opt/homebrew/opt/binutils/bin" >> "$GITHUB_PATH"
-      - run: echo "/opt/homebrew/opt/coreutils/libexec/gnubin" >> "$GITHUB_PATH"
-      - run: echo "/opt/homebrew/opt/gnu-sed/libexec/gnubin" >> "$GITHUB_PATH"
-      - run: brew install binutils gnu-sed coreutils rsync
-
       - uses: actions/checkout@v5
 
       - uses: DeterminateSystems/nix-installer-action@main
@@ -175,21 +168,26 @@ jobs:
             }
 
       - run: |
+          # Build the standalone payload (pushed to the Nix cache) and the
+          # published tarball. The tarball is packed inside Nix
+          # (lib/make-tarball.nix): archiving (symlink handling, deterministic
+          # tar) no longer needs host rsync/tar/coreutils, and the layer is
+          # reproducible.
           nix build \
             --option extra-substituters "$NIXCACHE_STORE" \
             --option require-sigs false \
-            .#${{ matrix.name }}
-          output=$(readlink -f ./result)
-          nix-store -qR "$output"
-          rsync -av --copy-unsafe-links ./result/ ./${{ matrix.name }}/
-          find ./${{ matrix.name }} -type d -exec chmod +w {} +
-          tar -czvf ./${{ matrix.name }}.darwin-arm64.tar.gz ./${{ matrix.name }}
+            .#${{ matrix.name }} --out-link standalone
+          nix build \
+            --option extra-substituters "$NIXCACHE_STORE" \
+            --option require-sigs false \
+            .#tarballs.aarch64-darwin.${{ matrix.name }} --out-link tarball
+          cp -L tarball ./${{ matrix.name }}.darwin-arm64.tar.gz
 
       - name: Push Nix closure to GHCR
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: '"$RUNNER_TEMP/bin/nixcache" push "$(readlink -f ./result)"'
+        run: '"$RUNNER_TEMP/bin/nixcache" push "$(readlink -f ./standalone)"'
 
       - uses: oras-project/setup-oras@v1
 

@@ -57,11 +57,6 @@ jobs:
         with:
           swap-size-gb: 10
 
-      - run: |
-          sudo apt-get update -y
-          sudo apt-get install -y rsync
-        if: ${{ env.skip_steps != 'true' }}
-
       - uses: DeterminateSystems/nix-installer-action@main
         if: ${{ env.skip_steps != 'true' }}
 
@@ -83,15 +78,18 @@ jobs:
             }
 
       - run: |
+          # Build the standalone payload (pushed to the Nix cache) and the
+          # published tarball. The tarball is packed inside Nix
+          # (lib/make-tarball.nix), so archiving no longer needs host rsync/tar.
           nix build \
             --option extra-substituters "$NIXCACHE_STORE" \
             --option require-sigs false \
-            .#clang-tools-${{ matrix.version }}
-          output=$(readlink -f ./result)
-          nix-store -qR "$output"
-          rsync -av --copy-unsafe-links ./result/ ./clang-tools-${{ matrix.version }}/
-          find ./clang-tools-${{ matrix.version }} -type d -exec chmod +w {} +
-          tar -czvf ./clang-tools-${{ matrix.version }}.linux-x86_64.tar.gz ./clang-tools-${{ matrix.version }}
+            .#clang-tools-${{ matrix.version }} --out-link standalone
+          nix build \
+            --option extra-substituters "$NIXCACHE_STORE" \
+            --option require-sigs false \
+            .#tarballs.x86_64-linux.clang-tools-${{ matrix.version }} --out-link tarball
+          cp -L tarball ./clang-tools-${{ matrix.version }}.linux-x86_64.tar.gz
         if: ${{ env.skip_steps != 'true' }}
 
       - name: Push Nix closure to GHCR
@@ -99,7 +97,7 @@ jobs:
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: '"$RUNNER_TEMP/bin/nixcache" push "$(readlink -f ./result)"'
+        run: '"$RUNNER_TEMP/bin/nixcache" push "$(readlink -f ./standalone)"'
 
       - uses: oras-project/setup-oras@v1
         if: ${{ env.skip_steps != 'true' }}

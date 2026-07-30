@@ -54,8 +54,10 @@ unstable 当前无法构建时才选择旧环境，并在代码附近记录具�
 ```text
 manifests/default.nix ─┐
                        ├─> platform package set ─> makeStandalone ─> flake outputs
-packages/local/ ───────┘                                  │
-                                                         └─> normalize.sh
+packages/local/ ───────┘                                  │           (packages)
+                                                          ├─> normalize.sh
+                                                          └─> makeTarball ─> flake outputs
+                                                                              (tarballs)
 ```
 
 1. `manifests/default.nix` 声明可直接选择的 nixpkgs 包。
@@ -63,7 +65,10 @@ packages/local/ ───────┘                                  │
    patched、wrapped、pinned 和平台特定包。
 3. `flake.nix` 按 `upstream // common // platform-specific` 合并，后者覆盖前者。
 4. `lib/make-standalone.nix` 复制 derivation output，并运行 `scripts/normalize.sh`。
-5. flake 暴露每个独立包，以及聚合输出 `all` 和跳过慢速 LLVM 包的 `all-fast`。
+5. `lib/make-tarball.nix` 把每个 standalone 产物打包成可发布的
+   `<name>.<arch>.tar.gz`（顶层目录为包名、保留内部相对 symlink、确定性归档）。
+6. flake 在 `packages` 暴露每个独立包及聚合输出 `all`、`all-fast`；在 `tarballs`
+   暴露对应的发布归档，`tarballs` 与 `packages` 平级、不参与 `discover` 的包枚举。
 
 ## Manifest Schema
 
@@ -158,11 +163,13 @@ derivation 或 wrapper 中解决。修改 normalization 会影响几乎全部包
 2. 通过 `cmd/nixcache/install.sh` 下载已发布的 `nixcache`，启动本地 GHCR-backed
    substituter；所有触发方式（push、定时、手工）都只选择 cache 缺失包，手工可用包名或
    `*` 限定候选范围，命中 cache 的包不进 build matrix；
-3. 以本地 substituter 执行 `nix build .#<name>`，unsigned cache 仅在 workflow 命令上
+3. 以本地 substituter 执行 `nix build .#<name>`（standalone 产物）与
+   `nix build .#tarballs.<system>.<name>`（发布归档），unsigned cache 仅在 workflow 命令上
    显式设置 `require-sigs=false`；
-4. 复制 output 并生成 `<name>.linux-x86_64.tar.gz` 或
-   `<name>.darwin-arm64.tar.gz`；
-5. 用 `nixcache push` 把 closure 发布到 cache repository，再把工具 tarball 发布到
+4. 归档由 `lib/make-tarball.nix` 在 Nix 内生成，workflow 只 `cp -L` 出
+   `<name>.linux-x86_64.tar.gz` 或 `<name>.darwin-arm64.tar.gz`，不再依赖宿主
+   `rsync`/`tar`；
+5. 用 `nixcache push` 把 standalone closure 发布到 cache repository，再把工具 tarball 发布到
    `ghcr.io/curoky/standalone-binaries:<name>-<arch>`。
 
 LLVM 工具由专用 workflow 构建，并使用相同的 cache 流程。所有 build workflow 不现场编译
@@ -198,6 +205,7 @@ substituter。cache metadata 按完整
 | 回归版本 pin | `manifests/default.nix` |
 | 回归本地 patch | manifest、`packages/local/`，并删除孤儿目录 |
 | 修改通用后处理 | `scripts/normalize.sh` |
+| 修改发布归档打包 | `lib/make-tarball.nix`，并同步所有 build workflow 与 `cmd/binman/` |
 | 修改包选择或 outputs | `lib/`、`flake.nix` |
 | 修改 client | `cmd/binman/`，并遵守 `cmd/binman/CLAUDE.md` |
 | 修改 Nix cache | `cmd/nixcache/`，并遵守 `cmd/nixcache/CLAUDE.md` |
