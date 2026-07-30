@@ -163,8 +163,8 @@ derivation 或 wrapper 中解决。修改 normalization 会影响几乎全部包
 
 1. 一次 eval 当前平台的包名与 `outPath`；
 2. 通过 `cmd/nixcache/install.sh` 下载已发布的 `nixcache`，启动本地 GHCR-backed
-   substituter；所有触发方式（push、定时、手工）都只选择 cache 缺失包，手工可用包名或
-   `*` 限定候选范围，命中 cache 的包不进 build matrix；
+   substituter；`discover` job 按下表决定候选范围与是否做 cache 命中过滤，只有需要重建的包
+   才进 build matrix；
 3. 以本地 substituter 执行 `nix build .#<name>`（standalone 产物）与
    `nix build .#tarballs.<system>.<name>`（发布归档），unsigned cache 仅在 workflow 命令上
    显式设置 `require-sigs=false`；
@@ -173,6 +173,10 @@ derivation 或 wrapper 中解决。修改 normalization 会影响几乎全部包
    `rsync`/`tar`；
 5. 用 `nixcache push` 把 standalone closure 发布到 cache repository，再把工具 tarball 发布到
    `ghcr.io/curoky/standalone-binaries:<name>-<arch>`。
+
+发布流程、cache 命中判定和各 CI 触发条件（`push`/`schedule`/`workflow_dispatch` 与
+`name`、`skip_discover` 输入）下的排列组合详见[包发布模型](docs/release-model.md)。新增触发
+方式或调整跳过逻辑时以该文档的触发矩阵为准，并同步 `build-linux.yaml` 与 `build-darwin.yaml`。
 
 LLVM 工具由专用 workflow 构建，并使用相同的 cache 流程。所有 build workflow 不现场编译
 `nixcache`，也不保留其他 cache backend。`bm` client 以 `binman-<arch>` 发布，归档布局为
@@ -249,6 +253,8 @@ nix build .#all-fast
 - `TODO.md` 是人和 agent 共用的 pin、patch 与本地 packaging 总表；批量回归只消费其中标为
   `✅` 或 `🟡` 的行。
 - `docs/package-strategies*.md` 只记录偏离默认构建路径的技术案例和诊断记录。
+- `docs/release-model.md` 保存 Linux/Darwin workflow 的发布流程、cache 命中判定和
+  CI 触发矩阵；触发或跳过逻辑变化时同步该文档与两个 build workflow。
 - 代码参数与当前包清单以实现为准；文档解释决策和不变量，不复制完整 derivation。
 - 仓库内链接使用相对路径，不使用 `file://` URL、工作区绝对路径或易漂移的行号链接。
 - 设计、协议、schema、例外或工作流发生变化时，在同一次改动中更新相应 `CLAUDE.md`。

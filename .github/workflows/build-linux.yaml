@@ -17,6 +17,11 @@ on:
         default: ''
         required: false
         type: string
+      skip_discover:
+        description: 'skip binary-cache check and force build the candidate packages'
+        default: false
+        required: false
+        type: boolean
   schedule:
     - cron: '0 0 * * 0'
 
@@ -31,6 +36,9 @@ env:
 
 jobs:
   discover:
+    # Trigger behavior is documented in docs/release-model.md.
+    # Skipped entirely when workflow_dispatch requests a specific package.
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.name != '' && inputs.name != '*') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -70,7 +78,7 @@ jobs:
       - id: set
         env:
           EVENT_NAME: ${{ github.event_name }}
-          INPUT_NAME: ${{ inputs.name }}
+          SKIP_DISCOVER: ${{ inputs.skip_discover }}
         run: |
           set -euo pipefail
 
@@ -95,17 +103,10 @@ jobs:
             grep -vP "^${name}\t" pkgs.tsv > pkgs.tsv.tmp && mv pkgs.tsv.tmp pkgs.tsv
           done
 
-          # Narrow the candidate packages by trigger:
-          # - workflow_dispatch with a specific name -> only that package
-          # - "*" / empty input / schedule / push    -> all packages
-          # Every trigger then goes through the binary-cache check below, so a
-          # cache hit never spawns a build job.
-          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$INPUT_NAME" ] && [ "$INPUT_NAME" != "*" ]; then
-            grep -P "^${INPUT_NAME}\t" pkgs.tsv > pkgs.tsv.tmp && mv pkgs.tsv.tmp pkgs.tsv
-          fi
-
           # Query the binary cache in parallel; a cache miss means the package
-          # must be rebuilt. Print the name only for misses.
+          # must be rebuilt. Print the name only for misses. Skip the cache
+          # check (force-rebuild every candidate) on schedule or skip_discover;
+          # see docs/release-model.md.
           check() {
             local name="${1%%$'\t'*}"
             local out_path="${1#*$'\t'}"
@@ -118,7 +119,11 @@ jobs:
           }
           export -f check
           export NIXCACHE_STORE
-          xargs -P 16 -d '\n' -I {} bash -c 'check "$@"' _ {} < pkgs.tsv > selected.txt
+          if [ "$SKIP_DISCOVER" = "true" ] || [ "$EVENT_NAME" = "schedule" ]; then
+            cut -f1 pkgs.tsv > selected.txt
+          else
+            xargs -P 16 -d '\n' -I {} bash -c 'check "$@"' _ {} < pkgs.tsv > selected.txt
+          fi
 
           # Build a matrix JSON: {"include":[{"name":"foo"},...]}
           matrix=$(nix run nixpkgs#jq -- -R -s -c \
@@ -132,14 +137,18 @@ jobs:
 
   build:
     needs: discover
-    if: ${{ needs.discover.outputs.count != '0' }}
+    # Trigger behavior is documented in docs/release-model.md.
+    # Run when discover selected packages, or when discover was skipped for a
+    # specific requested package.
+    if: ${{ always() && needs.discover.result != 'failure' && needs.discover.result != 'cancelled' && ((needs.discover.outputs.count != '0' && needs.discover.outputs.count != '') || (github.event_name == 'workflow_dispatch' && inputs.name != '' && inputs.name != '*')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+      # Discovered matrix, or a single-package matrix when discover was skipped.
+      matrix: ${{ needs.discover.result == 'skipped' && fromJSON(format('{{"include":[{{"name":"{0}"}}]}}', inputs.name)) || fromJSON(needs.discover.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v5
 
