@@ -37,7 +37,7 @@ func TestServeCache(t *testing.T) {
 	if err := client.pushSegment(state, map[string]cacheEntry{hash: entry}); err != nil {
 		t.Fatal(err)
 	}
-	index := newCacheIndex(client)
+	index := newCacheIndex(client, "")
 	if _, err := index.refresh(); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestServeCache(t *testing.T) {
 
 func TestServeCacheReturnsBadGatewayBeforeWritingNARHeaders(t *testing.T) {
 	client := testRegistryClient(t)
-	index := newCacheIndex(client)
+	index := newCacheIndex(client, "")
 	index.nars["nar/missing.nar.zst"] = cacheEntry{
 		NARURL:    "nar/missing.nar.zst",
 		NARDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

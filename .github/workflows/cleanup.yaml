@@ -40,7 +40,7 @@ jobs:
           echo "Cache size before prune: $before" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Prune old snapshots
-        run: $HOME/.local/bin/nixcache prune --keep 2
+        run: $HOME/.local/bin/nixcache prune --keep 2 --keep-tags 3
 
       - name: Report cache size after prune
         run: |

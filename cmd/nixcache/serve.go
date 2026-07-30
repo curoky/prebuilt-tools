@@ -23,6 +23,12 @@ const (
 type cacheIndex struct {
 	client *registryClient
 
+	// tagPrefix restricts which segment tags are loaded to the current
+	// snapshot+system namespace (`v1-<snapshot16>-<system>-`). Only those tags
+	// can be cache hits, so filtering here avoids fetching every historical
+	// run's manifest. Empty loads all segments.
+	tagPrefix string
+
 	// ready flips to true after the first successful index load. The
 	// nix-cache-info readiness endpoint reports 503 until then so a probe only
 	// passes once entries are queryable, without keeping the port closed.
@@ -33,18 +39,19 @@ type cacheIndex struct {
 	nars    map[string]cacheEntry
 }
 
-func newCacheIndex(client *registryClient) *cacheIndex {
+func newCacheIndex(client *registryClient, tagPrefix string) *cacheIndex {
 	return &cacheIndex{
-		client:  client,
-		entries: make(map[string]cacheEntry),
-		nars:    make(map[string]cacheEntry),
+		client:    client,
+		tagPrefix: tagPrefix,
+		entries:   make(map[string]cacheEntry),
+		nars:      make(map[string]cacheEntry),
 	}
 }
 
 func (index *cacheIndex) refresh() (int, error) {
 	log.Printf("refreshing cache index")
 	started := time.Now()
-	entries, err := index.client.loadEntries()
+	entries, err := index.client.loadEntries(index.tagPrefix)
 	if err != nil {
 		return 0, err
 	}
@@ -130,8 +137,8 @@ func setNARHeaders(writer http.ResponseWriter, entry cacheEntry) {
 	writer.Header().Set("ETag", `"`+entry.NARDigest+`"`)
 }
 
-func serveCache(client *registryClient) error {
-	index := newCacheIndex(client)
+func serveCache(client *registryClient, tagPrefix string) error {
+	index := newCacheIndex(client, tagPrefix)
 
 	// Open the listener first so the port is immediately connectable: the CI
 	// readiness probe polls nix-cache-info, which reports 503 until the first

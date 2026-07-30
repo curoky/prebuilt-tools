@@ -14,6 +14,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/opencontainers/go-digest"
@@ -86,7 +87,7 @@ type segmentRef struct {
 // the index ready and CI probes exhaust their retries on 503.
 const registryTimeout = 30 * time.Second
 
-func (client *registryClient) listSegments() ([]segmentRef, error) {
+func (client *registryClient) listSegments(tagPrefix string) ([]segmentRef, error) {
 	log.Printf("listing cache tags from %s", client.repo.Reference.Repository)
 	ctx, cancel := context.WithTimeout(context.Background(), registryTimeout)
 	tags, err := registry.Tags(ctx, client.repo)
@@ -100,27 +101,86 @@ func (client *registryClient) listSegments() ([]segmentRef, error) {
 	}
 	log.Printf("cache tags fetched: %d total", len(tags))
 
+	// When a tagPrefix is given (serve mode), only tags for the current
+	// snapshot+system can ever be cache hits, so skip fetching every other
+	// segment's manifest. This is the difference between a handful of round
+	// trips and hundreds. prune/size pass an empty prefix and load everything.
+	match := segmentPrefix
+	if tagPrefix != "" {
+		match = tagPrefix
+	}
 	segmentTags := make([]string, 0, len(tags))
 	for _, tag := range tags {
-		if strings.HasPrefix(tag, segmentPrefix) {
+		if strings.HasPrefix(tag, match) {
 			segmentTags = append(segmentTags, tag)
 		}
 	}
-	log.Printf("segment tags to load: %d", len(segmentTags))
+	log.Printf("segment tags to load: %d (prefix %q)", len(segmentTags), match)
 
-	segments := make([]segmentRef, 0, len(segmentTags))
-	for i, tag := range segmentTags {
-		log.Printf("loading segment %d/%d: %s", i+1, len(segmentTags), tag)
-		ref, err := client.getSegment(tag)
-		if err != nil {
-			return nil, fmt.Errorf("load segment %s: %w", tag, err)
-		}
-		segments = append(segments, ref)
+	segments, err := client.fetchSegments(segmentTags)
+	if err != nil {
+		return nil, err
 	}
 	sort.Slice(segments, func(i, j int) bool {
 		return segments[i].CreatedAt.Before(segments[j].CreatedAt)
 	})
 	log.Printf("listed cache: %d tag(s), %d segment(s)", len(tags), len(segments))
+	return segments, nil
+}
+
+// segmentLoadConcurrency bounds how many segment manifests are fetched in
+// parallel. Loading is O(number of tags for the snapshot) network round trips;
+// a snapshot that never changes accumulates one tag per CI run, so serve can
+// face hundreds. Fetching serially takes minutes, so fan out with a fixed
+// worker pool.
+const segmentLoadConcurrency = 32
+
+// fetchSegments loads every tag's segment concurrently, capped at
+// segmentLoadConcurrency. The first error cancels the batch. Order is not
+// preserved; the caller sorts.
+func (client *registryClient) fetchSegments(tags []string) ([]segmentRef, error) {
+	type result struct {
+		ref segmentRef
+		err error
+	}
+	results := make(chan result, len(tags))
+	sem := make(chan struct{}, segmentLoadConcurrency)
+	var wg sync.WaitGroup
+	for _, tag := range tags {
+		wg.Add(1)
+		go func(tag string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			ref, err := client.getSegment(tag)
+			if err != nil {
+				results <- result{err: fmt.Errorf("load segment %s: %w", tag, err)}
+				return
+			}
+			results <- result{ref: ref}
+		}(tag)
+	}
+	go func() { wg.Wait(); close(results) }()
+
+	segments := make([]segmentRef, 0, len(tags))
+	var loadErr error
+	var done int
+	for res := range results {
+		if res.err != nil {
+			if loadErr == nil {
+				loadErr = res.err
+			}
+			continue
+		}
+		segments = append(segments, res.ref)
+		done++
+		if done%100 == 0 || done == len(tags) {
+			log.Printf("loaded %d/%d segments", done, len(tags))
+		}
+	}
+	if loadErr != nil {
+		return nil, loadErr
+	}
 	return segments, nil
 }
 
@@ -190,19 +250,20 @@ func (client *registryClient) getSegment(tag string) (segmentRef, error) {
 	}, nil
 }
 
-func (client *registryClient) loadEntries() (map[string]cacheEntry, error) {
-	segments, err := client.listSegments()
+func (client *registryClient) loadEntries(tagPrefix string) (map[string]cacheEntry, error) {
+	segments, err := client.listSegments(tagPrefix)
 	if err != nil {
 		return nil, err
 	}
 	entries := make(map[string]cacheEntry)
+	snapshots := make(map[string]struct{})
 	for _, item := range segments {
-		log.Printf("segment %s: snapshot=%s system=%s entries=%d",
-			item.Tag, shortSnapshot(item.Snapshot), item.System, len(item.Entries))
+		snapshots[item.Snapshot] = struct{}{}
 		for hash, entry := range item.Entries {
 			entries[hash] = entry
 		}
 	}
+	log.Printf("loaded %d segment(s) across %d snapshot(s): %d entries", len(segments), len(snapshots), len(entries))
 	return entries, nil
 }
 
@@ -292,13 +353,21 @@ func (client *registryClient) pushFile(ctx context.Context, descriptor ocispec.D
 }
 
 func (client *registryClient) segmentTag(state snapshot) string {
-	snapshotID := strings.TrimPrefix(state.ID, "sha256:")
-	if len(snapshotID) > 16 {
-		snapshotID = snapshotID[:16]
-	}
 	runID := os.Getenv("GITHUB_RUN_ID")
 	if runID == "" {
 		runID = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
-	return fmt.Sprintf("%s%s-%s-%s-%s", segmentPrefix, snapshotID, state.System, runID, rand.Text())
+	return fmt.Sprintf("%s%s-%s", segmentTagPrefix(state.ID, state.System), runID, rand.Text())
+}
+
+// segmentTagPrefix is the tag namespace shared by every segment of a given
+// snapshot+system: `v1-<snapshot16>-<system>-`. serve filters tags by this
+// prefix so it only fetches manifests that can actually be cache hits, and
+// segmentTag appends `<runID>-<rand>` to make each run's tag unique within it.
+func segmentTagPrefix(snapshotID, system string) string {
+	short := strings.TrimPrefix(snapshotID, "sha256:")
+	if len(short) > 16 {
+		short = short[:16]
+	}
+	return fmt.Sprintf("%s%s-%s-", segmentPrefix, short, system)
 }

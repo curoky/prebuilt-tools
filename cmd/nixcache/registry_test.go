@@ -29,7 +29,7 @@ func TestMissingRepositoryIsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entries, err := client.loadEntries()
+	entries, err := client.loadEntries("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestRegistryRoundTrip(t *testing.T) {
 	if err := client.pushSegment(state, entries); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := client.loadEntries()
+	loaded, err := client.loadEntries("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestNewestSegmentWins(t *testing.T) {
 	push("1", "old")
 	push("2", "new")
 
-	entries, err := client.loadEntries()
+	entries, err := client.loadEntries("")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,7 +12,7 @@ import (
 // distinct layer digest referenced by any segment manifest is counted once,
 // because segments share NAR blobs by digest.
 func cacheSize(client *registryClient) (int64, error) {
-	segments, err := client.listSegments()
+	segments, err := client.listSegments("")
 	if err != nil {
 		return 0, err
 	}
@@ -29,16 +29,21 @@ func cacheSize(client *registryClient) (int64, error) {
 	return total, nil
 }
 
-// pruneCache keeps the newest keep snapshots per system and deletes the segment
-// manifests of older snapshots. A snapshot may map to several tags (one per CI
-// run); all tags of a kept snapshot are kept, all tags of a dropped snapshot are
-// deleted. Retention is by snapshot recency, not by channel revision ordering,
-// because Nix channel revisions are git hashes with no total order.
-func pruneCache(client *registryClient, keep int, dryRun bool) error {
+// pruneCache trims the cache along two axes. First it keeps only the newest
+// `keep` snapshots per system and drops every segment of older snapshots
+// (retention by snapshot recency, not channel revision ordering, since Nix
+// channel revisions are git hashes with no total order). Then, within each
+// kept snapshot+system, it keeps only the newest `keepTags` tags: a snapshot
+// that never changes accumulates one tag per CI run, so without this cap the
+// cache grows unbounded and serve must fetch hundreds of duplicate segments.
+func pruneCache(client *registryClient, keep, keepTags int, dryRun bool) error {
 	if keep < 1 {
 		return fmt.Errorf("keep must be at least 1, got %d", keep)
 	}
-	segments, err := client.listSegments()
+	if keepTags < 1 {
+		return fmt.Errorf("keep-tags must be at least 1, got %d", keepTags)
+	}
+	segments, err := client.listSegments("")
 	if err != nil {
 		return err
 	}
@@ -48,9 +53,10 @@ func pruneCache(client *registryClient, keep int, dryRun bool) error {
 	}
 
 	kept := keptSnapshots(segments, keep)
+	keptTag := keptTags(segments, keepTags)
 	var deleted, retained int
 	for _, ref := range segments {
-		if kept[ref.System][ref.Snapshot] {
+		if kept[ref.System][ref.Snapshot] && keptTag[ref.Tag] {
 			retained++
 			continue
 		}
@@ -102,6 +108,32 @@ func keptSnapshots(segments []segmentRef, keep int) map[string]map[string]bool {
 			set[ranked[i].id] = true
 		}
 		kept[system] = set
+	}
+	return kept
+}
+
+// keptTags returns the set of tags to keep: within each system+snapshot group,
+// the keepTags most recently created tags. Ties on CreatedAt are broken by tag
+// name so the selection is deterministic.
+func keptTags(segments []segmentRef, keepTags int) map[string]bool {
+	type group struct{ system, snapshot string }
+	byGroup := make(map[group][]segmentRef)
+	for _, ref := range segments {
+		key := group{ref.System, ref.Snapshot}
+		byGroup[key] = append(byGroup[key], ref)
+	}
+
+	kept := make(map[string]bool)
+	for _, refs := range byGroup {
+		sort.Slice(refs, func(i, j int) bool {
+			if !refs[i].CreatedAt.Equal(refs[j].CreatedAt) {
+				return refs[i].CreatedAt.After(refs[j].CreatedAt)
+			}
+			return refs[i].Tag > refs[j].Tag
+		})
+		for i := 0; i < len(refs) && i < keepTags; i++ {
+			kept[refs[i].Tag] = true
+		}
 	}
 	return kept
 }

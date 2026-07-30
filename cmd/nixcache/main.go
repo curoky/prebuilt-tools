@@ -42,11 +42,25 @@ func main() {
 			if err != nil {
 				return err
 			}
-			return serveCache(client)
+			// Restrict loading to the current snapshot+system's tag namespace:
+			// only those segments can be cache hits, and the cache accumulates
+			// hundreds of stale-snapshot tags. If flake.lock is unavailable,
+			// fall back to loading everything.
+			tagPrefix := ""
+			repoRoot, err := os.Getwd()
+			if err == nil {
+				if state, err := loadSnapshot(repoRoot); err == nil {
+					tagPrefix = segmentTagPrefix(state.ID, state.System)
+				} else {
+					fmt.Fprintln(os.Stderr, "warning: could not derive snapshot, loading all segments:", err)
+				}
+			}
+			return serveCache(client, tagPrefix)
 		},
 	}
 
 	var keep int
+	var keepTags int
 	var dryRun bool
 	prune := &cobra.Command{
 		Use:   "prune",
@@ -57,10 +71,11 @@ func main() {
 			if err != nil {
 				return err
 			}
-			return pruneCache(client, keep, dryRun)
+			return pruneCache(client, keep, keepTags, dryRun)
 		},
 	}
 	prune.Flags().IntVar(&keep, "keep", 2, "number of most recent snapshots to keep per system")
+	prune.Flags().IntVar(&keepTags, "keep-tags", 3, "number of most recent tags to keep per snapshot+system")
 	prune.Flags().BoolVar(&dryRun, "dry-run", false, "list segments that would be deleted without deleting")
 
 	size := &cobra.Command{

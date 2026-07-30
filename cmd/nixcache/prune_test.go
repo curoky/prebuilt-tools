@@ -94,10 +94,10 @@ func TestPruneDryRunDeletesNothing(t *testing.T) {
 	pushTestSegment(t, client, "sha256:2222222222222222000000000000000000000000000000000000000000000000", "x86_64-linux", "2", "two")
 	pushTestSegment(t, client, "sha256:3333333333333333000000000000000000000000000000000000000000000000", "x86_64-linux", "3", "three")
 
-	if err := pruneCache(client, 1, true); err != nil {
+	if err := pruneCache(client, 1, 3, true); err != nil {
 		t.Fatal(err)
 	}
-	segments, err := client.listSegments()
+	segments, err := client.listSegments("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestPruneDeletesOldSegmentManifest(t *testing.T) {
 	pushTestSegment(t, client, "sha256:1111111111111111000000000000000000000000000000000000000000000000", "x86_64-linux", "1", "one")
 	pushTestSegment(t, client, "sha256:2222222222222222000000000000000000000000000000000000000000000000", "x86_64-linux", "2", "two")
 
-	segments, err := client.listSegments()
+	segments, err := client.listSegments("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestCacheSizeDeduplicatesBlobs(t *testing.T) {
 
 func TestPruneRejectsKeepZero(t *testing.T) {
 	client := testRegistryClient(t)
-	if err := pruneCache(client, 0, false); err == nil {
+	if err := pruneCache(client, 0, 3, false); err == nil {
 		t.Fatal("expected error for keep=0")
 	}
 }

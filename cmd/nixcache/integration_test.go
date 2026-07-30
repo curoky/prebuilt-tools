@@ -29,7 +29,7 @@ func TestNixRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	index := newCacheIndex(client)
+	index := newCacheIndex(client, "")
 	if _, err := index.refresh(); err != nil {
 		t.Fatal(err)
 	}
