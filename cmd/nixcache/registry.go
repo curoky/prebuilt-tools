@@ -80,8 +80,17 @@ type segmentRef struct {
 	LayerSizes map[digest.Digest]int64
 }
 
+// registryTimeout bounds each individual registry round-trip (tag listing,
+// manifest fetch, blob fetch). Without it the initial index load can block
+// indefinitely on a slow or wedged GHCR request, so `serveCache` never marks
+// the index ready and CI probes exhaust their retries on 503.
+const registryTimeout = 30 * time.Second
+
 func (client *registryClient) listSegments() ([]segmentRef, error) {
-	tags, err := registry.Tags(context.Background(), client.repo)
+	log.Printf("listing cache tags from %s", client.repo.Reference.Repository)
+	ctx, cancel := context.WithTimeout(context.Background(), registryTimeout)
+	tags, err := registry.Tags(ctx, client.repo)
+	cancel()
 	if err != nil {
 		if errors.Is(err, errdef.ErrNotFound) || isNameUnknown(err) {
 			log.Printf("cache repository %s not found yet, treating as empty", client.repo.Reference.Repository)
@@ -89,12 +98,19 @@ func (client *registryClient) listSegments() ([]segmentRef, error) {
 		}
 		return nil, fmt.Errorf("list cache segments: %w", err)
 	}
+	log.Printf("cache tags fetched: %d total", len(tags))
 
-	segments := make([]segmentRef, 0, len(tags))
+	segmentTags := make([]string, 0, len(tags))
 	for _, tag := range tags {
-		if !strings.HasPrefix(tag, segmentPrefix) {
-			continue
+		if strings.HasPrefix(tag, segmentPrefix) {
+			segmentTags = append(segmentTags, tag)
 		}
+	}
+	log.Printf("segment tags to load: %d", len(segmentTags))
+
+	segments := make([]segmentRef, 0, len(segmentTags))
+	for i, tag := range segmentTags {
+		log.Printf("loading segment %d/%d: %s", i+1, len(segmentTags), tag)
 		ref, err := client.getSegment(tag)
 		if err != nil {
 			return nil, fmt.Errorf("load segment %s: %w", tag, err)
@@ -129,7 +145,9 @@ func isNameUnknown(err error) bool {
 }
 
 func (client *registryClient) getSegment(tag string) (segmentRef, error) {
-	manifestDescriptor, reader, err := client.repo.FetchReference(context.Background(), tag)
+	ctx, cancel := context.WithTimeout(context.Background(), registryTimeout)
+	defer cancel()
+	manifestDescriptor, reader, err := client.repo.FetchReference(ctx, tag)
 	if err != nil {
 		return segmentRef{}, err
 	}
@@ -146,7 +164,7 @@ func (client *registryClient) getSegment(tag string) (segmentRef, error) {
 	if metadata.MediaType != segmentMediaType {
 		return segmentRef{}, fmt.Errorf("unexpected metadata media type %q", metadata.MediaType)
 	}
-	reader, err = client.repo.Fetch(context.Background(), metadata)
+	reader, err = client.repo.Fetch(ctx, metadata)
 	if err != nil {
 		return segmentRef{}, err
 	}

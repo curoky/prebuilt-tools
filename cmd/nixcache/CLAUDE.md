@@ -83,11 +83,13 @@ default keychain。
 nixcache serve
 ```
 
-固定监听 `127.0.0.1:37515`，启动时**同步**加载所有 `v1-*` segments 后再开始监听，之后每
-5 分钟刷新。因此 `/nix-cache-info` 一旦可用即代表 index 已就绪，CI 的 readiness 探测无需
-额外等待，也不会在 index 还空时把 cache hit 误判为 miss。只支持 `GET` 和 `HEAD`：
+固定监听 `127.0.0.1:37515`，先开端口、后台启动 HTTP server，再同步加载所有 `v1-*`
+segments，加载完成后置 ready，之后每 5 分钟刷新。`/nix-cache-info` 在 index 就绪前返回
+`503`、就绪后返回内容，因此 CI 的 readiness 探测（`curl --retry-all-errors`）会一直重试到
+index 就绪才通过，既不会因端口未开而 connection refused，也不会在 index 还空时把 cache hit
+误判为 miss。只支持 `GET` 和 `HEAD`：
 
-- `/nix-cache-info`
+- `/nix-cache-info`（未就绪返回 `503`）
 - `/<store-hash>.narinfo`
 - `/nar/<file>`
 

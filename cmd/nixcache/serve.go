@@ -42,6 +42,8 @@ func newCacheIndex(client *registryClient) *cacheIndex {
 }
 
 func (index *cacheIndex) refresh() (int, error) {
+	log.Printf("refreshing cache index")
+	started := time.Now()
 	entries, err := index.client.loadEntries()
 	if err != nil {
 		return 0, err
@@ -55,6 +57,7 @@ func (index *cacheIndex) refresh() (int, error) {
 	index.entries = entries
 	index.nars = nars
 	index.mu.Unlock()
+	log.Printf("cache index refreshed: %d entries in %s", len(entries), time.Since(started).Round(time.Millisecond))
 	return len(entries), nil
 }
 

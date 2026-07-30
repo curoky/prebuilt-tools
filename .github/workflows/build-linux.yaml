@@ -73,7 +73,7 @@ jobs:
         run: |
           bash cmd/nixcache/install.sh --prefix "$RUNNER_TEMP/bin"
           "$RUNNER_TEMP/bin/nixcache" serve > "$RUNNER_TEMP/nixcache.log" 2>&1 &
-          curl --retry 30 --retry-delay 1 --retry-all-errors -fsS \
+          curl --retry 90 --retry-delay 1 --retry-all-errors -fsS \
             "$NIXCACHE_STORE/nix-cache-info" || {
               cat "$RUNNER_TEMP/nixcache.log"
               exit 1
@@ -188,7 +188,7 @@ jobs:
         run: |
           bash cmd/nixcache/install.sh --prefix "$RUNNER_TEMP/bin"
           "$RUNNER_TEMP/bin/nixcache" serve > "$RUNNER_TEMP/nixcache.log" 2>&1 &
-          curl --retry 30 --retry-delay 1 --retry-all-errors -fsS \
+          curl --retry 90 --retry-delay 1 --retry-all-errors -fsS \
             "$NIXCACHE_STORE/nix-cache-info" || {
               cat "$RUNNER_TEMP/nixcache.log"
               exit 1

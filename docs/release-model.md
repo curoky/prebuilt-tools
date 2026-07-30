@@ -25,7 +25,7 @@ cache 命中判定和各 CI 触发条件下的排列组合。LLVM 工具的专�
    `build-result-<name>` artifact。`summary` job（`needs: [discover, build]` +
    `always() && !cancelled()`）下载全部 `build-result-*`，汇总触发/平台/commit/`flake.lock`
    snapshot 元信息、`discover` 的候选/命中/选中数量、`build` 各包成功失败统计与失败包清单，
-   写入 `$GITHUB_STEP_SUMMARY` 并上传 `build-summary`（`summary.md`）artifact。
+   写入 `$GITHUB_STEP_SUMMARY`（Actions 页面可见）。
 
 `nix-installer-action` 的 `summarize` 一律设为 `false`，关闭 Determinate Nix 自带的
 build summary 与 timeline chart，避免与自定义 `summary` job 的输出重复。
