@@ -13,9 +13,6 @@
   # C / autotools.
   autoconf = pkgsStatic.callPackage ../autoconf { };
   automake = pkgsStatic.callPackage ../automake { };
-  coreutils = pkgsStatic.coreutils.override {
-    singleBinary = false;
-  };
   curl = pkgsStatic.callPackage ../curl { };
   diffutils = pkgsStatic.callPackage ../diffutils { };
   eza-ls = pkgsStatic.callPackage ../eza-ls { };

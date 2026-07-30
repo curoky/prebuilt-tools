@@ -38,7 +38,6 @@ unstable pin、本地 derivation、override、禁用检查或动态例外时，�
 | `cmake_3_27_9` | 📌 源码版本 + 🩹 | — | 🟡 | 固定 3.27.9；补 C++ header、cross bootstrap 并禁用 checks | 只回归构建补丁与 checks，保留版本化 output | `packages/cmake/3_27_9/` |
 | `cmake_4_1_2` | 📌 源码版本 + 🩹 | — | 🟡 | 固定 4.1.2；自定义 cross bootstrap 并禁用 checks | 只回归构建补丁与 checks，保留版本化 output | `packages/cmake/4_1_2/` |
 | `conmon` | 🩹 本地 | — | ✅ | 收窄 build inputs 并清空 propagated inputs：stock unstable 的 propagatedBuildInputs 拉入 `systemd-minimal`，其 `badPlatforms` 含 `isStatic`，musl-static 下 eval 即被拒 | stock unstable 无需清空 propagated inputs 即可构建为 musl-static | `packages/conmon/` |
-| `coreutils` | 📦 override | 📦 override | ❌ | 明确要求 `singleBinary = false` | 多二进制布局是产品决策 | `packages/local/common.nix` |
 | `crun` | 🩹 本地 | — | 🟡 | 强制全静态、关闭不可用 features 并禁用 checks | 逐项恢复 stock features/checks，保持 musl-static | `packages/crun/` |
 | `curl` | 📦 本地 | 📦 本地 | ❌ | 内置 CA bundle 与相对路径 wrapper | 自包含证书定位是 packaging | `packages/curl/` |
 | `diffutils` | 🩹 本地 | 🩹 本地 | ✅ | 仅禁用 stock checks：unstable diffutils 3.12 的 gnulib checkPhase 在 musl-static 下 9 个多线程/setlocale 测试失败（`test-setlocale_null-mt`、`test-thread_create` 等 SIGABRT） | unstable 全量 checks 与 portability 验证通过 | `packages/diffutils/` |

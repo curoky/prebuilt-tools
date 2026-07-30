@@ -31,6 +31,7 @@
     output = [ "bin" ];
   };
   connect = { };
+  coreutils = { };
   findutils = { };
   flac = {
     output = [ "bin" ];
