@@ -115,21 +115,24 @@ func setNARHeaders(writer http.ResponseWriter, entry cacheEntry) {
 func serveCache(client *registryClient) error {
 	index := newCacheIndex(client)
 
-	// Open the listener before loading the index so that nix-cache-info answers
-	// immediately: readiness probes should not wait on a registry round-trip,
-	// and a slow or failing refresh must not keep the port closed. A cache miss
-	// simply falls through to the upstream substituter.
+	// Load the index synchronously before opening the listener so that a
+	// successful nix-cache-info readiness probe implies the entries are already
+	// queryable. An async first load would let CI start path-info lookups while
+	// the index is still empty, turning every cache hit into a spurious miss.
+	// A missing cache repository is not an error (listSegments maps NAME_UNKNOWN
+	// to an empty set), so a fresh repo still starts with an empty index.
+	count, err := index.refresh()
+	if err != nil {
+		return fmt.Errorf("initial cache index load: %w", err)
+	}
+	log.Printf("loaded cache index: %d entries", count)
+
 	listener, err := net.Listen("tcp", defaultListen)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", defaultListen, err)
 	}
 
 	go func() {
-		if count, err := index.refresh(); err != nil {
-			log.Printf("initial cache index load: %v", err)
-		} else {
-			log.Printf("loaded cache index: %d entries", count)
-		}
 		ticker := time.NewTicker(refreshEvery)
 		defer ticker.Stop()
 		for range ticker.C {

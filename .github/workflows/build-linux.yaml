@@ -107,13 +107,24 @@ jobs:
           # must be rebuilt. Print the name only for misses. Skip the cache
           # check (force-rebuild every candidate) on schedule or skip_discover;
           # see docs/release-model.md.
+          #
+          # path-info exits non-zero both for a genuine miss (path absent from
+          # cache) and for a query failure (serve unreachable, GHCR error). The
+          # serve index loads synchronously before nix-cache-info answers, so a
+          # ready cache should never be transiently empty; surface stderr so a
+          # query failure is not silently misreported as "need build".
           check() {
             local name="${1%%$'\t'*}"
             local out_path="${1#*$'\t'}"
-            if nix path-info --store "$NIXCACHE_STORE" --option require-sigs false "$out_path" >/dev/null 2>&1; then
+            local err
+            if err=$(nix path-info --store "$NIXCACHE_STORE" --option require-sigs false "$out_path" 2>&1 >/dev/null); then
               echo "cache hit : $name" >&2
             else
-              echo "need build: $name" >&2
+              if [ -n "$err" ]; then
+                echo "need build: $name (path-info: $err)" >&2
+              else
+                echo "need build: $name" >&2
+              fi
               echo "$name"
             fi
           }
