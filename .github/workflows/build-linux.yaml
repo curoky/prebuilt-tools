@@ -46,10 +46,14 @@ jobs:
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
       count: ${{ steps.set.outputs.count }}
+      candidates: ${{ steps.set.outputs.candidates }}
+      hits: ${{ steps.set.outputs.hits }}
     steps:
       - uses: actions/checkout@v5
 
       - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          summarize: false
 
       # Cache fetched flake inputs and the eval cache keyed on flake.lock, so a
       # repeat discover skips re-downloading and unpacking every nixpkgs channel
@@ -139,11 +143,15 @@ jobs:
           # Build a matrix JSON: {"include":[{"name":"foo"},...]}
           matrix=$(nix run nixpkgs#jq -- -R -s -c \
             'split("\n") | map(select(length > 0)) | {include: map({name: .})}' < selected.txt)
+          candidates=$(grep -c . pkgs.tsv || true)
           count=$(grep -c . selected.txt || true)
+          hits=$((candidates - count))
 
           echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "candidates=$candidates" >> "$GITHUB_OUTPUT"
+          echo "hits=$hits" >> "$GITHUB_OUTPUT"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-          echo "selected packages ($count):"
+          echo "selected packages ($count of $candidates candidates, $hits cache hits):"
           cat selected.txt
 
   build:
@@ -164,6 +172,8 @@ jobs:
       - uses: actions/checkout@v5
 
       - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          summarize: false
 
       - name: Start Nix cache
         env:
@@ -206,3 +216,126 @@ jobs:
       - run: >
           oras push ghcr.io/curoky/standalone-binaries:${{ matrix.name }}-linux-x86_64
           ./${{ matrix.name }}.linux-x86_64.tar.gz:application/vnd.oci.image.layer.v1.tar+gzip
+
+      # Record this package's outcome so the summary job can aggregate the
+      # matrix results. `job.status` reflects whether any earlier step in this
+      # matrix leg failed; runs on `always()` so failures are captured too.
+      - name: Record build result
+        if: always()
+        run: |
+          mkdir -p build-results
+          printf '%s\t%s\n' "${{ matrix.name }}" "${{ job.status }}" \
+            > "build-results/${{ matrix.name }}.tsv"
+
+      - name: Upload build result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-result-${{ matrix.name }}
+          path: build-results/${{ matrix.name }}.tsv
+          retention-days: 7
+
+  summary:
+    needs: [discover, build]
+    # Always run so the summary is produced even when discover was skipped or
+    # some build legs failed; only skip if the whole run was cancelled.
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PLATFORM: x86_64-linux
+      DISCOVER_RESULT: ${{ needs.discover.result }}
+      BUILD_RESULT: ${{ needs.build.result }}
+      CANDIDATES: ${{ needs.discover.outputs.candidates }}
+      HITS: ${{ needs.discover.outputs.hits }}
+      SELECTED: ${{ needs.discover.outputs.count }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # Per-package results are uploaded by each build matrix leg as
+      # build-result-<name>; collect them all into one directory.
+      - name: Download build results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: build-result-*
+          path: build-results
+          merge-multiple: true
+
+      - name: Render summary
+        run: |
+          set -euo pipefail
+
+          # flake.lock snapshot: the SHA-256 that identifies the Nix cache
+          # segment; short form mirrors nixcache's segment tag.
+          snapshot="$(sha256sum flake.lock | cut -c1-16)"
+
+          success=0
+          failure=0
+          other=0
+          declare -a failed_pkgs=()
+          shopt -s nullglob
+          results=(build-results/*.tsv)
+          shopt -u nullglob
+          for file in "${results[@]}"; do
+            while IFS=$'\t' read -r name status; do
+              [ -n "$name" ] || continue
+              case "$status" in
+                success) success=$((success + 1)) ;;
+                failure) failure=$((failure + 1)); failed_pkgs+=("$name") ;;
+                *) other=$((other + 1)) ;;
+              esac
+            done < "$file"
+          done
+          built_total=$((success + failure + other))
+
+          {
+            echo "# build linux summary"
+            echo
+            echo "| field | value |"
+            echo "| --- | --- |"
+            echo "| trigger | \`${{ github.event_name }}\` |"
+            echo "| platform | \`${PLATFORM}\` |"
+            echo "| commit | [\`${GITHUB_SHA:0:12}\`](${{ github.server_url }}/${{ github.repository }}/commit/${GITHUB_SHA}) |"
+            echo "| flake.lock snapshot | \`${snapshot}\` |"
+            echo "| run | [#${{ github.run_number }}](${RUN_URL}) |"
+            echo
+            echo "## discover"
+            echo
+            if [ "$DISCOVER_RESULT" = "skipped" ]; then
+              echo "discover was skipped (single-package dispatch)."
+            else
+              echo "| metric | count |"
+              echo "| --- | --- |"
+              echo "| candidates | ${CANDIDATES:-0} |"
+              echo "| cache hits | ${HITS:-0} |"
+              echo "| selected for build | ${SELECTED:-0} |"
+            fi
+            echo
+            echo "## build"
+            echo
+            echo "job result: \`${BUILD_RESULT}\`"
+            echo
+            echo "| metric | count |"
+            echo "| --- | --- |"
+            echo "| built | ${built_total} |"
+            echo "| success | ${success} |"
+            echo "| failure | ${failure} |"
+            if [ "$other" -gt 0 ]; then
+              echo "| other | ${other} |"
+            fi
+            echo
+            if [ "$failure" -gt 0 ]; then
+              echo "### failed packages"
+              echo
+              for name in "${failed_pkgs[@]}"; do
+                echo "- \`${name}\`"
+              done
+              echo
+              echo "See the [build jobs](${RUN_URL}) for per-package logs."
+            fi
+          } > "$RUNNER_TEMP/summary.md"
+
+          cat "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/summary.md"

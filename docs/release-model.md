@@ -6,7 +6,7 @@ cache 命中判定和各 CI 触发条件下的排列组合。LLVM 工具的专�
 
 ## 发布流程
 
-每个 workflow 分 `discover` 和 `build` 两个 job：
+每个 workflow 分 `discover`、`build` 和 `summary` 三个 job：
 
 1. `discover` 一次 `nix eval` 当前平台全部包名与 `outPath`（排除 `all`、`all-fast`
    聚合），产出 `<name>\t<outPath>` 的 TSV。
@@ -21,6 +21,14 @@ cache 命中判定和各 CI 触发条件下的排列组合。LLVM 工具的专�
    `<name>.linux-x86_64.tar.gz` 或 `<name>.darwin-arm64.tar.gz`，不依赖宿主 `rsync`/`tar`。
 6. 用 `nixcache push` 把 standalone closure 发布到 cache repository，再把工具 tarball 发布到
    `ghcr.io/curoky/standalone-binaries:<name>-<arch>`。
+7. 每个 `build` matrix leg 以 `always()` 把 `<name>\t<job.status>` 写成
+   `build-result-<name>` artifact。`summary` job（`needs: [discover, build]` +
+   `always() && !cancelled()`）下载全部 `build-result-*`，汇总触发/平台/commit/`flake.lock`
+   snapshot 元信息、`discover` 的候选/命中/选中数量、`build` 各包成功失败统计与失败包清单，
+   写入 `$GITHUB_STEP_SUMMARY` 并上传 `build-summary`（`summary.md`）artifact。
+
+`nix-installer-action` 的 `summarize` 一律设为 `false`，关闭 Determinate Nix 自带的
+build summary 与 timeline chart，避免与自定义 `summary` job 的输出重复。
 
 ## Cache 命中判定
 
