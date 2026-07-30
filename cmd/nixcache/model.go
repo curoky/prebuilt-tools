@@ -37,6 +37,8 @@ type segment struct {
 	Snapshot         string                `json:"snapshot"`
 	RepositoryCommit string                `json:"repositoryCommit,omitempty"`
 	System           string                `json:"system"`
+	PackageKey       string                `json:"packageKey,omitempty"`
+	RunID            string                `json:"runId,omitempty"`
 	CreatedAt        time.Time             `json:"createdAt"`
 	Channels         map[string]string     `json:"channels"`
 	Entries          map[string]cacheEntry `json:"entries"`

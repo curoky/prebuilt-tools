@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -48,10 +49,10 @@ func newCacheIndex(client *registryClient, tagPrefix string) *cacheIndex {
 	}
 }
 
-func (index *cacheIndex) refresh() (int, error) {
+func (index *cacheIndex) refresh(ctx context.Context) (int, error) {
 	log.Printf("refreshing cache index")
 	started := time.Now()
-	entries, err := index.client.loadEntries(index.tagPrefix)
+	entries, err := index.client.loadEntries(ctx, index.tagPrefix)
 	if err != nil {
 		return 0, err
 	}
@@ -110,13 +111,13 @@ func (index *cacheIndex) serveHTTP(writer http.ResponseWriter, request *http.Req
 			writer.WriteHeader(http.StatusOK)
 			return
 		}
-		reader, err := index.client.blobReader(entry.NARDigest)
+		reader, err := index.client.blobReader(request.Context(), entry.NARDigest)
 		if err != nil {
 			log.Printf("read cache blob %s: %v", entry.NARDigest, err)
 			http.Error(writer, "read cache blob", http.StatusBadGateway)
 			return
 		}
-		defer reader.Close()
+		defer func() { _ = reader.Close() }()
 		setNARHeaders(writer, entry)
 		if _, err := io.Copy(writer, reader); err != nil {
 			log.Printf("stream %s: %v", path, err)
@@ -137,7 +138,7 @@ func setNARHeaders(writer http.ResponseWriter, entry cacheEntry) {
 	writer.Header().Set("ETag", `"`+entry.NARDigest+`"`)
 }
 
-func serveCache(client *registryClient, tagPrefix string) error {
+func serveCache(ctx context.Context, client *registryClient, tagPrefix string) error {
 	index := newCacheIndex(client, tagPrefix)
 
 	// Open the listener first so the port is immediately connectable: the CI
@@ -160,27 +161,27 @@ func serveCache(client *registryClient, tagPrefix string) error {
 	go func() { serveErr <- server.Serve(listener) }()
 	log.Printf("serving Nix cache at http://%s", defaultListen)
 
-	// Load the index once, then mark ready so nix-cache-info starts answering.
-	// A load failure is not fatal: readiness still flips so the probe passes
-	// and the substituter proceeds against an empty index (every lookup misses,
-	// degrading to a rebuild); the periodic refresh retries. A missing cache
-	// repository is likewise not an error (listSegments maps NAME_UNKNOWN to an
-	// empty set).
-	if count, err := index.refresh(); err != nil {
-		log.Printf("initial cache index load failed, starting with empty index: %v", err)
-	} else {
-		log.Printf("loaded cache index: %d entries", count)
+	count, err := index.refresh(ctx)
+	if err != nil {
+		_ = server.Close()
+		return fmt.Errorf("load initial cache index: %w", err)
 	}
+	log.Printf("loaded cache index: %d entries", count)
 	index.ready.Store(true)
 
 	go func() {
 		ticker := time.NewTicker(refreshEvery)
 		defer ticker.Stop()
-		for range ticker.C {
-			if count, err := index.refresh(); err != nil {
-				log.Printf("refresh cache index: %v", err)
-			} else {
-				log.Printf("refreshed cache index: %d entries", count)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if count, err := index.refresh(ctx); err != nil {
+					log.Printf("refresh cache index: %v", err)
+				} else {
+					log.Printf("refreshed cache index: %d entries", count)
+				}
 			}
 		}
 	}()

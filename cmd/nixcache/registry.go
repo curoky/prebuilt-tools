@@ -11,15 +11,17 @@ import (
 	"log"
 	"maps"
 	"os"
+	"path"
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/nix-community/go-nix/pkg/narinfo"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"golang.org/x/sync/errgroup"
 	"oras.land/oras-go/v2/content"
 	"oras.land/oras-go/v2/errdef"
 	"oras.land/oras-go/v2/registry"
@@ -41,7 +43,7 @@ func newRegistryClient(repository string, insecure bool) (*registryClient, error
 	repo.PlainHTTP = insecure
 
 	var credential auth.CredentialFunc
-	authSource := "anonymous"
+	var authSource string
 	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
 		username := os.Getenv("GITHUB_ACTOR")
 		if username == "" {
@@ -71,15 +73,18 @@ func newRegistryClient(repository string, insecure bool) (*registryClient, error
 	return &registryClient{repo: repo}, nil
 }
 
-// segmentRef pairs a decoded segment with the registry metadata needed to
-// prune it: its tag, the manifest descriptor to delete, and the on-registry
-// byte size of every layer this manifest references.
 type segmentRef struct {
 	segment
-	Tag        string
-	Manifest   ocispec.Descriptor
-	LayerSizes map[digest.Digest]int64
+	Tag string
 }
+
+type manifestRef struct {
+	Tag       string
+	Metadata  ocispec.Descriptor
+	NARLayers map[string]ocispec.Descriptor
+}
+
+const storeHashAnnotation = "org.nixos.store.hash"
 
 // registryTimeout bounds each individual registry round-trip (tag listing,
 // manifest fetch, blob fetch). Without it the initial index load can block
@@ -87,11 +92,11 @@ type segmentRef struct {
 // the index ready and CI probes exhaust their retries on 503.
 const registryTimeout = 30 * time.Second
 
-func (client *registryClient) listSegments(tagPrefix string) ([]segmentRef, error) {
+func (client *registryClient) listTags(ctx context.Context, tagPrefix string) ([]string, error) {
 	log.Printf("listing cache tags from %s", client.repo.Reference.Repository)
-	ctx, cancel := context.WithTimeout(context.Background(), registryTimeout)
-	tags, err := registry.Tags(ctx, client.repo)
-	cancel()
+	requestCtx, cancel := context.WithTimeout(ctx, registryTimeout)
+	defer cancel()
+	tags, err := registry.Tags(requestCtx, client.repo)
 	if err != nil {
 		if errors.Is(err, errdef.ErrNotFound) || isNameUnknown(err) {
 			log.Printf("cache repository %s not found yet, treating as empty", client.repo.Reference.Repository)
@@ -101,10 +106,6 @@ func (client *registryClient) listSegments(tagPrefix string) ([]segmentRef, erro
 	}
 	log.Printf("cache tags fetched: %d total", len(tags))
 
-	// When a tagPrefix is given (serve mode), only tags for the current
-	// snapshot+system can ever be cache hits, so skip fetching every other
-	// segment's manifest. This is the difference between a handful of round
-	// trips and hundreds. prune/size pass an empty prefix and load everything.
 	match := segmentPrefix
 	if tagPrefix != "" {
 		match = tagPrefix
@@ -116,15 +117,25 @@ func (client *registryClient) listSegments(tagPrefix string) ([]segmentRef, erro
 		}
 	}
 	log.Printf("segment tags to load: %d (prefix %q)", len(segmentTags), match)
+	return segmentTags, nil
+}
 
-	segments, err := client.fetchSegments(segmentTags)
+func (client *registryClient) listSegments(ctx context.Context, tagPrefix string) ([]segmentRef, error) {
+	tags, err := client.listTags(ctx, tagPrefix)
+	if err != nil {
+		return nil, err
+	}
+	segments, err := client.fetchSegments(ctx, tags)
 	if err != nil {
 		return nil, err
 	}
 	sort.Slice(segments, func(i, j int) bool {
-		return segments[i].CreatedAt.Before(segments[j].CreatedAt)
+		if !segments[i].CreatedAt.Equal(segments[j].CreatedAt) {
+			return segments[i].CreatedAt.Before(segments[j].CreatedAt)
+		}
+		return segments[i].Tag < segments[j].Tag
 	})
-	log.Printf("listed cache: %d tag(s), %d segment(s)", len(tags), len(segments))
+	log.Printf("listed cache: %d segment(s)", len(segments))
 	return segments, nil
 }
 
@@ -135,60 +146,79 @@ func (client *registryClient) listSegments(tagPrefix string) ([]segmentRef, erro
 // worker pool.
 const segmentLoadConcurrency = 32
 
-// fetchSegments loads every tag's segment concurrently, capped at
-// segmentLoadConcurrency. The first error cancels the batch. Order is not
-// preserved; the caller sorts.
-func (client *registryClient) fetchSegments(tags []string) ([]segmentRef, error) {
-	type result struct {
-		ref segmentRef
-		err error
+func (client *registryClient) listManifests(ctx context.Context, tagPrefix string) ([]manifestRef, error) {
+	tags, err := client.listTags(ctx, tagPrefix)
+	if err != nil {
+		return nil, err
 	}
-	results := make(chan result, len(tags))
-	sem := make(chan struct{}, segmentLoadConcurrency)
-	var wg sync.WaitGroup
-	for _, tag := range tags {
-		wg.Add(1)
-		go func(tag string) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			ref, err := client.getSegment(tag)
+	manifests := make([]manifestRef, len(tags))
+	missing := make([]bool, len(tags))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(segmentLoadConcurrency)
+	for index, tag := range tags {
+		group.Go(func() error {
+			if err := groupCtx.Err(); err != nil {
+				return err
+			}
+			ref, err := client.getManifest(groupCtx, tag)
 			if err != nil {
-				results <- result{err: fmt.Errorf("load segment %s: %w", tag, err)}
-				return
+				if errors.Is(err, errdef.ErrNotFound) {
+					missing[index] = true
+					log.Printf("segment %s disappeared while loading, skipping", tag)
+					return nil
+				}
+				return fmt.Errorf("load manifest %s: %w", tag, err)
 			}
-			results <- result{ref: ref}
-		}(tag)
+			manifests[index] = ref
+			return nil
+		})
 	}
-	go func() { wg.Wait(); close(results) }()
-
-	segments := make([]segmentRef, 0, len(tags))
-	var loadErr error
-	var done int
-	for res := range results {
-		if res.err != nil {
-			if loadErr == nil {
-				loadErr = res.err
-			}
-			continue
-		}
-		segments = append(segments, res.ref)
-		done++
-		if done%100 == 0 || done == len(tags) {
-			log.Printf("loaded %d/%d segments", done, len(tags))
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+	loaded := manifests[:0]
+	for index, ref := range manifests {
+		if !missing[index] {
+			loaded = append(loaded, ref)
 		}
 	}
-	if loadErr != nil {
-		return nil, loadErr
-	}
-	return segments, nil
+	return loaded, nil
 }
 
-// deleteSegment removes a segment manifest by tag. GHCR drops the tag with the
-// manifest; layers no longer referenced by any manifest become untagged and are
-// reclaimed by the registry's own garbage collection.
-func (client *registryClient) deleteSegment(ref segmentRef) error {
-	return client.repo.Delete(context.Background(), ref.Manifest)
+func (client *registryClient) fetchSegments(ctx context.Context, tags []string) ([]segmentRef, error) {
+	segments := make([]segmentRef, len(tags))
+	missing := make([]bool, len(tags))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(segmentLoadConcurrency)
+	for index, tag := range tags {
+		group.Go(func() error {
+			if err := groupCtx.Err(); err != nil {
+				return err
+			}
+			ref, err := client.getSegment(groupCtx, tag)
+			if err != nil {
+				if errors.Is(err, errdef.ErrNotFound) {
+					missing[index] = true
+					log.Printf("segment %s disappeared while loading, skipping", tag)
+					return nil
+				}
+				return fmt.Errorf("load segment %s: %w", tag, err)
+			}
+			segments[index] = ref
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+	loaded := segments[:0]
+	for index, ref := range segments {
+		if !missing[index] {
+			loaded = append(loaded, ref)
+		}
+	}
+	log.Printf("loaded %d/%d segments", len(loaded), len(tags))
+	return loaded, nil
 }
 
 func isNameUnknown(err error) bool {
@@ -204,31 +234,63 @@ func isNameUnknown(err error) bool {
 	return false
 }
 
-func (client *registryClient) getSegment(tag string) (segmentRef, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), registryTimeout)
+func (client *registryClient) getManifest(ctx context.Context, tag string) (manifestRef, error) {
+	requestCtx, cancel := context.WithTimeout(ctx, registryTimeout)
 	defer cancel()
-	manifestDescriptor, reader, err := client.repo.FetchReference(ctx, tag)
+	_, reader, err := client.repo.FetchReference(requestCtx, tag)
 	if err != nil {
-		return segmentRef{}, err
+		return manifestRef{}, err
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	var manifest ocispec.Manifest
 	if err := json.NewDecoder(reader).Decode(&manifest); err != nil {
-		return segmentRef{}, err
+		return manifestRef{}, err
 	}
 	if len(manifest.Layers) == 0 {
-		return segmentRef{}, fmt.Errorf("segment has no metadata layer")
+		return manifestRef{}, fmt.Errorf("segment has no metadata layer")
 	}
 	metadata := manifest.Layers[0]
 	if metadata.MediaType != segmentMediaType {
-		return segmentRef{}, fmt.Errorf("unexpected metadata media type %q", metadata.MediaType)
+		return manifestRef{}, fmt.Errorf("unexpected metadata media type %q", metadata.MediaType)
 	}
-	reader, err = client.repo.Fetch(ctx, metadata)
+
+	if metadata.Size < 0 {
+		return manifestRef{}, fmt.Errorf("metadata layer has invalid size %d", metadata.Size)
+	}
+	narLayers := make(map[string]ocispec.Descriptor, len(manifest.Layers)-1)
+	for _, layer := range manifest.Layers[1:] {
+		if layer.MediaType != narMediaType {
+			return manifestRef{}, fmt.Errorf("unexpected NAR media type %q", layer.MediaType)
+		}
+		if layer.Size < 0 {
+			return manifestRef{}, fmt.Errorf("layer %s has invalid size %d", layer.Digest, layer.Size)
+		}
+		hash := layer.Annotations[storeHashAnnotation]
+		if hash == "" {
+			return manifestRef{}, fmt.Errorf("NAR layer %s is missing %s annotation", layer.Digest, storeHashAnnotation)
+		}
+		if _, exists := narLayers[hash]; exists {
+			return manifestRef{}, fmt.Errorf("duplicate NAR layer for store hash %s", hash)
+		}
+		narLayers[hash] = layer
+	}
+	return manifestRef{Tag: tag, Metadata: metadata, NARLayers: narLayers}, nil
+}
+
+func (client *registryClient) getSegment(ctx context.Context, tag string) (segmentRef, error) {
+	manifest, err := client.getManifest(ctx, tag)
 	if err != nil {
 		return segmentRef{}, err
 	}
-	defer reader.Close()
+
+	requestCtx, cancel := context.WithTimeout(ctx, registryTimeout)
+	defer cancel()
+	reader, err := client.repo.Fetch(requestCtx, manifest.Metadata)
+	if err != nil {
+		return segmentRef{}, err
+	}
+	defer func() { _ = reader.Close() }()
 
 	var item segment
 	if err := json.NewDecoder(reader).Decode(&item); err != nil {
@@ -237,21 +299,61 @@ func (client *registryClient) getSegment(tag string) (segmentRef, error) {
 	if item.Version != segmentVersion {
 		return segmentRef{}, fmt.Errorf("unsupported segment version %d", item.Version)
 	}
-
-	layerSizes := make(map[digest.Digest]int64, len(manifest.Layers))
-	for _, layer := range manifest.Layers {
-		layerSizes[layer.Digest] = layer.Size
+	if err := validateSegment(tag, item, manifest); err != nil {
+		return segmentRef{}, err
 	}
-	return segmentRef{
-		segment:    item,
-		Tag:        tag,
-		Manifest:   manifestDescriptor,
-		LayerSizes: layerSizes,
-	}, nil
+	return segmentRef{segment: item, Tag: tag}, nil
 }
 
-func (client *registryClient) loadEntries(tagPrefix string) (map[string]cacheEntry, error) {
-	segments, err := client.listSegments(tagPrefix)
+func validateSegment(tag string, item segment, manifest manifestRef) error {
+	if item.Snapshot == "" || item.System == "" || item.CreatedAt.IsZero() {
+		return fmt.Errorf("segment metadata is missing snapshot, system, or createdAt")
+	}
+	if !strings.HasPrefix(tag, segmentTagPrefix(item.Snapshot, item.System)) {
+		return fmt.Errorf("tag %q does not match metadata snapshot %q and system %q", tag, item.Snapshot, item.System)
+	}
+	if len(item.Entries) != len(manifest.NARLayers) {
+		return fmt.Errorf("segment has %d entries but %d NAR layers", len(item.Entries), len(manifest.NARLayers))
+	}
+	for hash, entry := range item.Entries {
+		actualHash, err := storeHash(entry.StorePath)
+		if err != nil {
+			return fmt.Errorf("entry %s has invalid store path: %w", hash, err)
+		}
+		if actualHash != hash {
+			return fmt.Errorf("entry key %q does not match store path hash %q", hash, actualHash)
+		}
+		if path.Clean(entry.NARURL) != entry.NARURL || !strings.HasPrefix(entry.NARURL, "nar/") {
+			return fmt.Errorf("entry %s has invalid NAR URL %q", hash, entry.NARURL)
+		}
+		narDigest, err := digest.Parse(entry.NARDigest)
+		if err != nil || narDigest.Algorithm() != digest.SHA256 || entry.NARSize <= 0 {
+			return fmt.Errorf("entry %s has invalid NAR digest or size", hash)
+		}
+		layer, ok := manifest.NARLayers[hash]
+		if !ok || layer.MediaType != narMediaType || layer.Annotations[storeHashAnnotation] != hash ||
+			layer.Digest != narDigest || layer.Size != entry.NARSize {
+			return fmt.Errorf("entry %s does not match its manifest NAR layer", hash)
+		}
+		info, err := narinfo.Parse(strings.NewReader(entry.NARInfo))
+		if err != nil {
+			return fmt.Errorf("entry %s has invalid narinfo: %w", hash, err)
+		}
+		if err := info.Check(); err != nil {
+			return fmt.Errorf("entry %s has invalid narinfo: %w", hash, err)
+		}
+		if info.StorePath != entry.StorePath || info.URL != entry.NARURL ||
+			info.FileHash == nil || info.FileHash.Algo().String() != digest.SHA256.String() ||
+			digest.NewDigestFromEncoded(digest.SHA256, digest.SHA256.Encode(info.FileHash.Digest())).String() != entry.NARDigest ||
+			int64(info.FileSize) != entry.NARSize {
+			return fmt.Errorf("entry %s metadata does not match narinfo", hash)
+		}
+	}
+	return nil
+}
+
+func (client *registryClient) loadEntries(ctx context.Context, tagPrefix string) (map[string]cacheEntry, error) {
+	segments, err := client.listSegments(ctx, tagPrefix)
 	if err != nil {
 		return nil, err
 	}
@@ -267,17 +369,25 @@ func (client *registryClient) loadEntries(tagPrefix string) (map[string]cacheEnt
 	return entries, nil
 }
 
-func (client *registryClient) blobReader(digest string) (io.ReadCloser, error) {
-	_, reader, err := client.repo.Blobs().FetchReference(context.Background(), digest)
+func (client *registryClient) blobReader(ctx context.Context, digest string) (io.ReadCloser, error) {
+	_, reader, err := client.repo.Blobs().FetchReference(ctx, digest)
 	return reader, err
 }
 
-func (client *registryClient) pushSegment(state snapshot, entries map[string]cacheEntry) error {
+const narUploadConcurrency = 8
+
+func (client *registryClient) pushSegment(ctx context.Context, state snapshot, packageKey string, entries map[string]cacheEntry) error {
+	runID := os.Getenv("GITHUB_RUN_ID")
+	if runID == "" {
+		runID = fmt.Sprintf("%d", time.Now().UnixNano())
+	}
 	item := segment{
 		Version:          segmentVersion,
 		Snapshot:         state.ID,
 		RepositoryCommit: state.RepositoryCommit,
 		System:           state.System,
+		PackageKey:       packageKey,
+		RunID:            runID,
 		CreatedAt:        time.Now().UTC(),
 		Channels:         state.Channels,
 		Entries:          entries,
@@ -286,37 +396,49 @@ func (client *registryClient) pushSegment(state snapshot, entries map[string]cac
 	if err != nil {
 		return err
 	}
-	ctx := context.Background()
 	metadataDescriptor := content.NewDescriptorFromBytes(segmentMediaType, metadata)
 	err = client.repo.Blobs().Push(ctx, metadataDescriptor, bytes.NewReader(metadata))
-	if err != nil {
+	if err != nil && !errors.Is(err, errdef.ErrAlreadyExists) {
 		return err
 	}
 
 	hashes := slices.Sorted(maps.Keys(entries))
 	layers := make([]ocispec.Descriptor, 1, len(entries)+1)
 	layers[0] = metadataDescriptor
-	var uploaded, skipped int
-	for _, hash := range hashes {
+	uploaded := make([]bool, len(hashes))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(narUploadConcurrency)
+	for index, hash := range hashes {
 		entry := entries[hash]
 		descriptor := ocispec.Descriptor{
 			MediaType: narMediaType,
 			Digest:    digest.Digest(entry.NARDigest),
 			Size:      entry.NARSize,
 		}
-		descriptor.Annotations = map[string]string{"org.nixos.store.hash": hash}
-		pushed, err := client.pushFile(ctx, descriptor, entry.NARPath)
-		if err != nil {
-			return err
-		}
-		if pushed {
-			uploaded++
-		} else {
-			skipped++
-		}
+		descriptor.Annotations = map[string]string{storeHashAnnotation: hash}
 		layers = append(layers, descriptor)
+		group.Go(func() error {
+			if err := groupCtx.Err(); err != nil {
+				return err
+			}
+			pushed, err := client.pushFile(groupCtx, descriptor, entry.NARPath)
+			if err != nil {
+				return fmt.Errorf("push NAR for %s: %w", hash, err)
+			}
+			uploaded[index] = pushed
+			return nil
+		})
 	}
-	log.Printf("pushed %d NAR blob(s), skipped %d already present", uploaded, skipped)
+	if err := group.Wait(); err != nil {
+		return err
+	}
+	var uploadedCount int
+	for _, pushed := range uploaded {
+		if pushed {
+			uploadedCount++
+		}
+	}
+	log.Printf("pushed %d NAR blob(s), skipped %d already present", uploadedCount, len(uploaded)-uploadedCount)
 
 	manifest, err := json.Marshal(ocispec.Manifest{
 		Versioned: specs.Versioned{SchemaVersion: 2},
@@ -328,11 +450,11 @@ func (client *registryClient) pushSegment(state snapshot, entries map[string]cac
 		return err
 	}
 	manifestDescriptor := content.NewDescriptorFromBytes(ocispec.MediaTypeImageManifest, manifest)
-	tag := client.segmentTag(state)
+	tag := client.segmentTag(state, runID)
 	if err := client.repo.PushReference(ctx, manifestDescriptor, bytes.NewReader(manifest), tag); err != nil {
 		return fmt.Errorf("publish segment %s: %w", tag, err)
 	}
-	log.Printf("published segment %s (%d entries)", tag, len(entries))
+	log.Printf("published segment %s for package %s (%d entries)", tag, packageKey, len(entries))
 	return nil
 }
 
@@ -345,18 +467,17 @@ func (client *registryClient) pushFile(ctx context.Context, descriptor ocispec.D
 	if err != nil {
 		return false, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	if err := client.repo.Blobs().Push(ctx, descriptor, file); err != nil {
+		if errors.Is(err, errdef.ErrAlreadyExists) {
+			return false, nil
+		}
 		return false, err
 	}
 	return true, nil
 }
 
-func (client *registryClient) segmentTag(state snapshot) string {
-	runID := os.Getenv("GITHUB_RUN_ID")
-	if runID == "" {
-		runID = fmt.Sprintf("%d", time.Now().UnixNano())
-	}
+func (client *registryClient) segmentTag(state snapshot, runID string) string {
 	return fmt.Sprintf("%s%s-%s", segmentTagPrefix(state.ID, state.System), runID, rand.Text())
 }
 

@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/google/go-github/v75/github"
 )
@@ -41,7 +43,7 @@ func newGHCRClient(repository string) (*ghcrClient, error) {
 		return nil, fmt.Errorf("cannot derive owner/package from repository %q", repository)
 	}
 	return &ghcrClient{
-		api:   github.NewClient(nil).WithAuthToken(token),
+		api:   github.NewClient(&http.Client{Timeout: 30 * time.Second}).WithAuthToken(token),
 		owner: owner,
 		pkg:   pkg,
 	}, nil

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"net/url"
@@ -15,18 +16,18 @@ import (
 	"github.com/opencontainers/go-digest"
 )
 
-func pushPaths(client *registryClient, repoRoot string, storePaths []string) error {
+func pushPaths(ctx context.Context, client *registryClient, repoRoot, packageKey string, storePaths []string) error {
 	state, err := loadSnapshot(repoRoot)
 	if err != nil {
 		return err
 	}
-	log.Printf("pushing %d store path(s) for %s snapshot %s", len(storePaths), state.System, state.ID)
+	log.Printf("pushing %d store path(s) for %s package %s snapshot %s", len(storePaths), state.System, packageKey, state.ID)
 
 	cacheDir, err := os.MkdirTemp("", "nixcache-*")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(cacheDir)
+	defer func() { _ = os.RemoveAll(cacheDir) }()
 
 	query := url.Values{
 		"compression":          {"zstd"},
@@ -41,7 +42,7 @@ func pushPaths(client *registryClient, repoRoot string, storePaths []string) err
 		RawQuery: query.Encode(),
 	}
 	args := append([]string{"copy", "--to", destination.String()}, storePaths...)
-	command := exec.Command("nix", args...)
+	command := exec.CommandContext(ctx, "nix", args...)
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	if err := command.Run(); err != nil {
@@ -52,7 +53,7 @@ func pushPaths(client *registryClient, repoRoot string, storePaths []string) err
 		return err
 	}
 	log.Printf("collected %d cache entr(ies) from nix copy", len(entries))
-	return client.pushSegment(state, entries)
+	return client.pushSegment(ctx, state, packageKey, entries)
 }
 
 func readCache(cacheDir string) (map[string]cacheEntry, error) {

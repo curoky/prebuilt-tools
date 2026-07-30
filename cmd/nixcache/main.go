@@ -16,11 +16,18 @@ func main() {
 		SilenceErrors: true,
 	}
 
+	var packageKey string
 	push := &cobra.Command{
 		Use:   "push <store-path>...",
 		Short: "Publish store path closures to the cache",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if packageKey == "" {
+				packageKey = os.Getenv("NIXCACHE_PACKAGE_KEY")
+			}
+			if packageKey == "" {
+				return fmt.Errorf("package key is required via --key or NIXCACHE_PACKAGE_KEY")
+			}
 			client, err := newRegistryClient(cacheRepository, false)
 			if err != nil {
 				return err
@@ -29,9 +36,10 @@ func main() {
 			if err != nil {
 				return err
 			}
-			return pushPaths(client, repoRoot, args)
+			return pushPaths(cmd.Context(), client, repoRoot, packageKey, args)
 		},
 	}
+	push.Flags().StringVar(&packageKey, "key", "", "stable package identity for retention")
 
 	serve := &cobra.Command{
 		Use:   "serve",
@@ -55,12 +63,11 @@ func main() {
 					fmt.Fprintln(os.Stderr, "warning: could not derive snapshot, loading all segments:", err)
 				}
 			}
-			return serveCache(client, tagPrefix)
+			return serveCache(cmd.Context(), client, tagPrefix)
 		},
 	}
 
 	var keep int
-	var keepTags int
 	var dryRun bool
 	prune := &cobra.Command{
 		Use:   "prune",
@@ -71,11 +78,10 @@ func main() {
 			if err != nil {
 				return err
 			}
-			return pruneCache(client, keep, keepTags, dryRun)
+			return pruneCache(cmd.Context(), client, keep, dryRun)
 		},
 	}
 	prune.Flags().IntVar(&keep, "keep", 2, "number of most recent snapshots to keep per system")
-	prune.Flags().IntVar(&keepTags, "keep-tags", 3, "number of most recent tags to keep per snapshot+system")
 	prune.Flags().BoolVar(&dryRun, "dry-run", false, "list segments that would be deleted without deleting")
 
 	size := &cobra.Command{
@@ -87,7 +93,7 @@ func main() {
 			if err != nil {
 				return err
 			}
-			total, err := cacheSize(client)
+			total, err := cacheSize(cmd.Context(), client)
 			if err != nil {
 				return err
 			}

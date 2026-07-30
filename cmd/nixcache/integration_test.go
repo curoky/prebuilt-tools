@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,12 +26,12 @@ func TestNixRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := pushPaths(client, repoRoot, []string{storePath}); err != nil {
+	if err := pushPaths(context.Background(), client, repoRoot, "integration-test", []string{storePath}); err != nil {
 		t.Fatal(err)
 	}
 
 	index := newCacheIndex(client, "")
-	if _, err := index.refresh(); err != nil {
+	if _, err := index.refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	index.ready.Store(true)

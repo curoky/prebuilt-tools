@@ -5,23 +5,24 @@ import (
 	"fmt"
 	"log"
 	"sort"
-	"sync"
 
 	"github.com/opencontainers/go-digest"
+	"golang.org/x/sync/errgroup"
 )
 
 // cacheSize reports the deduplicated on-registry byte size of the cache: every
 // distinct layer digest referenced by any segment manifest is counted once,
 // because segments share NAR blobs by digest.
-func cacheSize(client *registryClient) (int64, error) {
-	segments, err := client.listSegments("")
+func cacheSize(ctx context.Context, client *registryClient) (int64, error) {
+	manifests, err := client.listManifests(ctx, "")
 	if err != nil {
 		return 0, err
 	}
 	seen := make(map[digest.Digest]int64)
-	for _, ref := range segments {
-		for layer, size := range ref.LayerSizes {
-			seen[layer] = size
+	for _, ref := range manifests {
+		seen[ref.Metadata.Digest] = ref.Metadata.Size
+		for _, layer := range ref.NARLayers {
+			seen[layer.Digest] = layer.Size
 		}
 	}
 	var total int64
@@ -31,21 +32,14 @@ func cacheSize(client *registryClient) (int64, error) {
 	return total, nil
 }
 
-// pruneCache trims the cache along two axes. First it keeps only the newest
-// `keep` snapshots per system and drops every segment of older snapshots
-// (retention by snapshot recency, not channel revision ordering, since Nix
-// channel revisions are git hashes with no total order). Then, within each
-// kept snapshot+system, it keeps only the newest `keepTags` tags: a snapshot
-// that never changes accumulates one tag per CI run, so without this cap the
-// cache grows unbounded and serve must fetch hundreds of duplicate segments.
-func pruneCache(client *registryClient, keep, keepTags int, dryRun bool) error {
+// pruneCache keeps the newest snapshots per system. Within a kept snapshot it
+// keeps the newest segment for each stable package key. Legacy segments without
+// a package key are retained because they cannot be safely attributed.
+func pruneCache(ctx context.Context, client *registryClient, keep int, dryRun bool) error {
 	if keep < 1 {
 		return fmt.Errorf("keep must be at least 1, got %d", keep)
 	}
-	if keepTags < 1 {
-		return fmt.Errorf("keep-tags must be at least 1, got %d", keepTags)
-	}
-	segments, err := client.listSegments("")
+	segments, err := client.listSegments(ctx, "")
 	if err != nil {
 		return err
 	}
@@ -54,18 +48,7 @@ func pruneCache(client *registryClient, keep, keepTags int, dryRun bool) error {
 		return nil
 	}
 
-	kept := keptSnapshots(segments, keep)
-	keptTag := keptTags(segments, keepTags)
-
-	toDelete := make([]segmentRef, 0)
-	var retained int
-	for _, ref := range segments {
-		if kept[ref.System][ref.Snapshot] && keptTag[ref.Tag] {
-			retained++
-			continue
-		}
-		toDelete = append(toDelete, ref)
-	}
+	toDelete, retained := segmentsToDelete(segments, keep)
 
 	if dryRun {
 		for _, ref := range toDelete {
@@ -85,17 +68,34 @@ func pruneCache(client *registryClient, keep, keepTags int, dryRun bool) error {
 	if err != nil {
 		return err
 	}
-	ctx := context.Background()
 	versionByTag, err := ghcr.versionsByTag(ctx)
 	if err != nil {
 		return fmt.Errorf("list package versions: %w", err)
 	}
 
-	if err := deleteVersions(ctx, ghcr, toDelete, versionByTag); err != nil {
+	deleted, err := deleteVersions(ctx, ghcr, toDelete, versionByTag)
+	if err != nil {
 		return err
 	}
-	log.Printf("prune complete: deleted %d segment(s), retained %d", len(toDelete), retained)
+	log.Printf("prune complete: deleted %d segment(s), retained %d", deleted, retained)
 	return nil
+}
+
+func segmentsToDelete(segments []segmentRef, keep int) ([]segmentRef, int) {
+	kept := keptSnapshots(segments, keep)
+	latestPackageSegments := latestSegmentsByPackage(segments, kept)
+
+	toDelete := make([]segmentRef, 0)
+	var retained int
+	for _, ref := range segments {
+		if kept[ref.System][ref.Snapshot] &&
+			(ref.PackageKey == "" || latestPackageSegments[ref.Tag]) {
+			retained++
+			continue
+		}
+		toDelete = append(toDelete, ref)
+	}
+	return toDelete, retained
 }
 
 // segmentDeleteConcurrency bounds how many package versions are deleted in
@@ -104,50 +104,38 @@ func pruneCache(client *registryClient, keep, keepTags int, dryRun bool) error {
 // GitHub API secondary rate limit.
 const segmentDeleteConcurrency = 8
 
-// deleteVersions deletes every segment in toDelete concurrently, capped at
-// segmentDeleteConcurrency, and logs one summary line per 100 deletions rather
-// than one per tag. Tags without a matching package version are skipped. The
-// first error cancels the batch.
-func deleteVersions(ctx context.Context, ghcr *ghcrClient, toDelete []segmentRef, versionByTag map[string]int64) error {
-	results := make(chan error, len(toDelete))
-	sem := make(chan struct{}, segmentDeleteConcurrency)
-	var wg sync.WaitGroup
-	for _, ref := range toDelete {
+type versionDeleter interface {
+	deleteVersion(context.Context, int64) error
+}
+
+func deleteVersions(ctx context.Context, ghcr versionDeleter, toDelete []segmentRef, versionByTag map[string]int64) (int, error) {
+	versionIDs := make([]int64, len(toDelete))
+	for index, ref := range toDelete {
 		versionID, ok := versionByTag[ref.Tag]
 		if !ok {
-			log.Printf("skip segment %s: no matching package version", ref.Tag)
-			results <- nil
-			continue
+			return 0, fmt.Errorf("no package version found for segment %s", ref.Tag)
 		}
-		wg.Add(1)
-		go func(ref segmentRef, versionID int64) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			if err := ghcr.deleteVersion(ctx, versionID); err != nil {
-				results <- fmt.Errorf("delete segment %s (version %d): %w", ref.Tag, versionID, err)
-				return
-			}
-			results <- nil
-		}(ref, versionID)
+		versionIDs[index] = versionID
 	}
-	go func() { wg.Wait(); close(results) }()
 
-	var deleteErr error
-	var done int
-	for err := range results {
-		if err != nil {
-			if deleteErr == nil {
-				deleteErr = err
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(segmentDeleteConcurrency)
+	for index, ref := range toDelete {
+		versionID := versionIDs[index]
+		group.Go(func() error {
+			if err := groupCtx.Err(); err != nil {
+				return err
 			}
-			continue
-		}
-		done++
-		if done%100 == 0 || done == len(toDelete) {
-			log.Printf("deleted %d/%d segments", done, len(toDelete))
-		}
+			if err := ghcr.deleteVersion(groupCtx, versionID); err != nil {
+				return fmt.Errorf("delete segment %s (version %d): %w", ref.Tag, versionID, err)
+			}
+			return nil
+		})
 	}
-	return deleteErr
+	if err := group.Wait(); err != nil {
+		return 0, err
+	}
+	return len(toDelete), nil
 }
 
 // keptSnapshots returns, per system, the set of snapshot IDs to keep: the keep
@@ -187,28 +175,25 @@ func keptSnapshots(segments []segmentRef, keep int) map[string]map[string]bool {
 	return kept
 }
 
-// keptTags returns the set of tags to keep: within each system+snapshot group,
-// the keepTags most recently created tags. Ties on CreatedAt are broken by tag
-// name so the selection is deterministic.
-func keptTags(segments []segmentRef, keepTags int) map[string]bool {
-	type group struct{ system, snapshot string }
-	byGroup := make(map[group][]segmentRef)
-	for _, ref := range segments {
-		key := group{ref.System, ref.Snapshot}
-		byGroup[key] = append(byGroup[key], ref)
+func latestSegmentsByPackage(segments []segmentRef, keptSnapshots map[string]map[string]bool) map[string]bool {
+	type packageIdentity struct {
+		system, snapshot, packageKey string
 	}
-
-	kept := make(map[string]bool)
-	for _, refs := range byGroup {
-		sort.Slice(refs, func(i, j int) bool {
-			if !refs[i].CreatedAt.Equal(refs[j].CreatedAt) {
-				return refs[i].CreatedAt.After(refs[j].CreatedAt)
-			}
-			return refs[i].Tag > refs[j].Tag
-		})
-		for i := 0; i < len(refs) && i < keepTags; i++ {
-			kept[refs[i].Tag] = true
+	latest := make(map[packageIdentity]segmentRef)
+	for _, ref := range segments {
+		if ref.PackageKey == "" || !keptSnapshots[ref.System][ref.Snapshot] {
+			continue
 		}
+		key := packageIdentity{ref.System, ref.Snapshot, ref.PackageKey}
+		current, ok := latest[key]
+		if !ok || ref.CreatedAt.After(current.CreatedAt) ||
+			(ref.CreatedAt.Equal(current.CreatedAt) && ref.Tag > current.Tag) {
+			latest[key] = ref
+		}
+	}
+	kept := make(map[string]bool, len(latest))
+	for _, ref := range latest {
+		kept[ref.Tag] = true
 	}
 	return kept
 }

@@ -1,51 +1,39 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
+	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
-
-	"oras.land/oras-go/v2/content"
 )
 
 // pushTestSegment publishes a one-entry segment for the given snapshot, system,
 // and run id so prune/size tests can build up a realistic tag set.
-func pushTestSegment(t *testing.T, client *registryClient, snapshotID, system, runID, narBody string) {
+func pushTestSegment(t *testing.T, client *registryClient, snapshotID, system, packageKey, runID, narBody string) {
 	t.Helper()
 	t.Setenv("GITHUB_RUN_ID", runID)
 
-	narPath := filepath.Join(t.TempDir(), "root.nar.zst")
-	if err := os.WriteFile(narPath, []byte(narBody), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	blob := content.NewDescriptorFromBytes(narMediaType, []byte(narBody))
 	hash := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	state := snapshot{
 		ID:       snapshotID,
 		System:   system,
 		Channels: map[string]string{"nixpkgs-unstable": snapshotID},
 	}
-	entry := cacheEntry{
-		StorePath: "/nix/store/" + hash + "-root",
-		NARURL:    "nar/root.nar.zst",
-		NARDigest: blob.Digest.String(),
-		NARSize:   blob.Size,
-		NARInfo:   "StorePath: /nix/store/" + hash + "-root\nURL: nar/root.nar.zst\n",
-		NARPath:   narPath,
-	}
-	if err := client.pushSegment(state, map[string]cacheEntry{hash: entry}); err != nil {
+	entry := testCacheEntry(t, hash, "root", []byte(narBody))
+	if err := client.pushSegment(context.Background(), state, packageKey, map[string]cacheEntry{hash: entry}); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(time.Millisecond)
 }
 
-func ref(snapshotID, system, tag string, created int64) segmentRef {
+func ref(snapshotID, system, packageKey, tag string, created int64) segmentRef {
 	return segmentRef{
 		segment: segment{
-			Snapshot:  snapshotID,
-			System:    system,
-			CreatedAt: time.Unix(0, created),
+			Snapshot:   snapshotID,
+			System:     system,
+			PackageKey: packageKey,
+			CreatedAt:  time.Unix(0, created),
 		},
 		Tag: tag,
 	}
@@ -53,11 +41,11 @@ func ref(snapshotID, system, tag string, created int64) segmentRef {
 
 func TestKeptSnapshotsKeepsNewestPerSystem(t *testing.T) {
 	segments := []segmentRef{
-		ref("snap-1", "x86_64-linux", "t1", 1),
-		ref("snap-2", "x86_64-linux", "t2", 2),
-		ref("snap-3", "x86_64-linux", "t3", 3),
-		ref("snap-4", "aarch64-darwin", "t4", 4),
-		ref("snap-5", "aarch64-darwin", "t5", 5),
+		ref("snap-1", "x86_64-linux", "pkg", "t1", 1),
+		ref("snap-2", "x86_64-linux", "pkg", "t2", 2),
+		ref("snap-3", "x86_64-linux", "pkg", "t3", 3),
+		ref("snap-4", "aarch64-darwin", "pkg", "t4", 4),
+		ref("snap-5", "aarch64-darwin", "pkg", "t5", 5),
 	}
 	kept := keptSnapshots(segments, 2)
 
@@ -78,9 +66,9 @@ func TestKeptSnapshotsRanksByNewestTagPerSnapshot(t *testing.T) {
 	// snap-old has an early and a late tag; snap-new has one middling tag. The
 	// late tag must pull snap-old above snap-new so it is retained under keep=1.
 	segments := []segmentRef{
-		ref("snap-old", "x86_64-linux", "old-a", 1),
-		ref("snap-new", "x86_64-linux", "new", 5),
-		ref("snap-old", "x86_64-linux", "old-b", 9),
+		ref("snap-old", "x86_64-linux", "pkg", "old-a", 1),
+		ref("snap-new", "x86_64-linux", "pkg", "new", 5),
+		ref("snap-old", "x86_64-linux", "pkg", "old-b", 9),
 	}
 	kept := keptSnapshots(segments, 1)
 	if !kept["x86_64-linux"]["snap-old"] || kept["x86_64-linux"]["snap-new"] {
@@ -90,14 +78,14 @@ func TestKeptSnapshotsRanksByNewestTagPerSnapshot(t *testing.T) {
 
 func TestPruneDryRunDeletesNothing(t *testing.T) {
 	client := testRegistryClient(t)
-	pushTestSegment(t, client, "sha256:1111111111111111000000000000000000000000000000000000000000000000", "x86_64-linux", "1", "one")
-	pushTestSegment(t, client, "sha256:2222222222222222000000000000000000000000000000000000000000000000", "x86_64-linux", "2", "two")
-	pushTestSegment(t, client, "sha256:3333333333333333000000000000000000000000000000000000000000000000", "x86_64-linux", "3", "three")
+	pushTestSegment(t, client, "sha256:1111111111111111000000000000000000000000000000000000000000000000", "x86_64-linux", "one", "1", "one")
+	pushTestSegment(t, client, "sha256:2222222222222222000000000000000000000000000000000000000000000000", "x86_64-linux", "two", "2", "two")
+	pushTestSegment(t, client, "sha256:3333333333333333000000000000000000000000000000000000000000000000", "x86_64-linux", "three", "3", "three")
 
-	if err := pruneCache(client, 1, 3, true); err != nil {
+	if err := pruneCache(context.Background(), client, 1, true); err != nil {
 		t.Fatal(err)
 	}
-	segments, err := client.listSegments("")
+	segments, err := client.listSegments(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,31 +94,51 @@ func TestPruneDryRunDeletesNothing(t *testing.T) {
 	}
 }
 
-func TestPruneDeletesOldSegmentManifest(t *testing.T) {
-	client := testRegistryClient(t)
-	pushTestSegment(t, client, "sha256:1111111111111111000000000000000000000000000000000000000000000000", "x86_64-linux", "1", "one")
-	pushTestSegment(t, client, "sha256:2222222222222222000000000000000000000000000000000000000000000000", "x86_64-linux", "2", "two")
+func TestSegmentsToDeleteKeepsLatestPerPackage(t *testing.T) {
+	segments := []segmentRef{
+		ref("snapshot", "x86_64-linux", "alpha", "alpha-old", 1),
+		ref("snapshot", "x86_64-linux", "beta", "beta-only", 2),
+		ref("snapshot", "x86_64-linux", "alpha", "alpha-new", 3),
+	}
+	toDelete, retained := segmentsToDelete(segments, 1)
+	if len(toDelete) != 1 || toDelete[0].Tag != "alpha-old" {
+		t.Fatalf("toDelete=%v", toDelete)
+	}
+	if retained != 2 {
+		t.Fatalf("retained=%d", retained)
+	}
+}
 
-	segments, err := client.listSegments("")
-	if err != nil {
-		t.Fatal(err)
+func TestSegmentsToDeleteKeepsPackagesMissingFromIncrementalRun(t *testing.T) {
+	segments := []segmentRef{
+		ref("snapshot", "x86_64-linux", "alpha", "run-1-alpha", 1),
+		ref("snapshot", "x86_64-linux", "beta", "run-1-beta", 2),
+		ref("snapshot", "x86_64-linux", "alpha", "run-2-alpha", 3),
 	}
-	oldest := segments[0] // sorted by CreatedAt ascending
-	if err := client.deleteSegment(oldest); err != nil {
-		t.Fatalf("delete segment: %v", err)
+	toDelete, _ := segmentsToDelete(segments, 1)
+	if len(toDelete) != 1 || toDelete[0].Tag != "run-1-alpha" {
+		t.Fatalf("incremental run must retain beta: %v", toDelete)
 	}
-	if _, err := client.getSegment(oldest.Manifest.Digest.String()); err == nil {
-		t.Fatal("expected deleted segment manifest to be unresolvable by digest")
+}
+
+func TestSegmentsToDeleteKeepsLegacySegments(t *testing.T) {
+	segments := []segmentRef{
+		ref("snapshot", "x86_64-linux", "", "legacy-a", 1),
+		ref("snapshot", "x86_64-linux", "", "legacy-b", 2),
+	}
+	toDelete, retained := segmentsToDelete(segments, 1)
+	if len(toDelete) != 0 || retained != 2 {
+		t.Fatalf("toDelete=%v retained=%d", toDelete, retained)
 	}
 }
 
 func TestCacheSizeDeduplicatesBlobs(t *testing.T) {
 	client := testRegistryClient(t)
 	// Two segments sharing the identical NAR body: the shared blob counts once.
-	pushTestSegment(t, client, "sha256:1111111111111111000000000000000000000000000000000000000000000000", "x86_64-linux", "1", "shared")
-	pushTestSegment(t, client, "sha256:2222222222222222000000000000000000000000000000000000000000000000", "x86_64-linux", "2", "shared")
+	pushTestSegment(t, client, "sha256:1111111111111111000000000000000000000000000000000000000000000000", "x86_64-linux", "one", "1", "shared")
+	pushTestSegment(t, client, "sha256:2222222222222222000000000000000000000000000000000000000000000000", "x86_64-linux", "two", "2", "shared")
 
-	total, err := cacheSize(client)
+	total, err := cacheSize(context.Background(), client)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +153,107 @@ func TestCacheSizeDeduplicatesBlobs(t *testing.T) {
 
 func TestPruneRejectsKeepZero(t *testing.T) {
 	client := testRegistryClient(t)
-	if err := pruneCache(client, 0, 3, false); err == nil {
+	if err := pruneCache(context.Background(), client, 0, false); err == nil {
 		t.Fatal("expected error for keep=0")
+	}
+}
+
+type fakeVersionDeleter struct {
+	deleted []int64
+	err     error
+}
+
+func (fake *fakeVersionDeleter) deleteVersion(_ context.Context, versionID int64) error {
+	if fake.err != nil {
+		return fake.err
+	}
+	fake.deleted = append(fake.deleted, versionID)
+	return nil
+}
+
+type cancelingVersionDeleter struct {
+	started  chan int64
+	canceled chan struct{}
+	fail     chan struct{}
+}
+
+func (fake *cancelingVersionDeleter) deleteVersion(ctx context.Context, versionID int64) error {
+	fake.started <- versionID
+	if versionID == 1 {
+		<-fake.fail
+		return errors.New("delete failed")
+	}
+	<-ctx.Done()
+	fake.canceled <- struct{}{}
+	return ctx.Err()
+}
+
+func TestDeleteVersionsRejectsMissingMappingBeforeDeleting(t *testing.T) {
+	deleter := &fakeVersionDeleter{}
+	segments := []segmentRef{{Tag: "one"}, {Tag: "missing"}}
+	deleted, err := deleteVersions(context.Background(), deleter, segments, map[string]int64{"one": 1})
+	if err == nil {
+		t.Fatal("expected missing mapping error")
+	}
+	if deleted != 0 || len(deleter.deleted) != 0 {
+		t.Fatalf("deleted=%d calls=%v", deleted, deleter.deleted)
+	}
+}
+
+func TestDeleteVersionsReturnsDeleteError(t *testing.T) {
+	deleter := &fakeVersionDeleter{err: errors.New("delete failed")}
+	segments := []segmentRef{{Tag: "one"}}
+	deleted, err := deleteVersions(context.Background(), deleter, segments, map[string]int64{"one": 1})
+	if err == nil || deleted != 0 {
+		t.Fatalf("deleted=%d err=%v", deleted, err)
+	}
+}
+
+func TestDeleteVersionsCancelsRemainingRequests(t *testing.T) {
+	const activeRequests = segmentDeleteConcurrency - 1
+	deleter := &cancelingVersionDeleter{
+		started:  make(chan int64, segmentDeleteConcurrency),
+		canceled: make(chan struct{}, activeRequests),
+		fail:     make(chan struct{}),
+	}
+	segments := make([]segmentRef, segmentDeleteConcurrency+2)
+	versionByTag := make(map[string]int64, len(segments))
+	for index := range segments {
+		tag := fmt.Sprintf("segment-%d", index+1)
+		segments[index] = segmentRef{Tag: tag}
+		versionByTag[tag] = int64(index + 1)
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, err := deleteVersions(context.Background(), deleter, segments, versionByTag)
+		result <- err
+	}()
+	for range segmentDeleteConcurrency {
+		select {
+		case <-deleter.started:
+		case <-time.After(time.Second):
+			t.Fatal("delete requests did not reach concurrency limit")
+		}
+	}
+	close(deleter.fail)
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("expected delete error")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("delete batch did not return after first error")
+	}
+	for range activeRequests {
+		select {
+		case <-deleter.canceled:
+		case <-time.After(time.Second):
+			t.Fatal("active delete request was not canceled")
+		}
+	}
+	select {
+	case versionID := <-deleter.started:
+		t.Fatalf("queued delete request %d started after cancellation", versionID)
+	default:
 	}
 }

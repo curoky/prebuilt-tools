@@ -1,217 +1,134 @@
 # Nixcache Agent Guide
 
-`cmd/nixcache/` 实现本仓库专用的 GHCR-backed Nix binary cache。它构建为单个静态
-Go 二进制 `nixcache`，提供 `push`、`serve`、`prune` 和 `size`。全局产物与 CI 约束见根
+`cmd/nixcache/` 是本仓库专用的 GHCR-backed Nix binary cache，提供 `push`、`serve`、
+`prune` 和 `size`。本文定义其设计、OCI schema 和 CI 契约；全局约束见根
 [`CLAUDE.md`](../../CLAUDE.md)。
 
-本文是 `nixcache` 的 CLI、OCI schema、发布协议和验证要求 source of truth。
+## 设计
 
-## 不变量
+- Nix 通过 `nix copy --to file://...` 生成 closure、NAR 和 narinfo；Go 负责校验、
+  OCI 编排和 HTTP serving。
+- Cache repository、listen address、refresh interval 和 media type 固定在代码中。
+- Segment immutable；每次 push 发布独立 tag，matrix job 可并发执行。
+- Snapshot 是原始 `flake.lock` 的 SHA-256。每个 snapshot segment 引用完整 closure，
+  NAR blob 由 registry 按 digest 去重。
+- `packageKey` 是稳定 package identity；`runId` 只用于诊断。
+- 二进制以 `CGO_ENABLED=0` 构建。`push` 依赖宿主 `nix`，其他命令不调用外部程序。
 
-1. **只服务本仓库。** cache repository、listen address、refresh interval 和 media type
-   直接固定在代码中，不增加通用配置层或 backend abstraction。
-2. **Nix 负责 Nix store 协议。** `push` 必须通过 `nix copy --to file://...` 生成完整
-   closure、NAR 和 narinfo；Go 不自行实现 NAR 编码、closure 查询或 narinfo 签名。
-3. **标准格式交给开源库。** narinfo 和 store path 使用
-   `github.com/nix-community/go-nix` 解析与校验；OCI descriptor、manifest 和 registry
-   操作使用 `oras.land/oras-go/v2`；GitHub Packages 版本删除使用
-   `github.com/google/go-github/v75`，不手写 REST 调用。`bm` 独立保留
-   `go-containerregistry`。
-4. **segment immutable。** 每次 `push` 只追加一个随机 tag，不更新共享 index tag。
-   同一 GitHub Actions run 的 matrix job 必须可以并发发布且互不覆盖。
-5. **snapshot 是完整 `flake.lock`。** cache identity 是原始 `flake.lock` 内容的
-   SHA-256；所有 `nixpkgs-*` revision 只作为 metadata，不单独决定过期。
-6. **新 snapshot 重新引用完整 closure。** 共享 NAR 可由 registry digest 去重，但当前
-   snapshot 的 manifest 必须包含 closure 中所有 NAR layers，保证旧 snapshot 删除后仍可用。
-7. **无宿主运行时依赖。** 发布的两个平台二进制都必须以 `CGO_ENABLED=0` 构建。
-   `push` 运行时明确需要宿主 `nix`；`serve` 不调用外部程序。
-8. **过期按 snapshot 新旧，不按 channel revision。** channel revision 是 git commit
-   hash，没有全序，不能比较大小；`prune` 的保留判据是 snapshot 的最新 segment 时间，
-   不是任何单个 channel rev。删除粒度是整个 (snapshot, system)，不拆单 channel。
+Narinfo 和 store path 使用 `github.com/nix-community/go-nix`；OCI 操作使用
+`oras.land/oras-go/v2`；GHCR version 删除使用 `github.com/google/go-github/v75`。
 
-## Cache OCI 协议
+## OCI Schema
 
-Nix cache 内容固定存放在：
+Cache repository：
 
 ```text
 ghcr.io/curoky/standalone-binaries-cache
 ```
 
-segment tag：
+Segment tag：
 
 ```text
-v1-<flake-lock-sha256前16位>-<system>-<github-run-id>-<random-id>
+v1-<snapshot前16位>-<system>-<run-id>-<random-id>
 ```
 
 每个 segment 是一个 OCI image manifest：
 
-1. 第一层是 JSON metadata，media type 为
-   `application/vnd.curoky.nixcache.segment.v1+json`；
-2. 其余层是该次 closure 的 NAR blobs，media type 为
-   `application/vnd.curoky.nixcache.nar.v1`；
-3. NAR descriptor 使用 `org.nixos.store.hash` annotation 标识 store hash。
+1. 第一层是 `application/vnd.curoky.nixcache.segment.v1+json` metadata；
+2. 其余层是 `application/vnd.curoky.nixcache.nar.v1` NAR blobs；
+3. 每个 NAR descriptor 的 `org.nixos.store.hash` annotation 对应一个 metadata entry。
 
-metadata schema 包含 `version`、`snapshot`、`repositoryCommit`、`system`、
-`createdAt`、`channels` 和 `entries`。`entries` 保存原始 narinfo、NAR URL、digest
-和 size。`NARPath` 仅供上传本地文件使用，使用 `json:"-"`，不得进入远端 metadata。
+Metadata 字段为 `version`、`snapshot`、`repositoryCommit`、`system`、`packageKey`、
+`runId`、`createdAt`、`channels` 和 `entries`。Entry 保存 store path、narinfo、NAR URL、
+digest 和 size；本地 `NARPath` 不序列化。
 
-不保留旧 schema、旧 tag 或共享可变 index 的兼容读取。
+读取 segment 时必须校验 tag、metadata、store hash、narinfo、NAR URL、digest、size、
+layer media type 和 annotation 一致。
 
-## Push
+## Commands
+
+### Push
 
 ```text
-nixcache push <store-path>...
+nixcache push --key <package-key> <store-path>...
 ```
 
-流程固定为：
+`--key` 或 `NIXCACHE_PACKAGE_KEY` 必填。命令创建临时 file cache，解析 narinfo，以 8 路有限
+并发检查并上传 NAR，最后发布 metadata 和按 store hash 排序的 NAR layers。
 
-1. 读取当前工作目录的 `flake.lock`；
-2. 创建临时 file binary cache；
-3. 执行带 zstd compression 的 `nix copy`；
-4. 用 `go-nix` 读取并校验所有 narinfo；
-5. 把 metadata 和全部 NAR layers 作为一个 immutable segment 发布；
-6. 删除临时 cache。
+`NIX_SIGNING_KEY_FILE` 作为 file cache 的 `secret-key` 传给 Nix。Registry auth 优先使用
+`GITHUB_ACTOR` 和 `GITHUB_TOKEN`，否则使用 Docker credential store。
 
-NAR descriptor 的 digest 和 size 直接取已校验 narinfo 的 `FileHash` 和 `FileSize`，不得为
-OCI 上传再次完整读取并 hash NAR 文件。
-
-设置 `NIX_SIGNING_KEY_FILE` 时，把路径作为 URL encoded `secret-key` 参数交给 Nix。
-设置 `GITHUB_TOKEN` 时，registry auth 使用 `GITHUB_ACTOR` 和 token；否则使用 Docker
-default keychain。
-
-## Serve
+### Serve
 
 ```text
 nixcache serve
 ```
 
-固定监听 `127.0.0.1:37515`，先开端口、后台启动 HTTP server，再并发加载当前 snapshot 的
-segments，加载完成后置 ready，之后每 5 分钟刷新。启动时读取当前工作目录 `flake.lock` 计算
-snapshot 前缀 `v1-<snapshot16>-<system>-`，只加载该前缀的 tag（读不到 `flake.lock` 时退化为
-加载全部 `v1-*`）；segment 加载走有限并发（`segmentLoadConcurrency`），每次 registry 调用有
-`registryTimeout` 超时，避免单次 GHCR 抖动无限期挂起。加载完成打印一行汇总（segment 数、
-snapshot 数、entry 数）而非逐 segment 刷屏。`/nix-cache-info` 在 index 就绪前返回
-`503`、就绪后返回内容，因此 CI 的 readiness 探测（`curl --retry-all-errors`）会一直重试到
-index 就绪才通过，既不会因端口未开而 connection refused，也不会在 index 还空时把 cache hit
-误判为 miss。只支持 `GET` 和 `HEAD`：
+服务监听 `127.0.0.1:37515`，按当前 snapshot/system tag prefix 并发加载 index，每 5 分钟
+刷新。支持 `GET` 和 `HEAD`：
 
-- `/nix-cache-info`（未就绪返回 `503`）
+- `/nix-cache-info`
 - `/<store-hash>.narinfo`
 - `/nar/<file>`
 
-miss 返回 `404`，不实现 upstream fallback、管理 API 或磁盘 NAR cache。NAR 从 GHCR
-直接流式返回。GHCR 返回 `NAME_UNKNOWN` 表示 cache repository 尚未创建，此时以空 cache
-启动；其他刷新失败保留上一份可用 index。首次加载失败也不致命——照常开端口、以空 index
-启动（全部 miss、退化为重建），由周期刷新重试；否则一次 GHCR 抖动会让整个 build job 起不来。
+Index 首次加载完成前 `/nix-cache-info` 返回 `503`。Repository 不存在视为空 cache；并发消失的
+tag 跳过；其他首次加载错误终止服务，周期刷新错误保留上一份 index。NAR 直接从 GHCR 流式返回，
+并由 request context 取消上游请求。
 
-## Prune
+### Prune
 
 ```text
-nixcache prune [--keep N] [--keep-tags M] [--dry-run]
+nixcache prune [--keep N] [--dry-run]
 ```
 
-`serve` 的合并语义天然让旧 segment 的同名 store hash 被新 segment 逻辑覆盖，但旧
-segment 的 tag 和 NAR blob 仍物理留在 GHCR。`prune` 是唯一的物理清理入口：
+Retention 按 system 独立计算：
 
-1. 列出所有 `v1-*` segment，读出各自 metadata 的 `snapshot`、`system` 和 `createdAt`；
-2. 按 `system` 分组，每个 snapshot 取其最新 segment 的 `createdAt` 作为该 snapshot 的时间；
-3. 每个 system 只保留最近 `N` 个 snapshot（默认 `N=2`）；
-4. 对保留下来的 (system, snapshot)，同一 snapshot 可能有多个 CI run 的 tag，只保留其中最新
-   `M` 个（默认 `M=3`，按 `createdAt` 降序、tag 名破平），其余同 snapshot 的旧 run tag 也删除；
-5. 未通过上述两级保留的 segment 全部删除。
+1. 按最新 segment 时间保留最近 `N` 个 snapshot，默认 `N=2`；
+2. 每个保留 snapshot 按 `packageKey` 保留最新 segment；
+3. 保留 snapshot 内空 `packageKey` 的 segment 全部保留；
+4. 其余 segment 通过 GitHub Packages version API 删除。
 
-GHCR 不实现 OCI 的 `DELETE /v2/.../manifests/<digest>`（返回 `405 UNSUPPORTED`），因此删除
-不走 `oras-go`，而是用 `go-github` 调 GitHub Packages REST API：先 `versionsByTag` 列出
-container package 的所有 version，建立 tag → numeric version id 映射，再按 id
-`deleteVersion`。client 首次列举时自动在 user / org owner 间回退，删除走有限并发
-（`segmentDeleteConcurrency`），并按批打印汇总（每 100 个一行）而非逐 tag 刷屏。删除 version
-需要 token 对 package 有 admin 权限（Actions 里发布该 package 的 repo 的 `GITHUB_TOKEN` 默认
-满足；classic PAT 需 `delete:packages`）。删 version 后 GHCR 移除对应 tag，未被任何存活
-manifest 引用的 NAR blob 由 GHCR 自身 GC 回收。
+删除前必须为全部目标 tag 找到 version ID，否则不发出删除请求。`--dry-run` 不需要
+`GITHUB_TOKEN`。实际删除需要 package admin 权限；Actions job 使用 `packages: write`。
 
-因为不变量 6，被保留 snapshot 的 manifest 自带完整 closure，删旧 snapshot 不会造成缺
-NAR。`--dry-run` 只打印将删除的 tag，不发起删除，也不需要 `GITHUB_TOKEN`。保留判据是
-snapshot 新旧（见不变量 8）叠加同 snapshot 的最新 `M` 个 run tag，不比较 channel revision。
+`.github/workflows/prune-nix-cache.yaml` 仅允许手动触发。
 
-## Size
+### Size
 
 ```text
 nixcache size
 ```
 
-统计 cache 的去重总字节数：合并所有 segment manifest 引用的 layer digest，同一 digest
-只计一次（segment 间按 digest 共享 NAR），输出 `<bytes>\t<human-readable>`。用于在清理
-workflow 中报告 `prune` 前后的大小变化。只读，不修改 registry。
+只读取 manifests，按 digest 去重统计 metadata 和 NAR layer payload bytes。结果不包含
+manifest JSON 和 registry 内部开销。
 
-## CI 接线
+## CI
 
-`.github/workflows/build-linux.yaml`、`.github/workflows/build-darwin.yaml` 和
-`.github/workflows/build-llvm-tools.yaml` 使用同一流程：
+Linux、Darwin 和 LLVM workflow：
 
-1. 用 `cmd/nixcache/install.sh` 从普通工具 repository 下载对应平台的已发布二进制，不在
-   build workflow 现场编译；
-2. 启动 `nixcache serve`，等待 `/nix-cache-info` ready；
-3. discover 用本地 store URL 查询 cache hit，build 把它加入 `extra-substituters`；
-4. 当前 cache 未签名，因此只有这些 workflow 命令显式设置 `require-sigs=false`；
-5. build 完成后，以 `result` 的实际 store path 执行 `nixcache push`。
+1. 通过 `cmd/nixcache/install.sh` 安装已发布的 `nixcache`；
+2. 启动 `serve` 并等待 `/nix-cache-info` ready；
+3. 用本地 substituter 做 discover 和 build；
+4. 以 matrix package 名设置 `NIXCACHE_PACKAGE_KEY`，push 实际 output closure。
 
-每个 matrix job 发布一个完整 closure segment，可以并发执行，不增加共享 index 汇总 job。
-不保留其他 backend fallback 或 dual-write。
+Cache 未签名，相关 Nix 命令显式设置 `require-sigs=false`。每个 matrix job 发布一个完整
+closure segment。
 
-`.github/workflows/prune-nix-cache.yaml` 的 `cache-prune` job 定时（每周）与手动触发：用
-`cmd/nixcache/install.sh` 下载二进制，先 `nixcache size` 记录清理前大小，再
-`nixcache prune --keep 2 --keep-tags 3` 删除旧 snapshot 与冗余 run tag，最后再次
-`nixcache size` 并把前后大小写入 `$GITHUB_STEP_SUMMARY`。删除走 GitHub Packages REST API，
-该 job 需要 `packages: write`，并向进程注入 `GITHUB_TOKEN`（`GITHUB_ACTOR` 供 registry 读
-auth）才能删除 cache repository 的 package version。
+## Binary Distribution
 
-## 二进制发布协议
+`.github/workflows/build-nixcache.yaml` 发布：
 
-`.github/workflows/build-nixcache.yaml` 构建：
+- `linux/amd64` → `ghcr.io/curoky/standalone-binaries:nixcache-linux-x86_64`
+- `darwin/arm64` → `ghcr.io/curoky/standalone-binaries:nixcache-darwin-arm64`
 
-- `linux/amd64` → `linux-x86_64`
-- `darwin/arm64` → `darwin-arm64`
+每个 artifact 只有一个 tar.gz layer，归档布局为 `nixcache/nixcache`。
+`cmd/nixcache/install.sh` 只依赖 `curl` 和 `tar`。
 
-二进制不是发布到 cache repository，而是作为普通工具发布到：
+修改 repository、tag、media type 或归档布局时，同步 workflow、installer、根
+`CLAUDE.md` 和 `cmd/binman/` 的读取协议。
 
-```text
-ghcr.io/curoky/standalone-binaries:nixcache-<arch>
-```
-
-每个 artifact 只有一个 tar.gz layer，归档布局固定为：
-
-```text
-nixcache/nixcache
-```
-
-该布局同时供 `bm install nixcache` 和 `cmd/nixcache/install.sh` 使用。installer 只依赖
-`curl` 和 `tar`，支持 `NIXCACHE_INSTALL_DIR` / `--prefix` 及
-`NIXCACHE_ARCH` / `--arch`。改变 repository、tag、layer 数量、media type 或归档布局时，
-必须同时修改：
-
-- `.github/workflows/build-nixcache.yaml`
-- `cmd/nixcache/install.sh`
-- 根 `CLAUDE.md`
-- 本文
-- `bm` 的远端协议（如果变化不再兼容普通 package）
-
-## 代码布局
-
-- `main.go`：Cobra CLI 与固定 repository 接线。
-- `model.go`：snapshot、segment 和 entry schema。
-- `push.go`：临时 file binary cache 与 `go-nix` 解析。
-- `registry.go`：GHCR auth、segment 读写、并发加载、超时与 NAR blob。
-- `ghcr.go`：`go-github` 封装的 GitHub Packages 版本删除（tag → version id 映射）。
-- `serve.go`：Nix HTTP substituter 与 refresh。
-- `prune.go`：snapshot / run tag 保留策略、经 `ghcr.go` 删除与去重 size 统计。
-- `*_test.go`：本地 OCI registry、HTTP endpoint 和 opt-in Nix round-trip。
-
-不要重新引入自建 HTTP writer、手写 narinfo parser、closure traversal、segment 分片或
-共享 mutable index。
-
-## 验证
-
-在仓库根目录运行：
+## Validation
 
 ```bash
 CGO_ENABLED=0 go test ./cmd/nixcache
@@ -228,6 +145,3 @@ shellcheck cmd/nixcache/install.sh
 NIXCACHE_TEST_STORE_PATH=/nix/store/<path> \
   CGO_ENABLED=0 go test -run '^TestNixRoundTrip$' -v ./cmd/nixcache
 ```
-
-该测试必须覆盖 `nix copy -> file cache -> OCI -> serve -> nix copy --from`。修改 workflow
-时还要验证 YAML、两个平台的归档布局和 tag 与本文一致。
