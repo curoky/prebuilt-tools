@@ -93,7 +93,8 @@ nixcache serve
 
 miss 返回 `404`，不实现 upstream fallback、管理 API 或磁盘 NAR cache。NAR 从 GHCR
 直接流式返回。GHCR 返回 `NAME_UNKNOWN` 表示 cache repository 尚未创建，此时以空 cache
-启动；其他刷新失败保留上一份可用 index，其他首次加载失败直接退出。
+启动；其他刷新失败保留上一份可用 index。首次加载失败也不致命——照常开端口、以空 index
+启动（全部 miss、退化为重建），由周期刷新重试；否则一次 GHCR 抖动会让整个 build job 起不来。
 
 ## Prune
 

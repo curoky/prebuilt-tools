@@ -66,8 +66,10 @@ func (index *cacheIndex) serveHTTP(writer http.ResponseWriter, request *http.Req
 		hash := strings.TrimSuffix(path, narInfoSuffix)
 		index.mu.RLock()
 		entry, ok := index.entries[hash]
+		size := len(index.entries)
 		index.mu.RUnlock()
 		if !ok {
+			log.Printf("narinfo miss: %s (index has %d entries)", hash, size)
 			http.NotFound(writer, request)
 			return
 		}
@@ -119,13 +121,19 @@ func serveCache(client *registryClient) error {
 	// successful nix-cache-info readiness probe implies the entries are already
 	// queryable. An async first load would let CI start path-info lookups while
 	// the index is still empty, turning every cache hit into a spurious miss.
-	// A missing cache repository is not an error (listSegments maps NAME_UNKNOWN
-	// to an empty set), so a fresh repo still starts with an empty index.
-	count, err := index.refresh()
-	if err != nil {
-		return fmt.Errorf("initial cache index load: %w", err)
+	//
+	// A load failure must NOT be fatal: the port still has to open so the
+	// readiness probe and substituter can proceed. A transient GHCR error
+	// (auth, throttling, a malformed segment) would otherwise take down the
+	// whole build job. On failure the index simply starts empty (every lookup
+	// misses, degrading to a rebuild), and the periodic refresh retries. A
+	// missing cache repository is not an error (listSegments maps NAME_UNKNOWN
+	// to an empty set), so a fresh repo also starts empty.
+	if count, err := index.refresh(); err != nil {
+		log.Printf("initial cache index load failed, starting with empty index: %v", err)
+	} else {
+		log.Printf("loaded cache index: %d entries", count)
 	}
-	log.Printf("loaded cache index: %d entries", count)
 
 	listener, err := net.Listen("tcp", defaultListen)
 	if err != nil {

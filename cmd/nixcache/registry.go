@@ -40,6 +40,7 @@ func newRegistryClient(repository string, insecure bool) (*registryClient, error
 	repo.PlainHTTP = insecure
 
 	var credential auth.CredentialFunc
+	authSource := "anonymous"
 	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
 		username := os.Getenv("GITHUB_ACTOR")
 		if username == "" {
@@ -49,16 +50,23 @@ func newRegistryClient(repository string, insecure bool) (*registryClient, error
 			Username: username,
 			Password: token,
 		})
+		authSource = fmt.Sprintf("GITHUB_TOKEN (user %q)", username)
 	} else {
 		store, err := credentials.NewStoreFromDocker(credentials.StoreOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("load registry credentials: %w", err)
 		}
 		credential = credentials.Credential(store)
+		authSource = "docker credential store"
 	}
 	client := *auth.DefaultClient
 	client.Credential = credential
 	repo.Client = &client
+	// Startup overview to confirm which repository is targeted and how it
+	// authenticates. Never logs the token value, only its source and username,
+	// so it is safe under `set -x`-style CI logs.
+	log.Printf("cache client: repo=%s registry=%s plain-http=%t auth=%s",
+		repo.Reference.Repository, repo.Reference.Registry, repo.PlainHTTP, authSource)
 	return &registryClient{repo: repo}, nil
 }
 
@@ -76,6 +84,7 @@ func (client *registryClient) listSegments() ([]segmentRef, error) {
 	tags, err := registry.Tags(context.Background(), client.repo)
 	if err != nil {
 		if errors.Is(err, errdef.ErrNotFound) || isNameUnknown(err) {
+			log.Printf("cache repository %s not found yet, treating as empty", client.repo.Reference.Repository)
 			return nil, nil
 		}
 		return nil, fmt.Errorf("list cache segments: %w", err)
@@ -95,6 +104,7 @@ func (client *registryClient) listSegments() ([]segmentRef, error) {
 	sort.Slice(segments, func(i, j int) bool {
 		return segments[i].CreatedAt.Before(segments[j].CreatedAt)
 	})
+	log.Printf("listed cache: %d tag(s), %d segment(s)", len(tags), len(segments))
 	return segments, nil
 }
 
@@ -169,6 +179,8 @@ func (client *registryClient) loadEntries() (map[string]cacheEntry, error) {
 	}
 	entries := make(map[string]cacheEntry)
 	for _, item := range segments {
+		log.Printf("segment %s: snapshot=%s system=%s entries=%d",
+			item.Tag, shortSnapshot(item.Snapshot), item.System, len(item.Entries))
 		for hash, entry := range item.Entries {
 			entries[hash] = entry
 		}
