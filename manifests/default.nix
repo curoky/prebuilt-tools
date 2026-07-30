@@ -33,6 +33,12 @@
   cacert = { };
   connect = { };
   coreutils = { };
+  # diffutils on Linux keeps a local override (packages/diffutils): unstable
+  # 3.12's gnulib checkPhase fails 9 multithread/setlocale tests under
+  # musl-static. Darwin uses the stock manifest build.
+  diffutils = {
+    platforms = [ "aarch64-darwin" ];
+  };
   findutils = { };
   flac = {
     output = [ "bin" ];
@@ -71,7 +77,9 @@
     output = [ "bin" ];
   };
   patchelf = {
-    version = "25.05";
+    "x86_64-linux" = {
+      version = "25.05";
+    };
   };
   pkg-config-unwrapped = {
     alias = "pkg-config";

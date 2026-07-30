@@ -19,6 +19,7 @@ rec {
   # C / autotools.
   cmake_3_27_9 = pkgsStatic.callPackage ../cmake/3_27_9 { };
   cmake_4_1_2 = pkgsStatic.callPackage ../cmake/4_1_2 { };
+  diffutils = pkgsStatic.callPackage ../diffutils { };
   git = pkgsStatic.callPackage ../git { };
   gnutar = pkgsStatic.callPackage ../gnutar { };
   openssh_gssapi = pkgsStatic.callPackage ../openssh_gssapi { };

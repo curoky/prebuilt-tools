@@ -13,10 +13,8 @@
   autoconf = pkgsStatic.callPackage ../autoconf { };
   automake = pkgsStatic.callPackage ../automake { };
   curl = pkgsStatic.callPackage ../curl { };
-  diffutils = pkgsStatic.callPackage ../diffutils { };
   eza-ls = pkgsStatic.callPackage ../eza-ls { };
   file = pkgsStatic.callPackage ../file { };
-  gettext = pkgsStatic.callPackage ../gettext { };
   gnupg = pkgsStatic.gnupg.override {
     enableMinimal = true;
     guiSupport = false;
