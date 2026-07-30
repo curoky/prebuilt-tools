@@ -46,7 +46,42 @@ func main() {
 		},
 	}
 
-	root.AddCommand(push, serve)
+	var keep int
+	var dryRun bool
+	prune := &cobra.Command{
+		Use:   "prune",
+		Short: "Delete cache segments of old snapshots, keeping the newest per system",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := newRegistryClient(cacheRepository, false)
+			if err != nil {
+				return err
+			}
+			return pruneCache(client, keep, dryRun)
+		},
+	}
+	prune.Flags().IntVar(&keep, "keep", 2, "number of most recent snapshots to keep per system")
+	prune.Flags().BoolVar(&dryRun, "dry-run", false, "list segments that would be deleted without deleting")
+
+	size := &cobra.Command{
+		Use:   "size",
+		Short: "Print the deduplicated total size of the cache",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := newRegistryClient(cacheRepository, false)
+			if err != nil {
+				return err
+			}
+			total, err := cacheSize(client)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("%d\t%s\n", total, humanSize(total))
+			return nil
+		},
+	}
+
+	root.AddCommand(push, serve, prune, size)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)

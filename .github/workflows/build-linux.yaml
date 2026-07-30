@@ -43,6 +43,17 @@ jobs:
 
       - uses: DeterminateSystems/nix-installer-action@main
 
+      # Cache fetched flake inputs and the eval cache keyed on flake.lock, so a
+      # repeat discover skips re-downloading and unpacking every nixpkgs channel
+      # source (the dominant cost of this job).
+      - name: Cache Nix eval and flake inputs
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/nix
+          key: nix-discover-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-keys: |
+            nix-discover-${{ runner.os }}-
+
       - name: Start Nix cache
         env:
           GITHUB_ACTOR: ${{ github.actor }}

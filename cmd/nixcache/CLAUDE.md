@@ -1,7 +1,7 @@
 # Nixcache Agent Guide
 
 `cmd/nixcache/` 实现本仓库专用的 GHCR-backed Nix binary cache。它构建为单个静态
-Go 二进制 `nixcache`，只提供 `push` 和 `serve`。全局产物与 CI 约束见根
+Go 二进制 `nixcache`，提供 `push`、`serve`、`prune` 和 `size`。全局产物与 CI 约束见根
 [`CLAUDE.md`](../../CLAUDE.md)。
 
 本文是 `nixcache` 的 CLI、OCI schema、发布协议和验证要求 source of truth。
@@ -23,6 +23,9 @@ Go 二进制 `nixcache`，只提供 `push` 和 `serve`。全局产物与 CI 约�
    snapshot 的 manifest 必须包含 closure 中所有 NAR layers，保证旧 snapshot 删除后仍可用。
 7. **无宿主运行时依赖。** 发布的两个平台二进制都必须以 `CGO_ENABLED=0` 构建。
    `push` 运行时明确需要宿主 `nix`；`serve` 不调用外部程序。
+8. **过期按 snapshot 新旧，不按 channel revision。** channel revision 是 git commit
+   hash，没有全序，不能比较大小；`prune` 的保留判据是 snapshot 的最新 segment 时间，
+   不是任何单个 channel rev。删除粒度是整个 (snapshot, system)，不拆单 channel。
 
 ## Cache OCI 协议
 
@@ -91,6 +94,36 @@ miss 返回 `404`，不实现 upstream fallback、管理 API 或磁盘 NAR cache
 直接流式返回。GHCR 返回 `NAME_UNKNOWN` 表示 cache repository 尚未创建，此时以空 cache
 启动；其他刷新失败保留上一份可用 index，其他首次加载失败直接退出。
 
+## Prune
+
+```text
+nixcache prune [--keep N] [--dry-run]
+```
+
+`serve` 的合并语义天然让旧 segment 的同名 store hash 被新 segment 逻辑覆盖，但旧
+segment 的 tag 和 NAR blob 仍物理留在 GHCR。`prune` 是唯一的物理清理入口：
+
+1. 列出所有 `v1-*` segment，读出各自 metadata 的 `snapshot`、`system` 和 `createdAt`；
+2. 按 `system` 分组，每个 snapshot 取其最新 segment 的 `createdAt` 作为该 snapshot 的时间；
+3. 每个 system 只保留最近 `N` 个 snapshot（默认 `N=2`），其余 snapshot 的**全部** tag
+   删除。同一 snapshot 的多个 CI run tag 要么一起保留、要么一起删除；
+4. 删除通过 `oras-go` 的 `Repository.Delete` 按 manifest digest 进行，GHCR 随之移除
+   tag，未被任何存活 manifest 引用的 NAR blob 由 GHCR 自身 GC 回收。
+
+因为不变量 6，被保留 snapshot 的 manifest 自带完整 closure，删旧 snapshot 不会造成缺
+NAR。`--dry-run` 只打印将删除的 tag，不发起删除。保留判据是 snapshot 新旧（见不变量 8），
+不比较 channel revision。
+
+## Size
+
+```text
+nixcache size
+```
+
+统计 cache 的去重总字节数：合并所有 segment manifest 引用的 layer digest，同一 digest
+只计一次（segment 间按 digest 共享 NAR），输出 `<bytes>\t<human-readable>`。用于在清理
+workflow 中报告 `prune` 前后的大小变化。只读，不修改 registry。
+
 ## CI 接线
 
 `.github/workflows/build-linux.yaml`、`.github/workflows/build-darwin.yaml` 和
@@ -105,6 +138,12 @@ miss 返回 `404`，不实现 upstream fallback、管理 API 或磁盘 NAR cache
 
 每个 matrix job 发布一个完整 closure segment，可以并发执行，不增加共享 index 汇总 job。
 不保留其他 backend fallback 或 dual-write。
+
+`.github/workflows/cleanup.yaml` 的 `cache-prune` job 定时（每周）与手动触发：用
+`cmd/nixcache/install.sh` 下载二进制，先 `nixcache size` 记录清理前大小，再
+`nixcache prune --keep 2` 删除旧 snapshot，最后再次 `nixcache size` 并把前后大小写入
+`$GITHUB_STEP_SUMMARY`。该 job 需要 `packages: write` 才能删除 cache repository 的
+manifest。
 
 ## 二进制发布协议
 
@@ -141,8 +180,9 @@ nixcache/nixcache
 - `main.go`：Cobra CLI 与固定 repository 接线。
 - `model.go`：snapshot、segment 和 entry schema。
 - `push.go`：临时 file binary cache 与 `go-nix` 解析。
-- `registry.go`：GHCR auth、segment 读写和 NAR blob。
+- `registry.go`：GHCR auth、segment 读写、删除和 NAR blob。
 - `serve.go`：Nix HTTP substituter 与 refresh。
+- `prune.go`：snapshot 保留策略、segment 删除与去重 size 统计。
 - `*_test.go`：本地 OCI registry、HTTP endpoint 和 opt-in Nix round-trip。
 
 不要重新引入自建 HTTP writer、手写 narinfo parser、closure traversal、segment 分片或

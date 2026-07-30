@@ -62,7 +62,17 @@ func newRegistryClient(repository string, insecure bool) (*registryClient, error
 	return &registryClient{repo: repo}, nil
 }
 
-func (client *registryClient) listSegments() ([]segment, error) {
+// segmentRef pairs a decoded segment with the registry metadata needed to
+// prune it: its tag, the manifest descriptor to delete, and the on-registry
+// byte size of every layer this manifest references.
+type segmentRef struct {
+	segment
+	Tag        string
+	Manifest   ocispec.Descriptor
+	LayerSizes map[digest.Digest]int64
+}
+
+func (client *registryClient) listSegments() ([]segmentRef, error) {
 	tags, err := registry.Tags(context.Background(), client.repo)
 	if err != nil {
 		if errors.Is(err, errdef.ErrNotFound) || isNameUnknown(err) {
@@ -71,21 +81,28 @@ func (client *registryClient) listSegments() ([]segment, error) {
 		return nil, fmt.Errorf("list cache segments: %w", err)
 	}
 
-	segments := make([]segment, 0, len(tags))
+	segments := make([]segmentRef, 0, len(tags))
 	for _, tag := range tags {
 		if !strings.HasPrefix(tag, segmentPrefix) {
 			continue
 		}
-		item, err := client.getSegment(tag)
+		ref, err := client.getSegment(tag)
 		if err != nil {
 			return nil, fmt.Errorf("load segment %s: %w", tag, err)
 		}
-		segments = append(segments, item)
+		segments = append(segments, ref)
 	}
 	sort.Slice(segments, func(i, j int) bool {
 		return segments[i].CreatedAt.Before(segments[j].CreatedAt)
 	})
 	return segments, nil
+}
+
+// deleteSegment removes a segment manifest by tag. GHCR drops the tag with the
+// manifest; layers no longer referenced by any manifest become untagged and are
+// reclaimed by the registry's own garbage collection.
+func (client *registryClient) deleteSegment(ref segmentRef) error {
+	return client.repo.Delete(context.Background(), ref.Manifest)
 }
 
 func isNameUnknown(err error) bool {
@@ -101,38 +118,48 @@ func isNameUnknown(err error) bool {
 	return false
 }
 
-func (client *registryClient) getSegment(tag string) (segment, error) {
-	_, reader, err := client.repo.FetchReference(context.Background(), tag)
+func (client *registryClient) getSegment(tag string) (segmentRef, error) {
+	manifestDescriptor, reader, err := client.repo.FetchReference(context.Background(), tag)
 	if err != nil {
-		return segment{}, err
+		return segmentRef{}, err
 	}
 	defer reader.Close()
 
 	var manifest ocispec.Manifest
 	if err := json.NewDecoder(reader).Decode(&manifest); err != nil {
-		return segment{}, err
+		return segmentRef{}, err
 	}
 	if len(manifest.Layers) == 0 {
-		return segment{}, fmt.Errorf("segment has no metadata layer")
+		return segmentRef{}, fmt.Errorf("segment has no metadata layer")
 	}
 	metadata := manifest.Layers[0]
 	if metadata.MediaType != segmentMediaType {
-		return segment{}, fmt.Errorf("unexpected metadata media type %q", metadata.MediaType)
+		return segmentRef{}, fmt.Errorf("unexpected metadata media type %q", metadata.MediaType)
 	}
 	reader, err = client.repo.Fetch(context.Background(), metadata)
 	if err != nil {
-		return segment{}, err
+		return segmentRef{}, err
 	}
 	defer reader.Close()
 
 	var item segment
 	if err := json.NewDecoder(reader).Decode(&item); err != nil {
-		return segment{}, fmt.Errorf("decode segment metadata: %w", err)
+		return segmentRef{}, fmt.Errorf("decode segment metadata: %w", err)
 	}
 	if item.Version != segmentVersion {
-		return segment{}, fmt.Errorf("unsupported segment version %d", item.Version)
+		return segmentRef{}, fmt.Errorf("unsupported segment version %d", item.Version)
 	}
-	return item, nil
+
+	layerSizes := make(map[digest.Digest]int64, len(manifest.Layers))
+	for _, layer := range manifest.Layers {
+		layerSizes[layer.Digest] = layer.Size
+	}
+	return segmentRef{
+		segment:    item,
+		Tag:        tag,
+		Manifest:   manifestDescriptor,
+		LayerSizes: layerSizes,
+	}, nil
 }
 
 func (client *registryClient) loadEntries() (map[string]cacheEntry, error) {
