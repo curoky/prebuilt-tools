@@ -137,6 +137,8 @@ Mach-O load command 改为 `@loader_path` 或 `@rpath` 相对路径。
 - 保留 output 内部 symlink，展开外部 symlink，删除 dangling symlink；
 - 改写文本 shebang 和可识别的 Nix store path；
 - 对 ELF strip 并运行 `nuke-refs`；
+- macOS 删除 Mach-O 指向 `/nix` 的 `LC_RPATH`（静态 darwin 构建常从 ld-wrapper
+  继承一条指向 store lib 目录的死 rpath，运行期无用），使产物不残留 `/nix` 引用；
 - 恢复 `.*-wrapped` 的公开文件名；
 - 删除 `.a` 和 `.pyc`；
 - Linux 检查每个 ELF 的链接类型，动态 ELF 直接失败；仅

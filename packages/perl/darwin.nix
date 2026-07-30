@@ -52,6 +52,16 @@ let
         if [ -n "$zbundle" ]; then
           oldZ=$(${stdenv.cc.targetPrefix}otool -L "$zbundle" | awk '/\/nix\/.*libz/ {print $1; exit}')
           [ -n "$oldZ" ] && install_name_tool -change "$oldZ" /usr/lib/libz.1.dylib "$zbundle"
+
+          # Repointing the load command still leaves the compile-time LC_RPATH
+          # that pointed at the /nix zlib; drop every /nix rpath so the bundle
+          # carries no store references (CLAUDE.md rule 1).
+          ${stdenv.cc.targetPrefix}otool -l "$zbundle" \
+            | awk '/LC_RPATH/{r=1} r&&/path /{print $2; r=0}' \
+            | grep '^/nix/' \
+            | while read -r rp; do
+                install_name_tool -delete_rpath "$rp" "$zbundle" 2>/dev/null || true
+              done
         fi
       '';
   });

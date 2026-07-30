@@ -59,6 +59,16 @@ for i in "${!files[@]}"; do
   elif [[ $FTYPE == *ELF* ]]; then
     strip --strip-unneeded "$f" || true
     nuke-refs "$f"
+
+  elif [[ $host_format == macho && $FTYPE == *Mach-O* ]]; then
+    # Delete any LC_RPATH pointing into /nix. Static darwin builds routinely
+    # inherit a dead rpath into a store lib dir from the ld-wrapper (which adds
+    # -rpath for every store -L path), even though nothing loads through it.
+    # normalize.sh does not touch load commands otherwise, so nuke these dead
+    # store rpaths here to keep the artifact free of /nix references.
+    while IFS= read -r rpath; do
+      [[ $rpath == /nix/* ]] && install_name_tool -delete_rpath "$rpath" "$f"
+    done < <(otool -l "$f" 2>/dev/null | awk '/LC_RPATH/{grab=1} grab&&/ path /{print $2; grab=0}')
   fi
 
   base=${f##*/}

@@ -107,7 +107,8 @@ darwin 上完全静态不可能（没有静态 libSystem/libc）。目标：**�
 
 3. **若 step 2 仍留下你无法静态替换的 `/nix/store` dylib：停手，先与用户确认。** 只有在显式
    确认后，才用 `install_name_tool` 路线，在 `postInstall` 里把残留的 `/nix/store` Mach-O
-   install name 改写成 `@loader_path` 相对路径（`normalize.sh` **不**动 Mach-O load command）。
+   install name 改写成 `@loader_path` 相对路径（`normalize.sh` 只删除指向 `/nix` 的
+   `LC_RPATH`，**不**改写 install name 或 dylib 依赖的 load command）。
    见 `packages/perl/darwin.nix` 里 repoint `libperl.dylib` 的 `install_name_tool -id`/`-change` 循环。
 
 4. **把 dylib 复制进包**（dylib-bundle）——绝对最后手段，仅当上述任何路线都无法静态链接某依赖时。
@@ -117,8 +118,9 @@ darwin 上完全静态不可能（没有静态 libSystem/libc）。目标：**�
 
 ### Mach-O relocation
 
-`normalize.sh` 处理 ELF（`nuke-refs`、strip）但**不**处理 Mach-O load command。任何在包里
-留下非系统 dylib 的 darwin 路线，必须在 `postInstall` 里：
+`normalize.sh` 处理 ELF（`nuke-refs`、strip）并删除 Mach-O 指向 `/nix` 的 `LC_RPATH`，但
+**不**改写 install name 或 dylib 依赖的 load command。任何在包里留下非系统 dylib 的
+darwin 路线，必须在 `postInstall` 里：
 
 - `install_name_tool -id "@loader_path/<name>.dylib" <dylib>`
 - `install_name_tool -change "<old /nix or abs id>" "@loader_path/..." <consumer>`
