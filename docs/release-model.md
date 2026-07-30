@@ -4,7 +4,7 @@ Linux 和 Darwin workflow 共享同一发布契约：按当前 `outPath` 发现�
 目录及归档，再分别发布 Nix cache 和工具 OCI artifact。
 
 Nix cache 的 segment schema、serving 和 retention 细节见
-[Nix Cache 设计](nix-cache.md)。
+[`cmd/nixcache/CLAUDE.md`](../cmd/nixcache/CLAUDE.md)。
 
 ## 发布流程
 

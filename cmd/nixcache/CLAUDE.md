@@ -1,8 +1,10 @@
 # Nixcache Agent Guide
 
-先阅读根 [`CLAUDE.md`](../../CLAUDE.md)、[Nix Cache 设计](../../docs/nix-cache.md)
-和[发布模型](../../docs/release-model.md)。本文件只记录修改 `cmd/nixcache/` 时的 agent
-约束。
+`cmd/nixcache/` 是本仓库专用的 GHCR-backed Nix binary cache，提供 `push`、
+`serve`、`prune` 和 `size`。全局约束见根 [`CLAUDE.md`](../../CLAUDE.md)，CI
+触发与发布流程见 [`docs/release-model.md`](../../docs/release-model.md)。
+
+## 设计
 
 - Nix 通过 `nix copy --to file://...` 生成 closure、NAR 和 narinfo；Go 负责校验、
   OCI 编排和 HTTP serving。
@@ -12,13 +14,73 @@
   NAR blob 由 registry 按 digest 去重。
 - `packageKey` 是稳定 package identity；`runId` 只用于诊断。
 - 二进制以 `CGO_ENABLED=0` 构建。`push` 依赖宿主 `nix`，其他命令不调用外部程序。
-- 读取 segment 时 fail-closed 校验 tag、metadata、store hash、narinfo、NAR URL、
-  digest、size、media type 和 annotation 一致。
-- `serve` 首次加载失败与周期刷新失败的语义不同；不要让 refresh 错误清空已有 index。
+
+## OCI Schema
+
+Cache repository：
+
+```text
+ghcr.io/curoky/standalone-binaries-cache
+```
+
+Segment tag：
+
+```text
+v1-<snapshot-prefix>-<system>-<run-id>-<random-id>
+```
+
+每个 segment 是 OCI image manifest：第一层是
+`application/vnd.curoky.nixcache.segment.v1+json` metadata，其余层是
+`application/vnd.curoky.nixcache.nar.v1` NAR blob。每个 NAR descriptor 的
+`org.nixos.store.hash` annotation 对应一个 metadata entry。
+
+读取 segment 时 fail-closed 校验 tag、metadata、store hash、narinfo、NAR URL、
+digest、size、media type 和 annotation 一致。
+
+## Commands
+
+`push --key <package-key> <store-path>...` 创建临时 file cache，有限并发上传 NAR，最后
+发布 metadata 和按 store hash 排序的 layer。`--key` 或
+`NIXCACHE_PACKAGE_KEY` 必填；`NIX_SIGNING_KEY_FILE` 传给 Nix。
+
+`serve` 监听 `127.0.0.1:37515`，按当前 snapshot 和 system 的 tag prefix 并发加载
+index，每 5 分钟刷新。首次加载完成前 `/nix-cache-info` 返回 `503`。Repository
+不存在视为空 cache；首次加载错误终止服务，周期刷新错误保留上一份 index。
+
+Retention 按 system 独立计算：
+
+1. 按最新 segment 时间保留最近 `N` 个 snapshot，默认 `N=2`。
+2. 每个保留 snapshot 按 `packageKey` 保留最新 segment。
+3. 保留 snapshot 内空 `packageKey` 的 segment 全部保留。
+4. 删除其余 segment。
+
 - `prune` 必须先解析全部目标 version ID，再进行任何删除；`--dry-run` 不发请求。
 - `size` 只统计 metadata 和 NAR layer payload，并按 digest 去重。
+
+## Binary Distribution
+
+`.github/workflows/build-nixcache.yaml` 发布 `nixcache-linux-x86_64` 和
+`nixcache-darwin-arm64`。Artifact 只有一个 tar.gz layer，归档布局为
+`nixcache/nixcache`；`install.sh` 只依赖 `curl` 和 `tar`。
+
 - 修改 repository、tag、media type、segment metadata、retention identity 或归档布局时，
-  同步 workflow、installer、`docs/nix-cache.md` 和 `docs/release-model.md`。
+  同步 workflow、installer 和 `docs/release-model.md`。
 - 保持 repository-specific 实现，不为假设中的 registry 或 cache backend 预造抽象。
 
-验证命令见 [`docs/contributing.md`](../../docs/contributing.md#验证)。
+## 验证
+
+```bash
+CGO_ENABLED=0 go test ./cmd/nixcache
+CGO_ENABLED=0 go vet ./cmd/nixcache
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/nixcache
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build ./cmd/nixcache
+bash -n cmd/nixcache/install.sh
+shellcheck cmd/nixcache/install.sh
+```
+
+真实 Nix round-trip：
+
+```bash
+NIXCACHE_TEST_STORE_PATH=/nix/store/<path> \
+  CGO_ENABLED=0 go test -run '^TestNixRoundTrip$' -v ./cmd/nixcache
+```

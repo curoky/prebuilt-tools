@@ -39,7 +39,7 @@ build-time override 必须只替换构建工具，不得改变 target 包的链�
 
 - 不引用 `/nix/store`；
 - ELF interpreter 和 rpath 只指向明确的宿主 ABI 路径；
-- 例外同时登记在 `lib/make-artifacts.nix`、`docs/architecture.md` 和 `TODO.md`；
+- 例外同时登记在 `lib/make-artifacts.nix`、根 `CLAUDE.md` 和 `TODO.md`；
 - 新增例外必须先确认，不能通过放宽全局校验实现。
 
 除这两个包外，Linux ELF 必须通过 musl 全静态校验。
