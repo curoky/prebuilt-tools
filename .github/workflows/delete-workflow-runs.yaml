@@ -1,0 +1,37 @@
+name: Delete Workflow Runs
+
+on:
+  push:
+    paths:
+      - '.github/workflows/delete-workflow-runs.yaml'
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Delete workflow runs older than this many days'
+        required: false
+        default: '30'
+  schedule:
+    - cron: '0 0 * * 0'
+
+jobs:
+  delete-workflow-runs:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DAYS: ${{ github.event.inputs.days || '30' }}
+    steps:
+      - name: Delete old workflow runs
+        run: |
+          cutoff=$(date -u -d "$DAYS days ago" +%s)
+          echo "Deleting workflow runs created before $(date -u -d "$DAYS days ago" '+%Y-%m-%d')" | tee -a "$GITHUB_STEP_SUMMARY"
+          gh api --paginate "repos/${{ github.repository }}/actions/runs" \
+            --jq '.workflow_runs[] | "\(.id) \(.created_at)"' |
+            while read -r id created_at; do
+              created=$(date -u -d "$created_at" +%s)
+              if [ "$created" -lt "$cutoff" ]; then
+                echo "Deleting run $id ($created_at)" | tee -a "$GITHUB_STEP_SUMMARY"
+                gh api -X DELETE "repos/${{ github.repository }}/actions/runs/$id" || true
+              fi
+            done
