@@ -248,7 +248,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NIXCACHE_PACKAGE_KEY: ${{ matrix.name }}
         run: |
-          readarray -t source_paths <<<"$SOURCE_STORE_PATHS"
+          # SOURCE_STORE_PATHS holds one store path per line (a multi-output
+          # source such as execline yields several). Drop blank lines so an empty
+          # element is never passed to push.
+          source_paths=()
+          while IFS= read -r p; do
+            if [[ -n "$p" ]]; then
+              source_paths+=("$p")
+            fi
+          done <<<"$SOURCE_STORE_PATHS"
           "$RUNNER_TEMP/bin/nixcache" push \
             "$(readlink -f ./standalone)" "${source_paths[@]}"
 

@@ -261,7 +261,9 @@ jobs:
           # element is never passed to push.
           source_paths=()
           while IFS= read -r p; do
-            [[ -n "$p" ]] && source_paths+=("$p")
+            if [[ -n "$p" ]]; then
+              source_paths+=("$p")
+            fi
           done <<<"$SOURCE_STORE_PATHS"
           "$RUNNER_TEMP/bin/nixcache" push \
             "$(readlink -f ./standalone)" "${source_paths[@]}"
