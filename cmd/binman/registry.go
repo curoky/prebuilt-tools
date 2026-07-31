@@ -11,6 +11,7 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
+	"golang.org/x/sync/errgroup"
 )
 
 // ociRegistry is the registry reference root. It is a variable so tests can
@@ -24,6 +25,23 @@ func ref(packageName, arch string) string {
 func isNotFound(err error) bool {
 	var transportError *transport.Error
 	return errors.As(err, &transportError) && transportError.StatusCode == http.StatusNotFound
+}
+
+type artifactRequest struct {
+	name string
+	arch string
+}
+
+type packageArtifact struct {
+	name   string
+	arch   string
+	layer  v1.Layer
+	digest string
+}
+
+type artifactDownload struct {
+	packageArtifact
+	destination string
 }
 
 // remoteLayer returns the published content layer. Its digest is the package
@@ -56,16 +74,65 @@ func remoteLayer(packageName, arch string) (v1.Layer, error) {
 	return layers[len(layers)-1], nil
 }
 
-func remoteDigest(packageName, arch string) (string, error) {
-	layer, err := remoteLayer(packageName, arch)
+func resolveArtifact(request artifactRequest) (packageArtifact, error) {
+	layer, err := remoteLayer(request.name, request.arch)
 	if err != nil {
-		return "", err
+		return packageArtifact{}, err
 	}
 	digest, err := layer.Digest()
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", packageName, err)
+		return packageArtifact{}, fmt.Errorf("%s: %w", request.name, err)
 	}
-	return digest.String(), nil
+	return packageArtifact{
+		name:   request.name,
+		arch:   request.arch,
+		layer:  layer,
+		digest: digest.String(),
+	}, nil
+}
+
+func remoteDigest(packageName, arch string) (string, error) {
+	artifact, err := resolveArtifact(artifactRequest{name: packageName, arch: arch})
+	if err != nil {
+		return "", err
+	}
+	return artifact.digest, nil
+}
+
+func resolveArtifacts(requests []artifactRequest) ([]packageArtifact, error) {
+	artifacts := make([]packageArtifact, len(requests))
+	resolveErrors := make([]error, len(requests))
+	var group errgroup.Group
+	group.SetLimit(maxParallel)
+	for index := range requests {
+		group.Go(func() error {
+			request := requests[index]
+			artifact, err := resolveArtifact(request)
+			if err != nil {
+				resolveErrors[index] = err
+				return nil
+			}
+			artifacts[index] = artifact
+			return nil
+		})
+	}
+	_ = group.Wait()
+	return artifacts, errors.Join(resolveErrors...)
+}
+
+func downloadArtifacts(downloads []artifactDownload) error {
+	var group errgroup.Group
+	group.SetLimit(maxParallel)
+	for index := range downloads {
+		group.Go(func() error {
+			download := downloads[index]
+			if err := downloadLayer(download.layer, download.destination); err != nil {
+				return fmt.Errorf("%s: %w", download.name, err)
+			}
+			return nil
+		})
+	}
+	return group.Wait()
 }
 
 // downloadLayer atomically replaces dst after the complete compressed layer

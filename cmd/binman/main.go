@@ -79,6 +79,7 @@ func main() {
 		link    bool
 		force   bool
 		verbose bool
+		output  string
 	)
 	var logCloser io.Closer
 
@@ -95,6 +96,9 @@ func main() {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Name() == "download" {
+				return nil
+			}
 			c, err := setupLogger(prefix, verbose)
 			if err != nil {
 				return err
@@ -129,6 +133,20 @@ func main() {
 	}
 	install.Flags().BoolVar(&link, "link", true, "expose binaries via relative symlinks")
 	install.Flags().BoolVar(&force, "force", false, "reinstall even if the digest already matches")
+
+	download := &cobra.Command{
+		Use:   "download <package>...",
+		Short: "Download and extract packages without installing them",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := resolveArch()
+			if err != nil {
+				return err
+			}
+			return downloadPackages(args, a, output)
+		},
+	}
+	download.Flags().StringVarP(&output, "output", "o", ".", "directory to extract packages into")
 
 	remove := &cobra.Command{
 		Use:   "remove <package>",
@@ -197,7 +215,7 @@ func main() {
 	sync.Flags().BoolVar(&force, "force", false, "reinstall even if the digest already matches")
 	sync.Flags().BoolVar(&prune, "prune", false, "remove installed packages not listed in the manifest")
 
-	root.AddCommand(install, remove, upgrade, info, list, outdated, sync)
+	root.AddCommand(install, download, remove, upgrade, info, list, outdated, sync)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)

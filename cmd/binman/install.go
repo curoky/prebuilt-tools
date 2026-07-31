@@ -8,7 +8,6 @@ import (
 	"sort"
 	"time"
 
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -26,12 +25,10 @@ type installTarget struct {
 }
 
 type installJob struct {
-	installTarget
-	layer   v1.Layer
-	digest  string
+	packageArtifact
+	linked  bool
 	current *meta
 	fetch   bool
-	err     error
 }
 
 func installPackages(names []string, options installOpts) error {
@@ -57,7 +54,6 @@ func installPackagePlan(plan []installTarget, prefix, arch string, force bool) e
 			return err
 		}
 	}
-	jobs := make([]installJob, len(plan))
 	for index := range plan {
 		if err := validatePackageName(plan[index].name); err != nil {
 			return err
@@ -68,38 +64,27 @@ func installPackagePlan(plan []installTarget, prefix, arch string, force bool) e
 		if err := validateArch(plan[index].arch); err != nil {
 			return fmt.Errorf("%s: %w", plan[index].name, err)
 		}
-		jobs[index].installTarget = plan[index]
 	}
 
 	start := time.Now()
-	logger.Info("install started", "count", len(jobs), "prefix", prefix, "force", force)
-	fmt.Printf("> Resolving %d package(s)...\n", len(jobs))
+	logger.Info("install started", "count", len(plan), "prefix", prefix, "force", force)
+	fmt.Printf("> Resolving %d package(s)...\n", len(plan))
 
-	var resolveGroup errgroup.Group
-	resolveGroup.SetLimit(maxParallel)
-	for index := range jobs {
-		job := &jobs[index]
-		resolveGroup.Go(func() error {
-			job.layer, job.err = remoteLayer(job.name, job.arch)
-			if job.err == nil {
-				var digest v1.Hash
-				digest, job.err = job.layer.Digest()
-				if job.err != nil {
-					job.err = fmt.Errorf("%s: %w", job.name, job.err)
-				}
-				job.digest = digest.String()
-			}
-			return nil
-		})
+	requests := make([]artifactRequest, len(plan))
+	for index := range plan {
+		requests[index] = artifactRequest{name: plan[index].name, arch: plan[index].arch}
 	}
-	_ = resolveGroup.Wait()
-	resolveErrors := make([]error, len(jobs))
-	for index := range jobs {
-		resolveErrors[index] = jobs[index].err
-	}
-	if err := errors.Join(resolveErrors...); err != nil {
+	artifacts, err := resolveArtifacts(requests)
+	if err != nil {
 		logger.Error("install aborted: unresolved packages", "err", err)
 		return fmt.Errorf("aborting, some packages could not be resolved:\n%w", err)
+	}
+	jobs := make([]installJob, len(artifacts))
+	for index := range artifacts {
+		jobs[index] = installJob{
+			packageArtifact: artifacts[index],
+			linked:          plan[index].linked,
+		}
 	}
 
 	fetchCount := 0
@@ -128,24 +113,20 @@ func installPackagePlan(plan []installTarget, prefix, arch string, force bool) e
 		fetchCount++
 	}
 
-	var downloadGroup errgroup.Group
-	downloadGroup.SetLimit(maxParallel)
 	if fetchCount > 0 {
 		fmt.Printf("> Downloading %d package(s)...\n", fetchCount)
+		downloads := make([]artifactDownload, 0, fetchCount)
 		for index := range jobs {
 			job := &jobs[index]
 			if !job.fetch {
 				continue
 			}
-			downloadGroup.Go(func() error {
-				err := downloadLayer(job.layer, cachePath(job.arch, job.name))
-				if err != nil {
-					return fmt.Errorf("%s: %w", job.name, err)
-				}
-				return nil
+			downloads = append(downloads, artifactDownload{
+				packageArtifact: job.packageArtifact,
+				destination:     cachePath(job.arch, job.name),
 			})
 		}
-		if err := downloadGroup.Wait(); err != nil {
+		if err := downloadArtifacts(downloads); err != nil {
 			return fmt.Errorf("download failed: %w", err)
 		}
 	}

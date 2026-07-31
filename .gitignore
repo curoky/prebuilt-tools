@@ -6,3 +6,4 @@ cmd/binman/binman
 /bm
 /nixcache
 /artifact
+/binman

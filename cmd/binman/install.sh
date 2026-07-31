@@ -12,6 +12,11 @@
 # Usage:
 #   curl -fsSL <raw-url>/install.sh | bash
 #   curl -fsSL <raw-url>/install.sh | bash -s -- --prefix /usr/local/bin
+#   curl -fsSL <raw-url>/install.sh | bash -s -- wget
+#
+# With package arguments the script bootstraps `bm`, then asks it to download
+# and extract those packages into the current directory without installing
+# package-manager state.
 #
 # Overrides (env or flag, flag wins):
 #   BINMAN_INSTALL_DIR / --prefix DIR   install directory (default: ~/.local/bin)
@@ -23,6 +28,7 @@ REPOSITORY="curoky/standalone-binaries"
 
 INSTALL_DIR="${BINMAN_INSTALL_DIR:-$HOME/.local/bin}"
 ARCH="${BINMAN_ARCH:-}"
+PACKAGES=()
 
 die() {
   echo "error: $*" >&2
@@ -32,11 +38,12 @@ die() {
 usage() {
   cat <<'EOF'
 Usage:
-  install.sh [--prefix DIR] [--arch ARCH]
+  install.sh [--prefix DIR] [--arch ARCH] [package...]
 
 Options:
   --prefix DIR  Install directory (default: ~/.local/bin)
   --arch ARCH   linux-x86_64 | linux-arm64 | darwin-arm64
+  package...    Download and extract packages into the current directory
 
 Environment:
   BINMAN_INSTALL_DIR
@@ -69,7 +76,18 @@ while [ $# -gt 0 ]; do
       usage
       exit 0
       ;;
-    *) die "unknown argument: $1" ;;
+    --) # everything after -- is a package name
+      shift
+      while [ $# -gt 0 ]; do
+        PACKAGES+=("$1")
+        shift
+      done
+      ;;
+    -*) die "unknown argument: $1" ;;
+    *) # positional: treat as a package name
+      PACKAGES+=("$1")
+      shift
+      ;;
   esac
 done
 
@@ -91,6 +109,7 @@ if [ -z "$ARCH" ]; then
 fi
 
 TAG="binman-$ARCH"
+
 echo "> Installing bm ($ARCH) into $INSTALL_DIR"
 
 # 1. Anonymous pull token for ghcr.
@@ -139,9 +158,16 @@ if "$INSTALL_DIR/bm" --help >/dev/null 2>&1; then
       echo "    export PATH=\"$INSTALL_DIR:\$PATH\""
       ;;
   esac
+  if [ "${#PACKAGES[@]}" -gt 0 ]; then
+    "$INSTALL_DIR/bm" download --arch "$ARCH" "${PACKAGES[@]}" ||
+      die "bm download failed for: ${PACKAGES[*]}"
+  fi
 else
   echo "> Warning: $INSTALL_DIR/bm was installed but could not be executed here" >&2
   echo "  (possible noexec mount or libc mismatch). Try running it directly." >&2
+  if [ "${#PACKAGES[@]}" -gt 0 ]; then
+    die "cannot download packages (${PACKAGES[*]}): bm is not runnable here"
+  fi
 fi
 
 exit 0

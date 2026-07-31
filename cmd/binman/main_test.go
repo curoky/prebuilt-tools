@@ -160,6 +160,40 @@ func TestBinmanNaming(t *testing.T) {
 	}
 }
 
+func TestDownloadPackagesExtractsWithoutInstallState(t *testing.T) {
+	const arch = "linux-x86_64"
+	startRegistry(t, arch, "wget", "ripgrep")
+
+	output := t.TempDir()
+	if err := downloadPackages([]string{"wget", "ripgrep", "wget"}, arch, output); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, packageName := range []string{"wget", "ripgrep"} {
+		binary := filepath.Join(output, packageName, "bin", packageName)
+		if _, err := os.Stat(binary); err != nil {
+			t.Fatalf("%s was not extracted: %v", packageName, err)
+		}
+		if _, err := os.Lstat(filepath.Join(output, packageName, metaFile)); !os.IsNotExist(err) {
+			t.Fatalf("%s contains installation metadata", packageName)
+		}
+	}
+}
+
+func TestDownloadPackagesRefusesExistingTarget(t *testing.T) {
+	const arch = "linux-x86_64"
+	output := t.TempDir()
+	target := filepath.Join(output, "wget")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := downloadPackages([]string{"wget"}, arch, output)
+	if err == nil || !strings.Contains(err.Error(), "refusing to overwrite existing path") {
+		t.Fatalf("downloadPackages error=%v", err)
+	}
+}
+
 func TestExtractLinkRelocate(t *testing.T) {
 	root := t.TempDir()
 	prefix := filepath.Join(root, "opt", "binman")
