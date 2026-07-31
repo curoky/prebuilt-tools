@@ -57,7 +57,7 @@ jobs:
       - run: echo "/opt/homebrew/opt/findutils/libexec/gnubin" >> "$GITHUB_PATH"
       - run: brew install grep findutils
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: DeterminateSystems/nix-installer-action@main
         with:
@@ -172,7 +172,7 @@ jobs:
       # Discovered matrix, or a single-package matrix when discover was skipped.
       matrix: ${{ needs.discover.result == 'skipped' && fromJSON(format('{{"include":[{{"name":"{0}"}}]}}', inputs.name)) || fromJSON(needs.discover.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: DeterminateSystems/nix-installer-action@main
         with:
@@ -218,7 +218,7 @@ jobs:
           NIXCACHE_PACKAGE_KEY: ${{ matrix.name }}
         run: '"$RUNNER_TEMP/bin/nixcache" push "$(readlink -f ./standalone)"'
 
-      - uses: oras-project/setup-oras@v1
+      - uses: oras-project/setup-oras@v2
 
       - run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
 
@@ -238,7 +238,7 @@ jobs:
 
       - name: Upload build result
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-result-${{ matrix.name }}
           path: build-results/${{ matrix.name }}.tsv
@@ -261,16 +261,16 @@ jobs:
       SELECTED: ${{ needs.discover.outputs.count }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Per-package results are uploaded by each build matrix leg as
       # build-result-<name>; collect them all into one directory. When every
       # candidate was a cache hit the build job is skipped and no such artifact
-      # exists; download-artifact@v4 hard-fails with a 404 on an empty pattern
+      # exists; download-artifact@v8 hard-fails with a 404 on an empty pattern
       # match, so only attempt the download when build actually ran.
       - name: Download build results
         if: ${{ needs.build.result != 'skipped' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: build-result-*
           path: build-results

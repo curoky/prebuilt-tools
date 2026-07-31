@@ -44,7 +44,7 @@ jobs:
       - run: echo "skip_steps=false" >> "$GITHUB_ENV"
         if: ${{ (github.event_name == 'schedule') || (github.event_name == 'workflow_dispatch') || (github.event_name == 'push' && github.ref == 'refs/heads/master') }}
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         if: ${{ env.skip_steps != 'true' }}
 
       - run: tools/free-disk-space.sh
@@ -99,7 +99,7 @@ jobs:
           NIXCACHE_PACKAGE_KEY: clang-tools-${{ matrix.version }}
         run: '"$RUNNER_TEMP/bin/nixcache" push "$(readlink -f ./standalone)"'
 
-      - uses: oras-project/setup-oras@v1
+      - uses: oras-project/setup-oras@v2
         if: ${{ env.skip_steps != 'true' }}
 
       - run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u ${{ github.actor }} --password-stdin

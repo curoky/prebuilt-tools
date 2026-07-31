@@ -25,9 +25,9 @@ jobs:
           - { goos: linux, goarch: amd64, tag: linux-x86_64, runner: ubuntu-latest }
           - { goos: darwin, goarch: arm64, tag: darwin-arm64, runner: macos-latest }
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26'
           cache-dependency-path: go.sum
@@ -44,7 +44,7 @@ jobs:
           go build -trimpath -ldflags="-s -w" -o ./nixcache/nixcache .
           tar -czvf ./nixcache.${{ matrix.tag }}.tar.gz ./nixcache
 
-      - uses: oras-project/setup-oras@v1
+      - uses: oras-project/setup-oras@v2
 
       - run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
 
