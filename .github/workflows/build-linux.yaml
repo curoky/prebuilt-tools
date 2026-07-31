@@ -75,12 +75,6 @@ jobs:
               cat "$RUNNER_TEMP/nixcache.log"
               exit 1
             }
-          # Forward the serve log to this job's stdout so cache diagnostics
-          # (segment listing, index size, narinfo hit/miss) show up in the
-          # Actions log instead of being buried in a file only dumped on
-          # failure. Like `serve`, the backgrounded `tail` survives past this
-          # step until the job ends, covering the later query steps too.
-          tail -n +1 -f "$RUNNER_TEMP/nixcache.log" | sed 's/^/[nixcache] /' &
 
       - id: set
         env:
@@ -165,6 +159,15 @@ jobs:
           echo "selected packages ($count of $candidates candidates, $hits cache hits):"
           cat selected.txt
 
+      # Dump the serve log once at the end instead of streaming it live: a
+      # backgrounded `tail -f` holds the step's stdout open forever, which
+      # blocks the runner from terminating the step and makes the job
+      # impossible to cancel. Runs on always() so cache diagnostics (segment
+      # listing, index size, narinfo hit/miss) are still available.
+      - name: Dump Nix cache log
+        if: always()
+        run: sed 's/^/[nixcache] /' "$RUNNER_TEMP/nixcache.log" || true
+
   build:
     needs: discover
     # Trigger behavior is documented in docs/release-model.md.
@@ -212,12 +215,6 @@ jobs:
               cat "$RUNNER_TEMP/nixcache.log"
               exit 1
             }
-          # Forward the serve log to this job's stdout so cache diagnostics
-          # (segment listing, index size, narinfo hit/miss) show up in the
-          # Actions log instead of being buried in a file only dumped on
-          # failure. Like `serve`, the backgrounded `tail` survives past this
-          # step until the job ends, covering the later `nix build` steps too.
-          tail -n +1 -f "$RUNNER_TEMP/nixcache.log" | sed 's/^/[nixcache] /' &
 
       - run: |
           # Both outputs come from one multi-output derivation, so the second
@@ -274,6 +271,15 @@ jobs:
           name: build-result-${{ matrix.name }}
           path: build-results/${{ matrix.name }}.tsv
           retention-days: 7
+
+      # Dump the serve log once at the end instead of streaming it live: a
+      # backgrounded `tail -f` holds the step's stdout open forever, which
+      # blocks the runner from terminating the step and makes the job
+      # impossible to cancel. Runs on always() so cache diagnostics (segment
+      # listing, index size, narinfo hit/miss) are still available.
+      - name: Dump Nix cache log
+        if: always()
+        run: sed 's/^/[nixcache] /' "$RUNNER_TEMP/nixcache.log" || true
 
   summary:
     needs: [discover, build]
