@@ -234,18 +234,26 @@ jobs:
           # contents and drops all store references, so its closure does not
           # include the upstream deps. Build the source separately so its closure
           # can be pushed too, letting later rebuilds substitute upstream deps
-          # instead of rebuilding from source.
-          nix build \
-            --option extra-substituters "$NIXCACHE_STORE" \
-            --option require-sigs false \
-            .#sources.x86_64-linux.${{ matrix.name }} --out-link source
+          # instead of rebuilding from source. Capture the store path directly:
+          # sources may expose a non-default output (e.g. bzip2's `bin`), and Nix
+          # would then suffix the out-link (`source-bin`) rather than create
+          # `source`, so a fixed --out-link name is unreliable here.
+          {
+            echo "SOURCE_STORE_PATH<<EOF"
+            nix build \
+              --option extra-substituters "$NIXCACHE_STORE" \
+              --option require-sigs false \
+              --print-out-paths --no-link \
+              .#sources.x86_64-linux.${{ matrix.name }}
+            echo "EOF"
+          } >>"$GITHUB_ENV"
 
       - name: Push Nix closure to GHCR
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NIXCACHE_PACKAGE_KEY: ${{ matrix.name }}
-        run: '"$RUNNER_TEMP/bin/nixcache" push "$(readlink -f ./standalone)" "$(readlink -f ./source)"'
+        run: '"$RUNNER_TEMP/bin/nixcache" push "$(readlink -f ./standalone)" "$SOURCE_STORE_PATH"'
 
       - uses: oras-project/setup-oras@v2
 
