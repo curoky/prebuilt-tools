@@ -286,7 +286,7 @@ func TestInstallMultiOneMissingAbortsAll(t *testing.T) {
 	}
 }
 
-func TestInstallPreservesStoreWhenMetadataIsInvalid(t *testing.T) {
+func TestInstallCleansLeftoverStoreWithInvalidMetadata(t *testing.T) {
 	arch := "linux-x86_64"
 	startRegistry(t, arch, "ripgrep")
 	prefix := t.TempDir()
@@ -298,17 +298,24 @@ func TestInstallPreservesStoreWhenMetadataIsInvalid(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(store, metaFile), []byte("{"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(store, "keep"), []byte("important"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(store, "stale"), []byte("leftover"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	if err := installPackages([]string{"ripgrep"}, installOpts{
 		prefix: prefix, arch: arch, linked: true,
-	}); err == nil {
-		t.Fatal("expected invalid metadata error")
+	}); err != nil {
+		t.Fatalf("install should clean the leftover and succeed: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(store, "keep")); err != nil {
-		t.Fatalf("install replaced store with invalid metadata: %v", err)
+	// The stale leftover is gone and a fresh install is in place.
+	if _, err := os.Stat(filepath.Join(store, "stale")); !os.IsNotExist(err) {
+		t.Fatalf("leftover file was not cleaned: %v", err)
+	}
+	if _, err := readMeta(prefix, "ripgrep"); err != nil {
+		t.Fatalf("valid metadata not written after reinstall: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(prefix, "bin", "ripgrep")); err != nil {
+		t.Fatalf("ripgrep not installed/linked after cleanup: %v", err)
 	}
 }
 
@@ -1049,93 +1056,5 @@ func TestUpgradeArchOverride(t *testing.T) {
 	}
 	if got.Arch != arch {
 		t.Fatalf("upgrade arch=%q want %q", got.Arch, arch)
-	}
-}
-
-func TestLinkStateRollsBackWhenMetadataWriteFails(t *testing.T) {
-	arch := "linux-x86_64"
-	startRegistry(t, arch, "ripgrep")
-	prefix := t.TempDir()
-	digest, err := remoteDigest("ripgrep", arch)
-	if err != nil {
-		t.Fatal(err)
-	}
-	store := storePath(prefix, "ripgrep")
-	path := filepath.Join(store, "bin", "ripgrep")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("package"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := writeMeta(prefix, meta{
-		Name: "ripgrep", Arch: arch, Digest: digest, Linked: false,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(store, 0o555); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(store, 0o755) })
-
-	err = installPackages([]string{"ripgrep"}, installOpts{
-		prefix: prefix, arch: arch, linked: true,
-	})
-	if err == nil {
-		t.Fatal("expected metadata write failure")
-	}
-	if _, err := os.Lstat(filepath.Join(prefix, "bin", "ripgrep")); !os.IsNotExist(err) {
-		t.Fatalf("link state was not rolled back: %v", err)
-	}
-	if err := os.Chmod(store, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	metadata, err := readMeta(prefix, "ripgrep")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if metadata.Linked {
-		t.Fatal("metadata unexpectedly changed to linked")
-	}
-}
-
-func TestReplaceStoreRollsBackOnLinkConflict(t *testing.T) {
-	prefix := t.TempDir()
-	name := "ripgrep"
-	oldStore := storePath(prefix, name)
-	if err := os.MkdirAll(filepath.Join(oldStore, "bin"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	oldFile := filepath.Join(oldStore, "bin", "rg")
-	if err := os.WriteFile(oldFile, []byte("old"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	staged, err := os.MkdirTemp(filepath.Dir(oldStore), ".ripgrep.stage-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(staged, "bin"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(staged, "bin", "rg"), []byte("new"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(prefix, "bin"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(prefix, "bin", "rg"), []byte("user file"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := replaceStore(prefix, name, staged, false, true); err == nil {
-		t.Fatal("expected link conflict")
-	}
-	got, err := os.ReadFile(oldFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != "old" {
-		t.Fatalf("old store was not restored: %q", got)
 	}
 }

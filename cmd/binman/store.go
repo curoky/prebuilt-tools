@@ -343,68 +343,27 @@ func symlinkPointsTo(link, target string) (bool, error) {
 	return filepath.Clean(linkTarget) == filepath.Clean(target), nil
 }
 
-func backupPath(path string) (string, error) {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return "", nil
-	} else if err != nil {
-		return "", err
-	}
-	backup, err := os.MkdirTemp(filepath.Dir(path), "."+filepath.Base(path)+".backup-")
-	if err != nil {
-		return "", err
-	}
-	if err := os.Remove(backup); err != nil {
-		return "", err
-	}
-	return backup, nil
-}
-
-// replaceStore swaps a staged package into place and restores the old store and
-// links if linking the new package fails.
-func replaceStore(prefix, name, staged string, wasLinked, linked bool) error {
+// placeStore swaps a staged package into place. It is deliberately
+// non-transactional: any existing store and its links are removed first, so a
+// failure can leave a partial state that a re-run cleans up. This fits the
+// single-user, idempotent "pull into a prefix" use case.
+func placeStore(prefix, name, staged string, wasLinked, linked bool) error {
 	store := storePath(prefix, name)
-	backup, err := backupPath(store)
-	if err != nil {
-		return err
-	}
-
 	if wasLinked {
 		if err := unlinkPkg(prefix, name); err != nil {
 			return fmt.Errorf("%s: unlink failed: %w", name, err)
 		}
 	}
-	if backup != "" {
-		if err := os.Rename(store, backup); err != nil {
-			if wasLinked {
-				_ = linkPkg(prefix, name)
-			}
-			return err
-		}
+	if err := os.RemoveAll(store); err != nil {
+		return err
 	}
 	if err := os.Rename(staged, store); err != nil {
-		if backup != "" {
-			_ = os.Rename(backup, store)
-		}
-		if wasLinked {
-			_ = linkPkg(prefix, name)
-		}
 		return err
 	}
 	if linked {
 		if err := linkPkg(prefix, name); err != nil {
-			_ = unlinkPkg(prefix, name)
-			_ = os.RemoveAll(store)
-			if backup != "" {
-				_ = os.Rename(backup, store)
-			}
-			if wasLinked {
-				_ = linkPkg(prefix, name)
-			}
 			return fmt.Errorf("%s: link failed: %w", name, err)
 		}
-	}
-	if backup != "" {
-		return os.RemoveAll(backup)
 	}
 	return nil
 }

@@ -108,10 +108,13 @@ func installPackagePlan(plan []installTarget, prefix, arch string, force bool) e
 		job := &jobs[index]
 		if metadata, err := readMeta(prefix, job.name); err == nil {
 			job.current = &metadata
-		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("%s: read metadata: %w", job.name, err)
 		} else if _, statErr := os.Stat(storePath(prefix, job.name)); statErr == nil {
-			return fmt.Errorf("%s: store exists without valid metadata", job.name)
+			// A store dir without valid metadata (missing or corrupt) is a
+			// leftover from an interrupted install; drop it so this run
+			// reinstalls cleanly.
+			if err := os.RemoveAll(storePath(prefix, job.name)); err != nil {
+				return fmt.Errorf("%s: clean leftover store: %w", job.name, err)
+			}
 		} else if !os.IsNotExist(statErr) {
 			return statErr
 		}
@@ -172,11 +175,10 @@ func installPackagePlan(plan []installTarget, prefix, arch string, force bool) e
 			if err := writeMetaAt(staged, nextMeta); err != nil {
 				return err
 			}
-			if err := replaceStore(prefix, job.name, staged, currentLinked, job.linked); err != nil {
+			if err := placeStore(prefix, job.name, staged, currentLinked, job.linked); err != nil {
 				return err
 			}
 		} else {
-			linkStateChanged := currentLinked != job.linked
 			if currentLinked && !job.linked {
 				if err := unlinkPkg(prefix, job.name); err != nil {
 					return fmt.Errorf("%s: unlink failed: %w", job.name, err)
@@ -191,13 +193,6 @@ func installPackagePlan(plan []installTarget, prefix, arch string, force bool) e
 				if err := writeMeta(prefix, meta{
 					Name: job.name, Arch: job.arch, Digest: job.digest, Linked: job.linked,
 				}); err != nil {
-					if linkStateChanged {
-						if job.linked {
-							_ = unlinkPkg(prefix, job.name)
-						} else {
-							_ = linkPkg(prefix, job.name)
-						}
-					}
 					return err
 				}
 			}

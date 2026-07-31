@@ -126,23 +126,20 @@ func cmdSync(prefix, arch, file string, prefixSet, archSet, force, prune bool) e
 	if err := os.MkdirAll(prefix, 0o755); err != nil {
 		return err
 	}
-	stagedProfiles, err := os.MkdirTemp(prefix, ".profile.stage-")
-	if err != nil {
-		return err
+	// Rebuild the profile tree in place: drop the old one, then relink. A
+	// failure mid-rebuild is fixed by re-running sync.
+	if err := os.RemoveAll(profileParent); err != nil {
+		return fmt.Errorf("reset profiles: %w", err)
 	}
-	defer os.RemoveAll(stagedProfiles)
 	for _, profile := range sortedProfileNames(config.Profiles) {
-		root := filepath.Join(stagedProfiles, profile)
-		fmt.Printf("> Linking profile %s -> %s\n", profile, filepath.Join(profileParent, profile))
+		root := filepath.Join(profileParent, profile)
+		fmt.Printf("> Linking profile %s -> %s\n", profile, root)
 		for _, packageName := range config.Profiles[profile] {
 			logger.Info("profile link", "profile", profile, "package", packageName, "root", root)
 			if err := linkPkgInto(prefix, packageName, root); err != nil {
 				return fmt.Errorf("profile %s: %s: %w", profile, packageName, err)
 			}
 		}
-	}
-	if err := replaceTree(profileParent, stagedProfiles); err != nil {
-		return fmt.Errorf("replace profiles: %w", err)
 	}
 
 	if !prune {
@@ -164,28 +161,6 @@ func cmdSync(prefix, arch, file string, prefixSet, archSet, force, prune bool) e
 		if err := cmdRemove(prefix, packageName); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-func replaceTree(dst, staged string) error {
-	backup, err := backupPath(dst)
-	if err != nil {
-		return err
-	}
-	if backup != "" {
-		if err := os.Rename(dst, backup); err != nil {
-			return err
-		}
-	}
-	if err := os.Rename(staged, dst); err != nil {
-		if backup != "" {
-			_ = os.Rename(backup, dst)
-		}
-		return err
-	}
-	if backup != "" {
-		return os.RemoveAll(backup)
 	}
 	return nil
 }
