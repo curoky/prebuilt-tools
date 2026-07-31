@@ -364,20 +364,17 @@
   # CGO_ENABLED=0 override is needed on macOS; forcing it off would only make
   # the pure-Go binary retain a go-compiler store path and trip
   # buildGoModule's disallowedReferences check. Linux keeps the default
-  # (unstable, pkgsStatic musl static). Go tools that stay Linux-only (age,
-  # sops, delve, gopls, ...) keep their `platforms = [ "x86_64-linux"
-  # "aarch64-linux" ]`.
+  # (unstable, pkgsStatic musl static). runc stays Linux-only because it is a
+  # Linux container runtime (namespaces/cgroups) with no macOS build.
   age = {
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
   };
   sops = {
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
   };
   bazelisk = {
     "aarch64-darwin" = {
@@ -402,10 +399,9 @@
     ];
   };
   delve = {
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
   };
   dive = {
     "x86_64-linux" = {
@@ -436,10 +432,9 @@
     };
   };
   go-outline = {
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
   };
   go-task = {
     "aarch64-darwin" = {
@@ -447,16 +442,14 @@
     };
   };
   go-tools = {
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
   };
   gofumpt = {
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
   };
   golangci-lint = {
     platforms = [
@@ -465,40 +458,34 @@
     ];
   };
   gomodifytags = {
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
   };
   gopls = {
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
   };
   gost = {
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
   };
   gotests = {
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
   };
   gotools = {
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
   };
   impl = {
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
   };
   lefthook = {
     "aarch64-darwin" = {
