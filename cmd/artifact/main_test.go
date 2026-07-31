@@ -165,6 +165,9 @@ func TestValidateELF(t *testing.T) {
 	t.Parallel()
 
 	staticBinary := currentExecutable(t)
+	if _, err := inspectELF(staticBinary); err != nil {
+		t.Skipf("test binary is not ELF on this platform: %v", err)
+	}
 	if err := validateELF(staticBinary, "fixture", false); err != nil {
 		t.Fatalf("current test binary should be static: %v", err)
 	}
@@ -274,19 +277,21 @@ func TestMachOMagic(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		value [4]byte
+		value [8]byte
+		want  bool
 	}{
-		{name: "fat big endian", value: [4]byte{0xca, 0xfe, 0xba, 0xbe}},
-		{name: "fat little endian", value: [4]byte{0xbe, 0xba, 0xfe, 0xca}},
-		{name: "fat64 big endian", value: [4]byte{0xca, 0xfe, 0xba, 0xbf}},
-		{name: "fat64 little endian", value: [4]byte{0xbf, 0xba, 0xfe, 0xca}},
-		{name: "64-bit big endian", value: [4]byte{0xfe, 0xed, 0xfa, 0xcf}},
-		{name: "64-bit little endian", value: [4]byte{0xcf, 0xfa, 0xed, 0xfe}},
+		{name: "fat big endian", value: [8]byte{0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 2}, want: true},
+		{name: "fat little endian", value: [8]byte{0xbe, 0xba, 0xfe, 0xca, 0, 0, 0, 0}, want: true},
+		{name: "fat64 big endian", value: [8]byte{0xca, 0xfe, 0xba, 0xbf, 0, 0, 0, 0}, want: true},
+		{name: "fat64 little endian", value: [8]byte{0xbf, 0xba, 0xfe, 0xca, 0, 0, 0, 0}, want: true},
+		{name: "64-bit big endian", value: [8]byte{0xfe, 0xed, 0xfa, 0xcf, 0, 0, 0, 0}, want: true},
+		{name: "64-bit little endian", value: [8]byte{0xcf, 0xfa, 0xed, 0xfe, 0, 0, 0, 0}, want: true},
+		{name: "java class file", value: [8]byte{0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 52}, want: false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if !isMachOMagic(test.value) {
-				t.Fatalf("%x was not recognized as Mach-O", test.value)
+			if got := isMachOMagic(test.value); got != test.want {
+				t.Fatalf("isMachOMagic(%x) = %v, want %v", test.value, got, test.want)
 			}
 		})
 	}

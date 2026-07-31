@@ -160,8 +160,8 @@ func normalizeFile(path string, cfg config) error {
 	return nil
 }
 
-func fileMagic(path string) ([4]byte, error) {
-	var magic [4]byte
+func fileMagic(path string) ([8]byte, error) {
+	var magic [8]byte
 	file, err := os.Open(path)
 	if err != nil {
 		return magic, fmt.Errorf("open %s: %w", path, err)

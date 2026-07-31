@@ -35,16 +35,21 @@ type machOInfo struct {
 	hasNixLoad   bool
 }
 
-func isELFMagic(magic [4]byte) bool {
-	return magic == [4]byte{0x7f, 'E', 'L', 'F'}
+func isELFMagic(magic [8]byte) bool {
+	return magic[0] == 0x7f && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F'
 }
 
-func isMachOMagic(magic [4]byte) bool {
-	const (
-		magicFat64 = uint32(0xcafebabf)
-	)
-	valueBE := binary.BigEndian.Uint32(magic[:])
-	valueLE := binary.LittleEndian.Uint32(magic[:])
+func isMachOMagic(magic [8]byte) bool {
+	const magicFat64 = uint32(0xcafebabf)
+	valueBE := binary.BigEndian.Uint32(magic[:4])
+	valueLE := binary.LittleEndian.Uint32(magic[:4])
+	// The big-endian 0xcafebabe magic is shared with Java .class files. A
+	// Mach-O fat header stores a small architecture count at offset 4, while a
+	// class file stores its version there (major version >= 45), so a large
+	// value at that offset means the file is a Java class, not a Mach-O binary.
+	if valueBE == macho.MagicFat && binary.BigEndian.Uint32(magic[4:8]) >= maxFatArchCount {
+		return false
+	}
 	return valueBE == macho.MagicFat ||
 		valueLE == macho.MagicFat ||
 		valueBE == magicFat64 ||
@@ -54,6 +59,11 @@ func isMachOMagic(magic [4]byte) bool {
 		valueLE == macho.Magic32 ||
 		valueLE == macho.Magic64
 }
+
+// maxFatArchCount bounds the plausible number of architectures in a Mach-O fat
+// binary. Any value at or above this at offset 4 of a 0xcafebabe file is a Java
+// class file version (major version >= 45), not a fat-arch count.
+const maxFatArchCount = uint32(45)
 
 func validateELF(path, artifactName string, allowDynamic bool) error {
 	info, err := inspectELF(path)
