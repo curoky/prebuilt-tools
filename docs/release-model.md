@@ -56,5 +56,8 @@ Node.js 运行时和同级 runtime 工具（`nodejs-slim*`、`markdownlint-cli2`
 `workflow_dispatch` 不受此排除影响，仍会构建并发布它们。改动 `PUSH_EXCLUDE_PKGS` 时须同步
 Linux、Darwin workflow 和本说明。
 
-LLVM 工具 workflow 按版本矩阵直接构建，不经过普通包的 `discover`，但使用相同的 artifact
-和 cache 发布契约。`.github/workflows/prune-nix-cache.yaml` 只允许手动触发。
+`clang-tools-{18..22}`（原 `build-llvm-tools.yaml`）已并入 Linux workflow 的普通
+`discover` / build matrix，与其他包共用 cache 命中过滤和 artifact 发布契约。它们是
+LLVM/clang 大型构建，build job 仅对 `clang-tools-*` 的 matrix leg 额外执行释放磁盘和
+配置 swap 的准备步骤。`lld_*` 与 `clang*` 仍通过 `EXCLUDE_PKGS` 排除（只作为构建输入
+暴露，不单独发布）。`.github/workflows/prune-nix-cache.yaml` 只允许手动触发。

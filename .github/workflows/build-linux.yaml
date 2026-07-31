@@ -26,10 +26,12 @@ on:
 
 env:
   NIXCACHE_STORE: http://127.0.0.1:37515
-  # Packages built by dedicated workflows (build-llvm-tools.yaml); excluded from
-  # this workflow so they are not built/published twice. Space-separated.
+  # Cross-platform packages that are exposed but not built by this workflow.
+  # `lld_*` / `clang*` are only exposed as build inputs and are never published
+  # on their own. `clang-tools-*` are built here too (they carry the same
+  # slow-build disk/swap prep as a matrix leg); they are NOT excluded.
+  # Space-separated.
   EXCLUDE_PKGS: >-
-    clang-tools-18 clang-tools-19 clang-tools-20 clang-tools-21 clang-tools-22
     lld_18 lld_19 lld_20 lld_21 lld_22
     clang18 clang19 clang20 clang21 clang22
   # Slow-to-build packages (Node.js runtime and sibling-runtime tools, plus
@@ -179,6 +181,20 @@ jobs:
       matrix: ${{ needs.discover.result == 'skipped' && fromJSON(format('{{"include":[{{"name":"{0}"}}]}}', inputs.name)) || fromJSON(needs.discover.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
+
+      # clang-tools are LLVM/clang builds that need extra disk and memory; free
+      # runner disk and add swap only for those matrix legs. Other packages skip
+      # this to avoid the setup overhead. Merged from the former
+      # build-llvm-tools.yaml.
+      - name: Free disk space (clang-tools)
+        if: ${{ startsWith(matrix.name, 'clang-tools-') }}
+        run: tools/free-disk-space.sh
+
+      - name: Set up swap space (clang-tools)
+        if: ${{ startsWith(matrix.name, 'clang-tools-') }}
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 10
 
       - uses: DeterminateSystems/nix-installer-action@main
         with:
