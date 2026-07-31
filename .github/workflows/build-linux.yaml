@@ -255,8 +255,12 @@ jobs:
       - uses: actions/checkout@v5
 
       # Per-package results are uploaded by each build matrix leg as
-      # build-result-<name>; collect them all into one directory.
+      # build-result-<name>; collect them all into one directory. When every
+      # candidate was a cache hit the build job is skipped and no such artifact
+      # exists; download-artifact@v4 hard-fails with a 404 on an empty pattern
+      # match, so only attempt the download when build actually ran.
       - name: Download build results
+        if: ${{ needs.build.result != 'skipped' }}
         uses: actions/download-artifact@v4
         with:
           pattern: build-result-*
