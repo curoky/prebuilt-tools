@@ -11,6 +11,15 @@ let
   };
 in
 {
+  # colima binary only; runtime deps (lima, docker, ...) are installed
+  # separately. Native pkgs (CGO on) links only /usr/lib + frameworks.
+  colima = pkgs.callPackage ../colima { };
+
+  # lima: hostside limactl + helpers + bundled guest agents. qemu PATH wrapper
+  # dropped (darwin defaults to the VZ backend); runtime deps installed
+  # separately. Native pkgs (CGO on) links only /usr/lib + frameworks.
+  lima = pkgs.callPackage ../lima { };
+
   # Partial-static C packages.
   ffmpeg = pkgsStatic.callPackage ../ffmpeg/darwin.nix { };
   krb5 = pkgsStatic.callPackage ../krb5/darwin.nix { };
