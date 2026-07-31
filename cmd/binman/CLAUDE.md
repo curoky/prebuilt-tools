@@ -10,7 +10,7 @@
 - package 彼此独立，client 不解析依赖。
 - OCI layer digest 是版本标识；digest 相同只调和 link 状态，除非指定 `--force`。
 - 多包操作先 resolve 全部 tag；任一失败时不写入安装状态。
-- 支持的平台只有 `linux-x86_64` 和 `darwin-arm64`。
+- 支持的平台只有 `linux-x86_64`、`linux-arm64` 和 `darwin-arm64`。
 
 ## OCI Artifact
 

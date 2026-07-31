@@ -29,11 +29,13 @@ macOS 系统动态库只允许来自 `/usr/lib` 和 `/System/Library/Frameworks`
 
 ## 包集合
 
-支持的平台是 `x86_64-linux` 和 `aarch64-darwin`。`flake.nix` 为每个 nixpkgs
-input 创建普通和静态 package set：
+支持的平台是 `x86_64-linux`、`aarch64-linux` 和 `aarch64-darwin`。`flake.nix`
+为每个 nixpkgs input 创建普通和静态 package set：
 
-- Linux 使用 `pkgsCross.musl64.pkgsStatic`。Target 是 musl-static，build
-  platform 仍可复用 glibc Rust/LLVM 工具链。
+- Linux 使用 arch 对应的 musl cross static set：`x86_64-linux` 用
+  `pkgsCross.musl64.pkgsStatic`，`aarch64-linux` 用
+  `pkgsCross.aarch64-multiplatform-musl.pkgsStatic`。Target 是 musl-static，
+  build platform 仍可复用 glibc Rust/LLVM 工具链。
 - Darwin 使用原生 `pkgsStatic`。
 
 包集合按 manifest、common local、platform local 的顺序合并，后者覆盖前者。

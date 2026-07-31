@@ -86,6 +86,7 @@ stdenvNoCC.mkDerivation {
     license = lib.licenses.mit;
     platforms = [
       "x86_64-linux"
+      "aarch64-linux"
       "aarch64-darwin"
     ];
     mainProgram = "markdownlint-cli2";

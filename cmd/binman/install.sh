@@ -15,7 +15,7 @@
 #
 # Overrides (env or flag, flag wins):
 #   BINMAN_INSTALL_DIR / --prefix DIR   install directory (default: ~/.local/bin)
-#   BINMAN_ARCH        / --arch ARCH    arch tag: linux-x86_64 | darwin-arm64
+#   BINMAN_ARCH        / --arch ARCH    arch tag: linux-x86_64 | linux-arm64 | darwin-arm64
 set -euo pipefail
 
 REGISTRY="ghcr.io"
@@ -36,7 +36,7 @@ Usage:
 
 Options:
   --prefix DIR  Install directory (default: ~/.local/bin)
-  --arch ARCH   linux-x86_64 | darwin-arm64
+  --arch ARCH   linux-x86_64 | linux-arm64 | darwin-arm64
 
 Environment:
   BINMAN_INSTALL_DIR
@@ -77,14 +77,16 @@ command -v curl >/dev/null 2>&1 || die "curl is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
 
 # Detect the publish arch tag, mirroring detectArch() in main.go. Only
-# linux-x86_64 and darwin-arm64 are published; anything else must use --arch.
+# linux-x86_64, linux-arm64 and darwin-arm64 are published; anything else must
+# use --arch.
 if [ -z "$ARCH" ]; then
   os="$(uname -s)"
   machine="$(uname -m)"
   case "$os/$machine" in
     Linux/x86_64 | Linux/amd64) ARCH="linux-x86_64" ;;
+    Linux/aarch64 | Linux/arm64) ARCH="linux-arm64" ;;
     Darwin/arm64 | Darwin/aarch64) ARCH="darwin-arm64" ;;
-    *) die "unsupported platform $os/$machine; pass --arch linux-x86_64 or darwin-arm64" ;;
+    *) die "unsupported platform $os/$machine; pass --arch linux-x86_64, linux-arm64 or darwin-arm64" ;;
   esac
 fi
 

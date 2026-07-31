@@ -13,7 +13,8 @@ Node 构建需要 native Python 和平台构建工具；不要把 target 静态 
 `stdenv.hostPlatform.isStatic` 限制到 target 副本。否则 overlay 会污染
 `buildPackages`，改变 cmake、LLVM 和 rustc 的 hash，导致大型工具链失去 binary cache。
 
-Linux 使用 musl64 cross static set，以便 Node 的 Rust 依赖复用 build 平台缓存工具链。
+Linux 使用 arch 对应的 musl cross static set（x86_64 用 musl64，aarch64 用
+aarch64-multiplatform-musl），以便 Node 的 Rust 依赖复用 build 平台缓存工具链。
 macOS 必须从 `pkgsStatic` 构建依赖，最终 Mach-O 只能加载系统库和 framework。
 
 具体 patch 和禁用检查的状态见 [`TODO.md`](../../TODO.md)。

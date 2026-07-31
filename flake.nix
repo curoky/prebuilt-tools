@@ -17,6 +17,7 @@
 
       systems = [
         "x86_64-linux"
+        "aarch64-linux"
         "aarch64-darwin"
       ];
 
@@ -29,24 +30,31 @@
           # One env per pinned nixpkgs input, exposing both regular and static
           # package sets. The manifest selects which env + variant to use.
           #
-          # On Linux, `pkgsStatic` is the musl64 *cross* set
-          # (pkgsCross.musl64.pkgsStatic: build = glibc, host == target =
+          # On Linux, `pkgsStatic` is a musl *cross* set
+          # (pkgsCross.<arch>.pkgsStatic: build = glibc, host == target =
           # musl-static) rather than the native-static set (build == host ==
-          # target == musl). Both are x86-64, so `buildPlatform.canExecute
-          # hostPlatform` stays true and checkPhases are not disabled. The
-          # reason for cross: packages that link Rust deps (e.g. node 26's
-          # temporal_capi) otherwise rebuild the entire musl LLVM + rustc
-          # toolchain from source; the cross set takes rust's `fastCross` path,
-          # reusing the cached glibc rustc/LLVM instead. On Darwin the native
-          # pkgsStatic is kept (pkgsCross.musl64 there means cross-to-Linux).
+          # target == musl). Build and host share the same arch, so
+          # `buildPlatform.canExecute hostPlatform` stays true and checkPhases
+          # are not disabled. The reason for cross: packages that link Rust deps
+          # (e.g. node 26's temporal_capi) otherwise rebuild the entire musl
+          # LLVM + rustc toolchain from source; the cross set takes rust's
+          # `fastCross` path, reusing the cached glibc rustc/LLVM instead. The
+          # cross attribute is arch-specific: `musl64` for x86_64,
+          # `aarch64-multiplatform-musl` for aarch64. On Darwin the native
+          # pkgsStatic is kept (pkgsCross.* there means cross-to-Linux).
           mkEnv =
             input:
             let
               base = import input { inherit system; };
+              linuxStatic =
+                if system == "aarch64-linux" then
+                  base.pkgsCross.aarch64-multiplatform-musl.pkgsStatic
+                else
+                  base.pkgsCross.musl64.pkgsStatic;
             in
             {
               pkgs = base;
-              pkgsStatic = if isDarwin then base.pkgsStatic else base.pkgsCross.musl64.pkgsStatic;
+              pkgsStatic = if isDarwin then base.pkgsStatic else linuxStatic;
             };
           envs = {
             "unstable" = mkEnv inputs.nixpkgs-unstable;

@@ -84,9 +84,9 @@ index，每 5 分钟刷新。首次加载完成前 `/nix-cache-info` 返回 `503
 
 ## Binary Distribution
 
-`.github/workflows/build-nixcache.yaml` 发布 `nixcache-linux-x86_64` 和
-`nixcache-darwin-arm64`。Artifact 只有一个 tar.gz layer，归档布局为
-`nixcache/nixcache`；`install.sh` 只依赖 `curl` 和 `tar`。
+`.github/workflows/build-nixcache.yaml` 发布 `nixcache-linux-x86_64`、
+`nixcache-linux-arm64` 和 `nixcache-darwin-arm64`。Artifact 只有一个 tar.gz
+layer，归档布局为 `nixcache/nixcache`；`install.sh` 只依赖 `curl` 和 `tar`。
 
 - 修改 repository、tag、media type、segment metadata、retention identity 或归档布局时，
   同步 workflow、installer 和 `docs/release-model.md`。

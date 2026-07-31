@@ -46,16 +46,18 @@ func detectArch() (string, error) {
 	switch {
 	case runtime.GOOS == "linux" && runtime.GOARCH == "amd64":
 		return "linux-x86_64", nil
+	case runtime.GOOS == "linux" && runtime.GOARCH == "arm64":
+		return "linux-arm64", nil
 	case runtime.GOOS == "darwin" && runtime.GOARCH == "arm64":
 		return "darwin-arm64", nil
 	}
-	return "", fmt.Errorf("unsupported platform %s/%s; pass --arch linux-x86_64 or darwin-arm64",
+	return "", fmt.Errorf("unsupported platform %s/%s; pass --arch linux-x86_64, linux-arm64 or darwin-arm64",
 		runtime.GOOS, runtime.GOARCH)
 }
 
 func validateArch(arch string) error {
-	if arch != "linux-x86_64" && arch != "darwin-arm64" {
-		return fmt.Errorf("unsupported arch %q; expected linux-x86_64 or darwin-arm64", arch)
+	if arch != "linux-x86_64" && arch != "linux-arm64" && arch != "darwin-arm64" {
+		return fmt.Errorf("unsupported arch %q; expected linux-x86_64, linux-arm64 or darwin-arm64", arch)
 	}
 	return nil
 }
@@ -110,7 +112,7 @@ func main() {
 	}
 	pf := root.PersistentFlags()
 	pf.StringVar(&prefix, "prefix", defaultPrefix, "install prefix")
-	pf.StringVar(&arch, "arch", "", "arch tag: linux-x86_64 | darwin-arm64 (auto-detected)")
+	pf.StringVar(&arch, "arch", "", "arch tag: linux-x86_64 | linux-arm64 | darwin-arm64 (auto-detected)")
 	pf.BoolVar(&verbose, "verbose", false, "also print the detailed log to stderr")
 
 	install := &cobra.Command{

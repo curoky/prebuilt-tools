@@ -25,7 +25,7 @@ Usage:
 
 Options:
   --prefix DIR  Install directory (default: ~/.local/bin)
-  --arch ARCH   linux-x86_64 | darwin-arm64
+  --arch ARCH   linux-x86_64 | linux-arm64 | darwin-arm64
 
 Environment:
   NIXCACHE_INSTALL_DIR
@@ -69,13 +69,14 @@ command -v tar >/dev/null 2>&1 || die "tar is required"
 if [ -z "$ARCH" ]; then
   case "$(uname -s)/$(uname -m)" in
     Linux/x86_64 | Linux/amd64) ARCH="linux-x86_64" ;;
+    Linux/aarch64 | Linux/arm64) ARCH="linux-arm64" ;;
     Darwin/arm64 | Darwin/aarch64) ARCH="darwin-arm64" ;;
-    *) die "unsupported platform; pass --arch linux-x86_64 or darwin-arm64" ;;
+    *) die "unsupported platform; pass --arch linux-x86_64, linux-arm64 or darwin-arm64" ;;
   esac
 fi
 
 case "$ARCH" in
-  linux-x86_64 | darwin-arm64) ;;
+  linux-x86_64 | linux-arm64 | darwin-arm64) ;;
   *) die "unsupported architecture: $ARCH" ;;
 esac
 

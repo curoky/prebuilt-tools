@@ -93,6 +93,8 @@ func currentSystem() string {
 	switch {
 	case runtime.GOOS == "linux" && runtime.GOARCH == "amd64":
 		return "x86_64-linux"
+	case runtime.GOOS == "linux" && runtime.GOARCH == "arm64":
+		return "aarch64-linux"
 	case runtime.GOOS == "darwin" && runtime.GOARCH == "arm64":
 		return "aarch64-darwin"
 	default:
