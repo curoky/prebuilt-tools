@@ -130,6 +130,13 @@
             all-fast = mkAll "all-standalone-tools-fast" (name: !isSlowLLVM name);
           };
           tarballs = tarballPackages;
+          # Pre-artifact upstream/local derivations (the `--source` inputs to
+          # make-artifacts), keyed by package name. Standalone outputs relativize
+          # their contents and drop all store references, so the source closure
+          # is absent from the standalone closure. Exposing it lets CI push the
+          # source closure to the cache so rebuilds substitute upstream deps
+          # instead of rebuilding from source.
+          sources = allPackages;
         };
     in
     let
@@ -138,5 +145,6 @@
     {
       packages = lib.mapAttrs (_: o: o.packages) perSystemOutputs;
       tarballs = lib.mapAttrs (_: o: o.tarballs) perSystemOutputs;
+      sources = lib.mapAttrs (_: o: o.sources) perSystemOutputs;
     };
 }
