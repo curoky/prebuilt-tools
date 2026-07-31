@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - '.github/workflows/prune-nix-cache.yaml'
+  schedule:
+    - cron: '0 3 * * *'
   workflow_dispatch:
 
 jobs:
@@ -26,7 +28,7 @@ jobs:
           echo "Cache size before prune: $before" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Prune old snapshots
-        run: $HOME/.local/bin/nixcache prune --keep 2
+        run: $HOME/.local/bin/nixcache prune --snapshot-keep 2 --package-retain-days 2 --package-keep 2
 
       - name: Report cache size after prune
         run: |

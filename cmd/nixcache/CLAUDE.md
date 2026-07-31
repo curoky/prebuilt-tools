@@ -15,6 +15,27 @@
 - `packageKey` 是稳定 package identity；`runId` 只用于诊断。
 - 二进制以 `CGO_ENABLED=0` 构建。`push` 依赖宿主 `nix`，其他命令不调用外部程序。
 
+## 核心概念
+
+- **snapshot**：原始 `flake.lock` 的 SHA-256，代表一整套锁定的 nixpkgs channel
+  版本，即一个依赖世界。`flake.lock` 一变 snapshot 就变；它是 cache 复用的边界，
+  不同 snapshot 的 segment 互不复用。
+- **segment**：一次 `push` 产出的不可变单元，一个 OCI image manifest，包含某个包在
+  某 snapshot、某 system 下的完整 closure（metadata layer 加若干 NAR layer）。同一包
+  重跑只新增 segment，不覆盖旧的。
+- **packageKey**：稳定的包身份，值为 matrix package 名，由 `push --key` 或
+  `NIXCACHE_PACKAGE_KEY` 传入。它是 retention 去重键；`runId` 不参与 identity。
+
+segment tag 编码了前两者：
+
+```text
+v1-<snapshot前16位>-<system>-<runId>-<random>
+└──────── 共享前缀（serve 按此过滤）────────┘└── 每次 push 唯一 ──┘
+```
+
+`serve` 用共享前缀只加载当前 snapshot+system 的 segment；`runId`+`random` 保证并发
+matrix job 的 tag 不相撞。
+
 ## OCI Schema
 
 Cache repository：
@@ -45,13 +66,17 @@ digest、size、media type 和 annotation 一致。
 
 `serve` 监听 `127.0.0.1:37515`，按当前 snapshot 和 system 的 tag prefix 并发加载
 index，每 5 分钟刷新。首次加载完成前 `/nix-cache-info` 返回 `503`。Repository
-不存在视为空 cache；首次加载错误终止服务，周期刷新错误保留上一份 index。
+不存在视为空 cache；首次加载错误终止服务，周期刷新错误保留上一份 index。`serve`
+只读，不删除任何 segment。
 
-Retention 按 system 独立计算：
+清理（retention）只由 `prune` 执行，按 system 独立计算：
 
-1. 按最新 segment 时间保留最近 `N` 个 snapshot，默认 `N=2`。
-2. 每个保留 snapshot 按 `packageKey` 保留最新 segment。
-3. 保留 snapshot 内空 `packageKey` 的 segment 全部保留。
+1. 按最新 segment 时间保留最近 `N` 个 snapshot，默认 `N=2`（`--snapshot-keep`）。
+2. 每个保留 snapshot 内按 `packageKey` 分组：保留组内最新 segment 起
+   `--package-retain-days`（默认 2）天滚动窗口内的所有 segment；窗口内不足
+   `--package-keep`（默认 2）个时，按 `CreatedAt` 降序补到该数。择新以
+   `CreatedAt` 为主键，相等时用 tag 字符串做确定性 tie-break。
+3. 保留 snapshot 内空 `packageKey` 的 segment 全部保留（无法安全归属）。
 4. 删除其余 segment。
 
 - `prune` 必须先解析全部目标 version ID，再进行任何删除；`--dry-run` 不发请求。

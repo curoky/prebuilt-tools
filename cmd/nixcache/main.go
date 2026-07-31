@@ -68,6 +68,8 @@ func main() {
 	}
 
 	var keep int
+	var packageRetainDays int
+	var packageKeep int
 	var dryRun bool
 	prune := &cobra.Command{
 		Use:   "prune",
@@ -78,10 +80,12 @@ func main() {
 			if err != nil {
 				return err
 			}
-			return pruneCache(cmd.Context(), client, keep, dryRun)
+			return pruneCache(cmd.Context(), client, keep, packageRetainDays, packageKeep, dryRun)
 		},
 	}
-	prune.Flags().IntVar(&keep, "keep", 2, "number of most recent snapshots to keep per system")
+	prune.Flags().IntVar(&keep, "snapshot-keep", 2, "number of most recent snapshots to keep per system")
+	prune.Flags().IntVar(&packageRetainDays, "package-retain-days", 2, "within a kept snapshot, keep every segment pushed within this many days of each package's newest segment")
+	prune.Flags().IntVar(&packageKeep, "package-keep", 2, "within a kept snapshot, keep at least this many newest segments per package when the day window holds fewer")
 	prune.Flags().BoolVar(&dryRun, "dry-run", false, "list segments that would be deleted without deleting")
 
 	size := &cobra.Command{

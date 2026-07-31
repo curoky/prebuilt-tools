@@ -39,6 +39,20 @@ func ref(snapshotID, system, packageKey, tag string, created int64) segmentRef {
 	}
 }
 
+// refAt builds a segmentRef with an explicit wall-clock CreatedAt so package
+// retention window tests can place segments inside or outside the day window.
+func refAt(snapshotID, system, packageKey, tag string, created time.Time) segmentRef {
+	return segmentRef{
+		segment: segment{
+			Snapshot:   snapshotID,
+			System:     system,
+			PackageKey: packageKey,
+			CreatedAt:  created,
+		},
+		Tag: tag,
+	}
+}
+
 func TestKeptSnapshotsKeepsNewestPerSystem(t *testing.T) {
 	segments := []segmentRef{
 		ref("snap-1", "x86_64-linux", "pkg", "t1", 1),
@@ -82,7 +96,7 @@ func TestPruneDryRunDeletesNothing(t *testing.T) {
 	pushTestSegment(t, client, "sha256:2222222222222222000000000000000000000000000000000000000000000000", "x86_64-linux", "two", "2", "two")
 	pushTestSegment(t, client, "sha256:3333333333333333000000000000000000000000000000000000000000000000", "x86_64-linux", "three", "3", "three")
 
-	if err := pruneCache(context.Background(), client, 1, true); err != nil {
+	if err := pruneCache(context.Background(), client, 1, 2, 2, true); err != nil {
 		t.Fatal(err)
 	}
 	segments, err := client.listSegments(context.Background(), "")
@@ -100,7 +114,9 @@ func TestSegmentsToDeleteKeepsLatestPerPackage(t *testing.T) {
 		ref("snapshot", "x86_64-linux", "beta", "beta-only", 2),
 		ref("snapshot", "x86_64-linux", "alpha", "alpha-new", 3),
 	}
-	toDelete, retained := segmentsToDelete(segments, 1)
+	// retainDays=0 disables the window, so only the newest segment per package
+	// survives via the packageKeep=1 fallback.
+	toDelete, retained := segmentsToDelete(segments, 1, 0, 1)
 	if len(toDelete) != 1 || toDelete[0].Tag != "alpha-old" {
 		t.Fatalf("toDelete=%v", toDelete)
 	}
@@ -115,7 +131,7 @@ func TestSegmentsToDeleteKeepsPackagesMissingFromIncrementalRun(t *testing.T) {
 		ref("snapshot", "x86_64-linux", "beta", "run-1-beta", 2),
 		ref("snapshot", "x86_64-linux", "alpha", "run-2-alpha", 3),
 	}
-	toDelete, _ := segmentsToDelete(segments, 1)
+	toDelete, _ := segmentsToDelete(segments, 1, 0, 1)
 	if len(toDelete) != 1 || toDelete[0].Tag != "run-1-alpha" {
 		t.Fatalf("incremental run must retain beta: %v", toDelete)
 	}
@@ -126,9 +142,52 @@ func TestSegmentsToDeleteKeepsLegacySegments(t *testing.T) {
 		ref("snapshot", "x86_64-linux", "", "legacy-a", 1),
 		ref("snapshot", "x86_64-linux", "", "legacy-b", 2),
 	}
-	toDelete, retained := segmentsToDelete(segments, 1)
+	toDelete, retained := segmentsToDelete(segments, 1, 2, 2)
 	if len(toDelete) != 0 || retained != 2 {
 		t.Fatalf("toDelete=%v retained=%d", toDelete, retained)
+	}
+}
+
+// TestSegmentsToDeleteKeepsPackageSegmentsWithinDayWindow verifies that every
+// segment pushed within retainDays of a package's newest segment survives, while
+// older segments outside the window are deleted.
+func TestSegmentsToDeleteKeepsPackageSegmentsWithinDayWindow(t *testing.T) {
+	now := time.Now()
+	segments := []segmentRef{
+		refAt("snapshot", "x86_64-linux", "alpha", "alpha-now", now),
+		refAt("snapshot", "x86_64-linux", "alpha", "alpha-1d", now.Add(-24*time.Hour)),
+		refAt("snapshot", "x86_64-linux", "alpha", "alpha-3d", now.Add(-72*time.Hour)),
+	}
+	// keep=1 snapshot, 2-day window, fallback 1. The 3-day-old segment is
+	// outside the window and beyond the fallback, so it is deleted.
+	toDelete, retained := segmentsToDelete(segments, 1, 2, 1)
+	if len(toDelete) != 1 || toDelete[0].Tag != "alpha-3d" {
+		t.Fatalf("toDelete=%v", toDelete)
+	}
+	if retained != 2 {
+		t.Fatalf("retained=%d", retained)
+	}
+}
+
+// TestSegmentsToDeleteFallsBackToPackageKeep verifies that when the day window
+// holds fewer than packageKeep segments, the newest packageKeep segments are
+// retained regardless of age.
+func TestSegmentsToDeleteFallsBackToPackageKeep(t *testing.T) {
+	now := time.Now()
+	segments := []segmentRef{
+		refAt("snapshot", "x86_64-linux", "alpha", "alpha-10d", now.Add(-240*time.Hour)),
+		refAt("snapshot", "x86_64-linux", "alpha", "alpha-11d", now.Add(-264*time.Hour)),
+		refAt("snapshot", "x86_64-linux", "alpha", "alpha-12d", now.Add(-288*time.Hour)),
+	}
+	// All segments are older than the 2-day window relative to now, but the
+	// window is anchored on the group's newest segment (10d), so 11d falls in.
+	// 12d is outside the window; fallback packageKeep=2 still retains it.
+	toDelete, retained := segmentsToDelete(segments, 1, 2, 2)
+	if len(toDelete) != 1 || toDelete[0].Tag != "alpha-12d" {
+		t.Fatalf("toDelete=%v", toDelete)
+	}
+	if retained != 2 {
+		t.Fatalf("retained=%d", retained)
 	}
 }
 
@@ -153,7 +212,7 @@ func TestCacheSizeDeduplicatesBlobs(t *testing.T) {
 
 func TestPruneRejectsKeepZero(t *testing.T) {
 	client := testRegistryClient(t)
-	if err := pruneCache(context.Background(), client, 0, false); err == nil {
+	if err := pruneCache(context.Background(), client, 0, 2, 2, false); err == nil {
 		t.Fatal("expected error for keep=0")
 	}
 }

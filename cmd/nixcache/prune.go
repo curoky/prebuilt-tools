@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"time"
 
 	"github.com/opencontainers/go-digest"
 	"golang.org/x/sync/errgroup"
@@ -33,11 +34,19 @@ func cacheSize(ctx context.Context, client *registryClient) (int64, error) {
 }
 
 // pruneCache keeps the newest snapshots per system. Within a kept snapshot it
-// keeps the newest segment for each stable package key. Legacy segments without
-// a package key are retained because they cannot be safely attributed.
-func pruneCache(ctx context.Context, client *registryClient, keep int, dryRun bool) error {
+// keeps, per stable package key, every segment pushed within retainDays of that
+// package's newest segment, falling back to the newest packageKeep segments when
+// the window holds fewer. Legacy segments without a package key are retained
+// because they cannot be safely attributed.
+func pruneCache(ctx context.Context, client *registryClient, keep, retainDays, packageKeep int, dryRun bool) error {
 	if keep < 1 {
 		return fmt.Errorf("keep must be at least 1, got %d", keep)
+	}
+	if retainDays < 0 {
+		return fmt.Errorf("package-retain-days must not be negative, got %d", retainDays)
+	}
+	if packageKeep < 1 {
+		return fmt.Errorf("package-keep must be at least 1, got %d", packageKeep)
 	}
 	segments, err := client.listSegments(ctx, "")
 	if err != nil {
@@ -48,7 +57,7 @@ func pruneCache(ctx context.Context, client *registryClient, keep int, dryRun bo
 		return nil
 	}
 
-	toDelete, retained := segmentsToDelete(segments, keep)
+	toDelete, retained := segmentsToDelete(segments, keep, retainDays, packageKeep)
 
 	if dryRun {
 		for _, ref := range toDelete {
@@ -81,15 +90,15 @@ func pruneCache(ctx context.Context, client *registryClient, keep int, dryRun bo
 	return nil
 }
 
-func segmentsToDelete(segments []segmentRef, keep int) ([]segmentRef, int) {
+func segmentsToDelete(segments []segmentRef, keep, retainDays, packageKeep int) ([]segmentRef, int) {
 	kept := keptSnapshots(segments, keep)
-	latestPackageSegments := latestSegmentsByPackage(segments, kept)
+	retainedPackageSegments := retainedSegmentsByPackage(segments, kept, retainDays, packageKeep)
 
 	toDelete := make([]segmentRef, 0)
 	var retained int
 	for _, ref := range segments {
 		if kept[ref.System][ref.Snapshot] &&
-			(ref.PackageKey == "" || latestPackageSegments[ref.Tag]) {
+			(ref.PackageKey == "" || retainedPackageSegments[ref.Tag]) {
 			retained++
 			continue
 		}
@@ -175,25 +184,40 @@ func keptSnapshots(segments []segmentRef, keep int) map[string]map[string]bool {
 	return kept
 }
 
-func latestSegmentsByPackage(segments []segmentRef, keptSnapshots map[string]map[string]bool) map[string]bool {
+// retainedSegmentsByPackage selects, per (system, snapshot, packageKey) group in
+// kept snapshots, the segments to keep: every segment whose CreatedAt falls
+// within retainDays of the group's newest segment, and at least packageKeep
+// segments (newest first) when the window holds fewer. Groups are ranked by
+// CreatedAt with the tag string as a deterministic tie-breaker.
+func retainedSegmentsByPackage(segments []segmentRef, keptSnapshots map[string]map[string]bool, retainDays, packageKeep int) map[string]bool {
 	type packageIdentity struct {
 		system, snapshot, packageKey string
 	}
-	latest := make(map[packageIdentity]segmentRef)
+	groups := make(map[packageIdentity][]segmentRef)
 	for _, ref := range segments {
 		if ref.PackageKey == "" || !keptSnapshots[ref.System][ref.Snapshot] {
 			continue
 		}
 		key := packageIdentity{ref.System, ref.Snapshot, ref.PackageKey}
-		current, ok := latest[key]
-		if !ok || ref.CreatedAt.After(current.CreatedAt) ||
-			(ref.CreatedAt.Equal(current.CreatedAt) && ref.Tag > current.Tag) {
-			latest[key] = ref
-		}
+		groups[key] = append(groups[key], ref)
 	}
-	kept := make(map[string]bool, len(latest))
-	for _, ref := range latest {
-		kept[ref.Tag] = true
+
+	window := time.Duration(retainDays) * 24 * time.Hour
+	kept := make(map[string]bool)
+	for _, group := range groups {
+		sort.Slice(group, func(i, j int) bool {
+			if !group[i].CreatedAt.Equal(group[j].CreatedAt) {
+				return group[i].CreatedAt.After(group[j].CreatedAt)
+			}
+			return group[i].Tag > group[j].Tag
+		})
+		newest := group[0].CreatedAt
+		cutoff := newest.Add(-window)
+		for index, ref := range group {
+			if ref.CreatedAt.After(cutoff) || index < packageKeep {
+				kept[ref.Tag] = true
+			}
+		}
 	}
 	return kept
 }
