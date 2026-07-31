@@ -35,12 +35,13 @@ env:
     lld_18 lld_19 lld_20 lld_21 lld_22
     clang18 clang19 clang20 clang21 clang22
   # Slow-to-build packages (Node.js runtime and sibling-runtime tools, plus
-  # nil / nixfmt / shellcheck / gdb). Skipped only on `push` so ordinary code
-  # pushes stay fast; `schedule` and `workflow_dispatch` still build/publish
-  # them. Space-separated.
+  # nil / nixfmt / shellcheck / gdb and the clang-tools LLVM builds). Skipped
+  # only on `push` so ordinary code pushes stay fast; `schedule` and
+  # `workflow_dispatch` still build/publish them. Space-separated.
   PUSH_EXCLUDE_PKGS: >-
     nodejs-slim24 nodejs-slim26 markdownlint-cli2 opencommit pnpm prettier
     nil nixfmt shellcheck gdb
+    clang-tools-18 clang-tools-19 clang-tools-20 clang-tools-21 clang-tools-22
 
 jobs:
   discover:

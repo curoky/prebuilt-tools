@@ -50,14 +50,15 @@ identity。
 同步 Linux、Darwin workflow 和本表。
 
 Node.js 运行时和同级 runtime 工具（`nodejs-slim*`、`markdownlint-cli2`、`opencommit`、
-`pnpm`、`prettier`）以及 `nil`、`nixfmt`、`shellcheck`、`gdb` 编译慢，仅在 `push`
-触发时通过 workflow 的 `PUSH_EXCLUDE_PKGS` 从候选中排除，避免拖慢普通代码 push。
-其中 `nil`、`nixfmt` 只在 Linux 暴露，Darwin 的排除列表相应更短。`schedule` 和
-`workflow_dispatch` 不受此排除影响，仍会构建并发布它们。改动 `PUSH_EXCLUDE_PKGS` 时须同步
-Linux、Darwin workflow 和本说明。
+`pnpm`、`prettier`）以及 `nil`、`nixfmt`、`shellcheck`、`gdb`、`clang-tools-{18..22}`
+编译慢，仅在 `push` 触发时通过 workflow 的 `PUSH_EXCLUDE_PKGS` 从候选中排除，避免拖慢普通
+代码 push。其中 `nil`、`nixfmt`、`clang-tools-*` 只在 Linux 暴露，Darwin 的排除列表相应
+更短。`schedule` 和 `workflow_dispatch` 不受此排除影响，仍会构建并发布它们。改动
+`PUSH_EXCLUDE_PKGS` 时须同步 Linux、Darwin workflow 和本说明。
 
 `clang-tools-{18..22}`（原 `build-llvm-tools.yaml`）已并入 Linux workflow 的普通
 `discover` / build matrix，与其他包共用 cache 命中过滤和 artifact 发布契约。它们是
 LLVM/clang 大型构建，build job 仅对 `clang-tools-*` 的 matrix leg 额外执行释放磁盘和
-配置 swap 的准备步骤。`lld_*` 与 `clang*` 仍通过 `EXCLUDE_PKGS` 排除（只作为构建输入
-暴露，不单独发布）。`.github/workflows/prune-nix-cache.yaml` 只允许手动触发。
+配置 swap 的准备步骤，且已随上文列入 `PUSH_EXCLUDE_PKGS`（push 时跳过）。`lld_*` 与
+`clang*` 仍通过 `EXCLUDE_PKGS` 排除（只作为构建输入暴露，不单独发布）。
+`.github/workflows/prune-nix-cache.yaml` 只允许手动触发。
