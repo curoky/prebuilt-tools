@@ -57,6 +57,38 @@ func testRegistryClient(t *testing.T) *registryClient {
 	return client
 }
 
+func TestRegistryRequestRetriesTimeout(t *testing.T) {
+	attempts := 0
+	value, err := registryRequest(context.Background(), "test request", func(context.Context) (string, error) {
+		attempts++
+		if attempts < registryTimeoutAttempts {
+			return "", context.DeadlineExceeded
+		}
+		return "ok", nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value != "ok" || attempts != registryTimeoutAttempts {
+		t.Fatalf("value=%q attempts=%d", value, attempts)
+	}
+}
+
+func TestRegistryRequestDoesNotRetryOtherErrors(t *testing.T) {
+	expected := errors.New("invalid response")
+	attempts := 0
+	_, err := registryRequest(context.Background(), "test request", func(context.Context) (string, error) {
+		attempts++
+		return "", expected
+	})
+	if !errors.Is(err, expected) {
+		t.Fatalf("err=%v", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts=%d", attempts)
+	}
+}
+
 func TestRegistryRoundTrip(t *testing.T) {
 	client := testRegistryClient(t)
 

@@ -92,11 +92,33 @@ const storeHashAnnotation = "org.nixos.store.hash"
 // the index ready and CI probes exhaust their retries on 503.
 const registryTimeout = 30 * time.Second
 
+const registryTimeoutAttempts = 3
+
+func registryRequest[T any](ctx context.Context, name string, request func(context.Context) (T, error)) (T, error) {
+	var zero T
+	for attempt := 1; attempt <= registryTimeoutAttempts; attempt++ {
+		requestCtx, cancel := context.WithTimeout(ctx, registryTimeout)
+		value, err := request(requestCtx)
+		cancel()
+		if err == nil {
+			return value, nil
+		}
+		if ctx.Err() != nil {
+			return zero, ctx.Err()
+		}
+		if !errors.Is(err, context.DeadlineExceeded) || attempt == registryTimeoutAttempts {
+			return zero, err
+		}
+		log.Printf("%s timed out, retrying (%d/%d)", name, attempt+1, registryTimeoutAttempts)
+	}
+	panic("unreachable")
+}
+
 func (client *registryClient) listTags(ctx context.Context, tagPrefix string) ([]string, error) {
 	log.Printf("listing cache tags from %s", client.repo.Reference.Repository)
-	requestCtx, cancel := context.WithTimeout(ctx, registryTimeout)
-	defer cancel()
-	tags, err := registry.Tags(requestCtx, client.repo)
+	tags, err := registryRequest(ctx, "list cache tags", func(requestCtx context.Context) ([]string, error) {
+		return registry.Tags(requestCtx, client.repo)
+	})
 	if err != nil {
 		if errors.Is(err, errdef.ErrNotFound) || isNameUnknown(err) {
 			log.Printf("cache repository %s not found yet, treating as empty", client.repo.Reference.Repository)
@@ -235,47 +257,47 @@ func isNameUnknown(err error) bool {
 }
 
 func (client *registryClient) getManifest(ctx context.Context, tag string) (manifestRef, error) {
-	requestCtx, cancel := context.WithTimeout(ctx, registryTimeout)
-	defer cancel()
-	_, reader, err := client.repo.FetchReference(requestCtx, tag)
-	if err != nil {
-		return manifestRef{}, err
-	}
-	defer func() { _ = reader.Close() }()
+	return registryRequest(ctx, "fetch manifest "+tag, func(requestCtx context.Context) (manifestRef, error) {
+		_, reader, err := client.repo.FetchReference(requestCtx, tag)
+		if err != nil {
+			return manifestRef{}, err
+		}
+		defer func() { _ = reader.Close() }()
 
-	var manifest ocispec.Manifest
-	if err := json.NewDecoder(reader).Decode(&manifest); err != nil {
-		return manifestRef{}, err
-	}
-	if len(manifest.Layers) == 0 {
-		return manifestRef{}, fmt.Errorf("segment has no metadata layer")
-	}
-	metadata := manifest.Layers[0]
-	if metadata.MediaType != segmentMediaType {
-		return manifestRef{}, fmt.Errorf("unexpected metadata media type %q", metadata.MediaType)
-	}
+		var manifest ocispec.Manifest
+		if err := json.NewDecoder(reader).Decode(&manifest); err != nil {
+			return manifestRef{}, err
+		}
+		if len(manifest.Layers) == 0 {
+			return manifestRef{}, fmt.Errorf("segment has no metadata layer")
+		}
+		metadata := manifest.Layers[0]
+		if metadata.MediaType != segmentMediaType {
+			return manifestRef{}, fmt.Errorf("unexpected metadata media type %q", metadata.MediaType)
+		}
 
-	if metadata.Size < 0 {
-		return manifestRef{}, fmt.Errorf("metadata layer has invalid size %d", metadata.Size)
-	}
-	narLayers := make(map[string]ocispec.Descriptor, len(manifest.Layers)-1)
-	for _, layer := range manifest.Layers[1:] {
-		if layer.MediaType != narMediaType {
-			return manifestRef{}, fmt.Errorf("unexpected NAR media type %q", layer.MediaType)
+		if metadata.Size < 0 {
+			return manifestRef{}, fmt.Errorf("metadata layer has invalid size %d", metadata.Size)
 		}
-		if layer.Size < 0 {
-			return manifestRef{}, fmt.Errorf("layer %s has invalid size %d", layer.Digest, layer.Size)
+		narLayers := make(map[string]ocispec.Descriptor, len(manifest.Layers)-1)
+		for _, layer := range manifest.Layers[1:] {
+			if layer.MediaType != narMediaType {
+				return manifestRef{}, fmt.Errorf("unexpected NAR media type %q", layer.MediaType)
+			}
+			if layer.Size < 0 {
+				return manifestRef{}, fmt.Errorf("layer %s has invalid size %d", layer.Digest, layer.Size)
+			}
+			hash := layer.Annotations[storeHashAnnotation]
+			if hash == "" {
+				return manifestRef{}, fmt.Errorf("NAR layer %s is missing %s annotation", layer.Digest, storeHashAnnotation)
+			}
+			if _, exists := narLayers[hash]; exists {
+				return manifestRef{}, fmt.Errorf("duplicate NAR layer for store hash %s", hash)
+			}
+			narLayers[hash] = layer
 		}
-		hash := layer.Annotations[storeHashAnnotation]
-		if hash == "" {
-			return manifestRef{}, fmt.Errorf("NAR layer %s is missing %s annotation", layer.Digest, storeHashAnnotation)
-		}
-		if _, exists := narLayers[hash]; exists {
-			return manifestRef{}, fmt.Errorf("duplicate NAR layer for store hash %s", hash)
-		}
-		narLayers[hash] = layer
-	}
-	return manifestRef{Tag: tag, Metadata: metadata, NARLayers: narLayers}, nil
+		return manifestRef{Tag: tag, Metadata: metadata, NARLayers: narLayers}, nil
+	})
 }
 
 func (client *registryClient) getSegment(ctx context.Context, tag string) (segmentRef, error) {
@@ -284,25 +306,25 @@ func (client *registryClient) getSegment(ctx context.Context, tag string) (segme
 		return segmentRef{}, err
 	}
 
-	requestCtx, cancel := context.WithTimeout(ctx, registryTimeout)
-	defer cancel()
-	reader, err := client.repo.Fetch(requestCtx, manifest.Metadata)
-	if err != nil {
-		return segmentRef{}, err
-	}
-	defer func() { _ = reader.Close() }()
+	return registryRequest(ctx, "fetch segment metadata "+tag, func(requestCtx context.Context) (segmentRef, error) {
+		reader, err := client.repo.Fetch(requestCtx, manifest.Metadata)
+		if err != nil {
+			return segmentRef{}, err
+		}
+		defer func() { _ = reader.Close() }()
 
-	var item segment
-	if err := json.NewDecoder(reader).Decode(&item); err != nil {
-		return segmentRef{}, fmt.Errorf("decode segment metadata: %w", err)
-	}
-	if item.Version != segmentVersion {
-		return segmentRef{}, fmt.Errorf("unsupported segment version %d", item.Version)
-	}
-	if err := validateSegment(tag, item, manifest); err != nil {
-		return segmentRef{}, err
-	}
-	return segmentRef{segment: item, Tag: tag}, nil
+		var item segment
+		if err := json.NewDecoder(reader).Decode(&item); err != nil {
+			return segmentRef{}, fmt.Errorf("decode segment metadata: %w", err)
+		}
+		if item.Version != segmentVersion {
+			return segmentRef{}, fmt.Errorf("unsupported segment version %d", item.Version)
+		}
+		if err := validateSegment(tag, item, manifest); err != nil {
+			return segmentRef{}, err
+		}
+		return segmentRef{segment: item, Tag: tag}, nil
+	})
 }
 
 func validateSegment(tag string, item segment, manifest manifestRef) error {
