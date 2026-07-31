@@ -32,6 +32,13 @@ env:
     clang-tools-18 clang-tools-19 clang-tools-20 clang-tools-21 clang-tools-22
     lld_18 lld_19 lld_20 lld_21 lld_22
     clang18 clang19 clang20 clang21 clang22
+  # Slow-to-build packages (Node.js runtime and sibling-runtime tools, plus
+  # nil / nixfmt / shellcheck / gdb). Skipped only on `push` so ordinary code
+  # pushes stay fast; `schedule` and `workflow_dispatch` still build/publish
+  # them. Space-separated.
+  PUSH_EXCLUDE_PKGS: >-
+    nodejs-slim24 nodejs-slim26 markdownlint-cli2 opencommit pnpm prettier
+    nil nixfmt shellcheck gdb
 
 jobs:
   discover:
@@ -100,6 +107,14 @@ jobs:
           for name in $EXCLUDE_PKGS; do
             grep -vP "^${name}\t" pkgs.tsv > pkgs.tsv.tmp && mv pkgs.tsv.tmp pkgs.tsv
           done
+
+          # Slow Node.js packages are skipped on `push` only (see PUSH_EXCLUDE_PKGS
+          # in the top-level env); schedule and workflow_dispatch still build them.
+          if [ "$EVENT_NAME" = "push" ]; then
+            for name in $PUSH_EXCLUDE_PKGS; do
+              grep -vP "^${name}\t" pkgs.tsv > pkgs.tsv.tmp && mv pkgs.tsv.tmp pkgs.tsv
+            done
+          fi
 
           # Query the binary cache in parallel; a cache miss means the package
           # must be rebuilt. Print the name only for misses. Skip the cache

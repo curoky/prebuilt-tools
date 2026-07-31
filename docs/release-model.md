@@ -49,5 +49,12 @@ identity。
 具体包 dispatch 直接构造单包 matrix，不做 cache 探测。新增触发方式或改变选择语义时，必须
 同步 Linux、Darwin workflow 和本表。
 
+Node.js 运行时和同级 runtime 工具（`nodejs-slim*`、`markdownlint-cli2`、`opencommit`、
+`pnpm`、`prettier`）以及 `nil`、`nixfmt`、`shellcheck`、`gdb` 编译慢，仅在 `push`
+触发时通过 workflow 的 `PUSH_EXCLUDE_PKGS` 从候选中排除，避免拖慢普通代码 push。
+其中 `nil`、`nixfmt` 只在 Linux 暴露，Darwin 的排除列表相应更短。`schedule` 和
+`workflow_dispatch` 不受此排除影响，仍会构建并发布它们。改动 `PUSH_EXCLUDE_PKGS` 时须同步
+Linux、Darwin workflow 和本说明。
+
 LLVM 工具 workflow 按版本矩阵直接构建，不经过普通包的 `discover`，但使用相同的 artifact
 和 cache 发布契约。`.github/workflows/prune-nix-cache.yaml` 只允许手动触发。
