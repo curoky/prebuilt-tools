@@ -234,12 +234,14 @@ jobs:
           # contents and drops all store references, so its closure does not
           # include the upstream deps. Build the source separately so its closure
           # can be pushed too, letting later rebuilds substitute upstream deps
-          # instead of rebuilding from source. Capture the store path directly:
-          # sources may expose a non-default output (e.g. bzip2's `bin`), and Nix
-          # would then suffix the out-link (`source-bin`) rather than create
-          # `source`, so a fixed --out-link name is unreliable here.
+          # instead of rebuilding from source. Capture the store path(s)
+          # directly: sources may expose a non-default output (e.g. bzip2's
+          # `bin`), and Nix would then suffix the out-link (`source-bin`) rather
+          # than create `source`, so a fixed --out-link name is unreliable. A
+          # multi-output source (e.g. execline's `bin` + `man`) prints one store
+          # path per line; the push step splits them back into separate args.
           {
-            echo "SOURCE_STORE_PATH<<EOF"
+            echo "SOURCE_STORE_PATHS<<EOF"
             nix build \
               --option extra-substituters "$NIXCACHE_STORE" \
               --option require-sigs false \
@@ -253,7 +255,16 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NIXCACHE_PACKAGE_KEY: ${{ matrix.name }}
-        run: '"$RUNNER_TEMP/bin/nixcache" push "$(readlink -f ./standalone)" "$SOURCE_STORE_PATH"'
+        run: |
+          # SOURCE_STORE_PATHS holds one store path per line (a multi-output
+          # source such as execline yields several). Drop blank lines so an empty
+          # element is never passed to push.
+          source_paths=()
+          while IFS= read -r p; do
+            [[ -n "$p" ]] && source_paths+=("$p")
+          done <<<"$SOURCE_STORE_PATHS"
+          "$RUNNER_TEMP/bin/nixcache" push \
+            "$(readlink -f ./standalone)" "${source_paths[@]}"
 
       - uses: oras-project/setup-oras@v2
 
