@@ -332,7 +332,5 @@ in
         echo "storage.conf contains a fixed installation path" >&2
         exit 1
       fi
-
-      runHook postInstallCheck
     '';
   })
