@@ -8,6 +8,9 @@ export CONTAINERS_CONF=$root/../conf/containers.conf
 export CONTAINERS_STORAGE_CONF=$root/../conf/storage.conf
 export CONTAINERS_REGISTRIES_CONF=$root/../conf/registries.conf
 export CONTAINERS_POLICY_JSON=$root/../conf/policy.json
+export PODMAN_DATA_DIR=$root/../data
+export TMPDIR=$PODMAN_DATA_DIR/tmpdir
+mkdir -p "$TMPDIR"
 
 export CONTAINER_HOST=unix:///run/podman/podman.sock
 

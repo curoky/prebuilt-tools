@@ -8,9 +8,8 @@ export CONTAINERS_CONF=$root/../conf/containers.conf
 export CONTAINERS_STORAGE_CONF=$root/../conf/storage.conf
 export CONTAINERS_REGISTRIES_CONF=$root/../conf/registries.conf
 export CONTAINERS_POLICY_JSON=$root/../conf/policy.json
-
-# or --tmpdir=path
-# export TMPDIR=$root/tmpdir
+export PODMAN_DATA_DIR=$root/../data
+export TMPDIR=$PODMAN_DATA_DIR/tmpdir
 
 # export PATH=$PATH:$root
 
@@ -22,7 +21,7 @@ export CONTAINERS_POLICY_JSON=$root/../conf/policy.json
 # export HTTP_PROXY=http://127.0.0.1:7890
 # export HTTPS_PROXY=http://127.0.0.1:7890
 
-mkdir -p /opt/podmanx/data/tmpdir
+mkdir -p "$TMPDIR"
 mkdir -p /run/podman
 
 # --out=$root/../podman.log \

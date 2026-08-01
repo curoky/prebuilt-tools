@@ -1,0 +1,72 @@
+--- a/libpod/oci_conmon_common.go
++++ b/libpod/oci_conmon_common.go
+@@ -122,0 +123,8 @@
++	if dir := config.PackagedExecutableDir(); dir != "" {
++		binary := name
++		if len(paths) > 0 {
++			binary = paths[0]
++		}
++		paths = []string{filepath.Join(dir, filepath.Base(binary))}
++	}
++
+@@ -142 +150 @@
+-	if !foundPath {
++	if !foundPath && config.PackagedExecutableDir() == "" {
+--- a/vendor/go.podman.io/common/pkg/config/config.go
++++ b/vendor/go.podman.io/common/pkg/config/config.go
+@@ -834,0 +835 @@
++	packagedDir := PackagedExecutableDir()
+@@ -837 +838,9 @@
+-		for _, v := range c.OCIRuntimes[name] {
++		paths := c.OCIRuntimes[name]
++		if packagedDir != "" {
++			binary := name
++			if len(paths) > 0 {
++				binary = paths[0]
++			}
++			paths = []string{filepath.Join(packagedDir, filepath.Base(binary))}
++		}
++		for _, v := range paths {
+@@ -842 +851,5 @@
+-		if path, err := exec.LookPath(name); err == nil {
++		if packagedDir == "" {
++			path, err := exec.LookPath(name)
++			if err != nil {
++				continue
++			}
+@@ -944,0 +958,4 @@
++	if dir := PackagedExecutableDir(); dir != "" {
++		path := filepath.Join(dir, "conmon")
++		return findConmonPath([]string{path}, path)
++	}
+@@ -974,0 +992,4 @@
++	if dir := PackagedExecutableDir(); dir != "" {
++		path := filepath.Join(dir, "conmonrs")
++		return findConmonPath([]string{path}, path)
++	}
+@@ -1097,0 +1119,12 @@
++// PackagedExecutableDir returns the exclusive executable directory set by the packager.
++func PackagedExecutableDir() string {
++	if additionalHelperBinariesDir == "" {
++		return ""
++	}
++	bindir := findBindir()
++	if bindir == "" {
++		return additionalHelperBinariesDir
++	}
++	return filepath.Clean(strings.Replace(additionalHelperBinariesDir, bindirPrefix, bindir, 1))
++}
++
+@@ -1100,0 +1134,8 @@
++	if dir := PackagedExecutableDir(); dir != "" {
++		path := filepath.Join(dir, filepath.Base(name))
++		if found, err := exec.LookPath(path); err == nil {
++			return found, nil
++		}
++		return "", fmt.Errorf("could not find %q in packaged helper directory %q", name, dir)
++	}
++
+@@ -1229,0 +1271,3 @@
++	if PackagedExecutableDir() != "" {
++		return c.FindHelperBinary(defaultInitName, false)
++	}

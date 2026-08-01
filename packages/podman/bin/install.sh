@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 
-abspath=$(cd "$(dirname "$0")" && pwd)
+script_path="$(readlink -f "$0")"
+root=$(cd "$(dirname "$script_path")/.." && pwd)
+systemd_unit_dir=${PODMANX_SYSTEMD_UNIT_DIR:-/etc/systemd/system}
 
-mkdir -p /opt/podmanx/
-rm -rf /opt/podmanx/bin /opt/podmanx/conf /opt/podmanx/libexec
-cp -r $abspath/../bin $abspath/../conf $abspath/../libexec /opt/podmanx/
-chmod -R +w /opt/podmanx/bin /opt/podmanx/conf /opt/podmanx/libexec
-
-mkdir -p /etc/systemd/system/
-rm -rf /etc/systemd/system/podmanxd.service
-cp $abspath/../conf/podmanxd.service /etc/systemd/system/podmanxd.service
+mkdir -p "$root/data" "$systemd_unit_dir"
+escaped_root=$(printf '%s' "$root" | sed 's/[\\&|]/\\&/g')
+sed "s|@PODMANX_ROOT@|$escaped_root|g" \
+  "$root/conf/podmanxd.service" >"$systemd_unit_dir/podmanxd.service"
 
 systemctl daemon-reload
 systemctl enable podmanxd.service

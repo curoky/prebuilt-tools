@@ -5,10 +5,10 @@ After=network.target
 [Service]
 Type=simple
 User=root
-# Environment=PATH=/opt/podmanx/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/opt/podmanx/bin/podman-server
+# Environment=PATH=@PODMANX_ROOT@/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart="@PODMANX_ROOT@/bin/podman-server"
 ExecStartPost=/bin/sh -c 'for i in $(seq 1 50); do [ -S /run/podman/podman.sock ] && { chmod 0777 /run/podman/podman.sock; exit 0; }; sleep 0.1; done'
-ExecStop=/opt/podmanx/bin/podman stop --all
+ExecStop="@PODMANX_ROOT@/bin/podman" stop --all
 Restart=always
 RestartSec=30s
 
