@@ -120,7 +120,7 @@ in
       host_bin="$check_dir/host-bin"
       state="$check_dir/state"
       mkdir -p "$relocated" "$host_bin" \
-        "$state/xdg" "$state/config" "$state/home" "$state/graph" "$state/run"
+        "$state/home"
       cp -aL $out/. "$relocated/"
       chmod -R u+w "$relocated"
 
@@ -159,9 +159,20 @@ in
               }
 
               cfg := new(config.Config)
-              path, err := cfg.FindHelperBinary(os.Args[1], true)
-              if os.Args[1] == "conmonrs" {
+              var path string
+              var err error
+              switch os.Args[1] {
+              case "conmon":
+                      path, err = cfg.FindConmon()
+              case "conmonrs":
                       path, err = cfg.FindConmonRs()
+              case "runtime":
+                      path, err = config.FindOCIRuntime(os.Args[2], []string{os.Args[3]})
+                      if err == nil && path == "" {
+                              err = fmt.Errorf("could not find OCI runtime %q", os.Args[2])
+                      }
+              default:
+                      path, err = cfg.FindHelperBinary(os.Args[1], true)
               }
               if err != nil {
                       fmt.Fprintln(os.Stderr, err)
@@ -180,21 +191,6 @@ in
           -o "$relocated/bin/resolver-test" \
           "$check_dir/resolver-test.go"
 
-      run_podman() {
-        _CONTAINERS_USERNS_CONFIGURED=done \
-          CONTAINERS_HELPER_BINARY_DIR="$host_bin" \
-          XDG_RUNTIME_DIR="$state/xdg" \
-          XDG_CONFIG_HOME="$state/config" \
-          HOME="$state/home" \
-          PODMAN_IGNORE_CGROUPSV1_WARNING=1 \
-          PATH="$host_bin" \
-          "$relocated/bin/_podman" \
-          --root "$state/graph" \
-          --runroot "$state/run" \
-          --storage-driver vfs \
-          "$@"
-      }
-
       assert_contains() {
         case "$1" in
           *"$2"*) ;;
@@ -206,32 +202,18 @@ in
         esac
       }
 
-      output=$(
-        run_podman \
-          --log-level debug \
-          --conmon "$host_bin/conmon" \
-          --runtime "$host_bin/crun" \
-          version --format '{{.Client.Version}}' 2>&1
-      )
-      assert_contains "$output" "Using conmon:"
-      assert_contains "$output" "$relocated/libexec/podman/conmon"
-      assert_contains "$output" "Using OCI runtime"
-      assert_contains "$output" "$relocated/libexec/podman/crun"
+      output=$(PATH="$host_bin" "$relocated/bin/resolver-test" conmon)
+      test "$output" = "$relocated/libexec/podman/conmon"
 
       mv "$relocated/libexec/podman/conmon" "$relocated/libexec/podman/conmon.disabled"
-      if output=$(
-        run_podman \
-          --conmon "$host_bin/conmon" \
-          --runtime "$host_bin/crun" \
-          version --format '{{.Client.Version}}' 2>&1
-      ); then
+      if output=$(PATH="$host_bin" "$relocated/bin/resolver-test" conmon 2>&1); then
         echo "Podman unexpectedly used conmon outside the sibling directory" >&2
         exit 1
       fi
       assert_contains "$output" "could not find a working conmon binary"
       mv "$relocated/libexec/podman/conmon.disabled" "$relocated/libexec/podman/conmon"
 
-      output=$("$relocated/bin/resolver-test" conmonrs)
+      output=$(PATH="$host_bin" "$relocated/bin/resolver-test" conmonrs)
       test "$output" = "$relocated/libexec/podman/conmonrs"
 
       mv "$relocated/libexec/podman/conmonrs" "$relocated/libexec/podman/conmonrs.disabled"
@@ -241,17 +223,21 @@ in
       fi
       assert_contains "$output" "could not find a working conmon binary"
 
+      output=$(
+        PATH="$host_bin" \
+          "$relocated/bin/resolver-test" runtime crun "$host_bin/crun"
+      )
+      test "$output" = "$relocated/libexec/podman/crun"
+
       mv "$relocated/libexec/podman/crun" "$relocated/libexec/podman/crun.disabled"
       if output=$(
-        run_podman \
-          --conmon "$host_bin/conmon" \
-          --runtime "$host_bin/crun" \
-          version --format '{{.Client.Version}}' 2>&1
+        PATH="$host_bin" \
+          "$relocated/bin/resolver-test" runtime crun "$host_bin/crun" 2>&1
       ); then
         echo "Podman unexpectedly used an OCI runtime outside the sibling directory" >&2
         exit 1
       fi
-      assert_contains "$output" "no valid executable found for OCI runtime"
+      assert_contains "$output" 'could not find OCI runtime "crun"'
       mv "$relocated/libexec/podman/crun.disabled" "$relocated/libexec/podman/crun"
 
       output=$(

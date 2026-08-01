@@ -42,4 +42,5 @@ $BINDIR/../libexec/podman
 
 `installCheckPhase` 应聚焦 resolver 行为，验证 relocation、sibling 目录查找成功，以及
 无法逃逸到外部二进制。至少覆盖 conmon 专用 resolver、OCI runtime resolver 和通用
-helper resolver。
+helper resolver。检查应直接调用 resolver，不得通过启动完整 Podman runtime 间接触发；
+build sandbox 的 kernel、namespace、storage 或 cgroup 状态不属于该契约。

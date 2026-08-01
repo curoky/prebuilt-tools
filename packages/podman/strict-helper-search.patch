@@ -1,7 +1,56 @@
 --- a/libpod/oci_conmon_common.go
 +++ b/libpod/oci_conmon_common.go
-@@ -122,0 +123,8 @@
-+	if dir := config.PackagedExecutableDir(); dir != "" {
+@@ -123,16 +123,3 @@
+-	foundPath := false
+-	for _, path := range paths {
+-		stat, err := os.Stat(path)
+-		if err != nil {
+-			if errors.Is(err, os.ErrNotExist) {
+-				continue
+-			}
+-			return nil, fmt.Errorf("cannot stat OCI runtime %s path: %w", name, err)
+-		}
+-		if !stat.Mode().IsRegular() {
+-			continue
+-		}
+-		foundPath = true
+-		logrus.Tracef("found runtime %q", path)
+-		runtime.path = path
+-		break
++	runtimePath, err := config.FindOCIRuntime(name, paths)
++	if err != nil {
++		return nil, fmt.Errorf("cannot stat OCI runtime %s path: %w", name, err)
+@@ -140,11 +127 @@
+-
+-	// Search the $PATH as last fallback
+-	if !foundPath {
+-		if foundRuntime, err := exec.LookPath(name); err == nil {
+-			foundPath = true
+-			runtime.path = foundRuntime
+-			logrus.Debugf("using runtime %q from $PATH: %q", name, foundRuntime)
+-		}
+-	}
+-
+-	if !foundPath {
++	if runtimePath == "" {
+@@ -152,0 +130 @@
++	runtime.path = runtimePath
+--- a/vendor/go.podman.io/common/pkg/config/config.go
++++ b/vendor/go.podman.io/common/pkg/config/config.go
+@@ -834,0 +835 @@
++	packagedDir := PackagedExecutableDir()
+@@ -836,0 +838,6 @@
++		if packagedDir != "" {
++			if path, err := FindOCIRuntime(name, c.OCIRuntimes[name]); err == nil && path != "" {
++				return name
++			}
++			continue
++		}
+@@ -849,0 +857,36 @@
++// FindOCIRuntime returns the first regular OCI runtime from the configured paths.
++// PATH is used only when no exclusive packaged executable directory is configured.
++func FindOCIRuntime(name string, paths []string) (string, error) {
++	if dir := PackagedExecutableDir(); dir != "" {
 +		binary := name
 +		if len(paths) > 0 {
 +			binary = paths[0]
@@ -9,42 +58,42 @@
 +		paths = []string{filepath.Join(dir, filepath.Base(binary))}
 +	}
 +
-@@ -142 +150 @@
--	if !foundPath {
-+	if !foundPath && config.PackagedExecutableDir() == "" {
---- a/vendor/go.podman.io/common/pkg/config/config.go
-+++ b/vendor/go.podman.io/common/pkg/config/config.go
-@@ -834,0 +835 @@
-+	packagedDir := PackagedExecutableDir()
-@@ -837 +838,9 @@
--		for _, v := range c.OCIRuntimes[name] {
-+		paths := c.OCIRuntimes[name]
-+		if packagedDir != "" {
-+			binary := name
-+			if len(paths) > 0 {
-+				binary = paths[0]
-+			}
-+			paths = []string{filepath.Join(packagedDir, filepath.Base(binary))}
-+		}
-+		for _, v := range paths {
-@@ -842 +851,5 @@
--		if path, err := exec.LookPath(name); err == nil {
-+		if packagedDir == "" {
-+			path, err := exec.LookPath(name)
-+			if err != nil {
++	for _, path := range paths {
++		stat, err := os.Stat(path)
++		if err != nil {
++			if errors.Is(err, os.ErrNotExist) {
 +				continue
 +			}
-@@ -944,0 +958,4 @@
++			return "", err
++		}
++		if !stat.Mode().IsRegular() {
++			continue
++		}
++		logrus.Tracef("found runtime %q", path)
++		return path, nil
++	}
++
++	if PackagedExecutableDir() == "" {
++		if path, err := exec.LookPath(name); err == nil {
++			logrus.Debugf("using runtime %q from $PATH: %q", name, path)
++			return path, nil
++		}
++	}
++
++	return "", nil
++}
++
+@@ -944,0 +988,4 @@
 +	if dir := PackagedExecutableDir(); dir != "" {
 +		path := filepath.Join(dir, "conmon")
 +		return findConmonPath([]string{path}, path)
 +	}
-@@ -974,0 +992,4 @@
+@@ -974,0 +1022,4 @@
 +	if dir := PackagedExecutableDir(); dir != "" {
 +		path := filepath.Join(dir, "conmonrs")
 +		return findConmonPath([]string{path}, path)
 +	}
-@@ -1097,0 +1119,12 @@
+@@ -1097,0 +1149,12 @@
 +// PackagedExecutableDir returns the exclusive executable directory set by the packager.
 +func PackagedExecutableDir() string {
 +	if additionalHelperBinariesDir == "" {
@@ -57,7 +106,7 @@
 +	return filepath.Clean(strings.Replace(additionalHelperBinariesDir, bindirPrefix, bindir, 1))
 +}
 +
-@@ -1100,0 +1134,8 @@
+@@ -1100,0 +1164,8 @@
 +	if dir := PackagedExecutableDir(); dir != "" {
 +		path := filepath.Join(dir, filepath.Base(name))
 +		if found, err := exec.LookPath(path); err == nil {
@@ -66,7 +115,7 @@
 +		return "", fmt.Errorf("could not find %q in packaged helper directory %q", name, dir)
 +	}
 +
-@@ -1229,0 +1271,3 @@
+@@ -1229,0 +1301,3 @@
 +	if PackagedExecutableDir() != "" {
 +		return c.FindHelperBinary(defaultInitName, false)
 +	}
