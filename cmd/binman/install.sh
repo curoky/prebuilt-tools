@@ -112,35 +112,52 @@ TAG="binman-$ARCH"
 
 echo "> Installing bm ($ARCH) into $INSTALL_DIR"
 
+# Keep transient registry failures from making bootstrap flaky. A bounded
+# connect timeout also ensures each retry gets a chance within the total window.
+CURL_ARGS=(
+  -fsSL
+  --connect-timeout 20
+  --retry 5
+  --retry-delay 2
+  --retry-max-time 300
+)
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
 # 1. Anonymous pull token for ghcr.
-token="$(curl -fsSL \
-  "https://${REGISTRY}/token?scope=repository:${REPOSITORY}:pull" |
-  tr ',' '\n' | grep -o '"token":"[^"]*"' | head -n1 | cut -d'"' -f4)"
+curl "${CURL_ARGS[@]}" \
+  -o "$tmp/token.json" \
+  "https://${REGISTRY}/token?scope=repository:${REPOSITORY}:pull"
+token="$(tr ',' '\n' <"$tmp/token.json" |
+  grep -o '"token":"[^"]*"' | head -n1 | cut -d'"' -f4)"
 [ -n "$token" ] || die "failed to obtain registry token"
 
 # 2. Resolve the manifest and pull out the single layer digest.
-manifest="$(curl -fsSL \
+curl "${CURL_ARGS[@]}" \
   -H "Authorization: Bearer ${token}" \
   -H "Accept: application/vnd.oci.image.manifest.v1+json" \
   -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
-  "https://${REGISTRY}/v2/${REPOSITORY}/manifests/${TAG}")"
+  -o "$tmp/manifest.json" \
+  "https://${REGISTRY}/v2/${REPOSITORY}/manifests/${TAG}"
 
 # The artifact has one content layer; take the last digest in the layers array.
-digest="$(printf '%s' "$manifest" |
-  tr ',' '\n' | grep -o '"digest":"sha256:[a-f0-9]*"' | tail -n1 | cut -d'"' -f4)"
+digest="$(tr ',' '\n' <"$tmp/manifest.json" |
+  grep -o '"digest":"sha256:[a-f0-9]*"' | tail -n1 | cut -d'"' -f4)"
 [ -n "$digest" ] || die "could not find layer digest for $TAG (is it published?)"
 
-# 3. Stream the blob into a temp dir, then move the bm binary into place.
+# 3. Download the blob into a temp dir, then move the bm binary into place.
 # The archive layout is ./binman/bm; extracting to a tmp dir avoids tar
 # member-match quirks (leading "./", matching the dir as well as the file).
-mkdir -p "$INSTALL_DIR"
-tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
-curl -fsSL \
+# Using a file also prevents retried responses from being concatenated in a
+# streaming tar pipeline.
+curl "${CURL_ARGS[@]}" \
   -H "Authorization: Bearer ${token}" \
-  "https://${REGISTRY}/v2/${REPOSITORY}/blobs/${digest}" |
-  tar -xz -C "$tmp"
+  -o "$tmp/binman.tar.gz" \
+  "https://${REGISTRY}/v2/${REPOSITORY}/blobs/${digest}"
+tar -xzf "$tmp/binman.tar.gz" -C "$tmp"
 [ -f "$tmp/binman/bm" ] || die "archive did not contain binman/bm"
+mkdir -p "$INSTALL_DIR"
 mv -f "$tmp/binman/bm" "$INSTALL_DIR/bm"
 
 chmod +x "$INSTALL_DIR/bm"
