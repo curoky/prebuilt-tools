@@ -33,6 +33,11 @@ identity。
 - `schedule` 触发（每周定时全量刷新）；
 - `workflow_dispatch` 且 `skip_discover=true`。
 
+本地 cache 不签名。Workflow 仅将固定的 loopback URL
+`http://127.0.0.1:37515?trusted=true` 作为 trusted substituter；不得通过
+`require-sigs=false` 全局接受其他未签名 cache。`NIXCACHE_STORE` 保留无 query 的 URL，
+只用于 readiness HTTP 请求；Nix 命令使用 `NIXCACHE_SUBSTITUTER`。
+
 ## 触发矩阵
 
 `discover` 与 `build` job 按下表联动。`skip_discover` 是 `workflow_dispatch` 的布尔输入；

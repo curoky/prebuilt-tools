@@ -69,6 +69,14 @@ index，每 5 分钟刷新。首次加载完成前 `/nix-cache-info` 返回 `503
 不存在视为空 cache；首次加载错误终止服务，周期刷新错误保留上一份 index。`serve`
 只读，不删除任何 segment。
 
+Cache 自身不签名；从其他 cache 复制的 narinfo 可能保留原签名，本仓库构建的 path
+通常没有签名。CI 必须把固定的 loopback store URL 配置为 `trusted=true`，不得用全局
+`require-sigs=false` 放宽其他 substituter：
+
+```text
+http://127.0.0.1:37515?trusted=true
+```
+
 清理（retention）只由 `prune` 执行，按 system 独立计算：
 
 1. 按最新 segment 时间保留最近 `N` 个 snapshot，默认 `N=2`（`--snapshot-keep`）。

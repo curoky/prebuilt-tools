@@ -26,6 +26,7 @@ on:
 
 env:
   NIXCACHE_STORE: http://127.0.0.1:37515
+  NIXCACHE_SUBSTITUTER: http://127.0.0.1:37515?trusted=true
   # Cross-platform packages that are exposed but not built by this workflow.
   # `lld_*` / `clang*` are only exposed as build inputs and are never published
   # on their own. `clang-tools-*` are built here too (they carry the same
@@ -127,7 +128,7 @@ jobs:
             local name="${1%%$'\t'*}"
             local out_path="${1#*$'\t'}"
             local err
-            if err=$(nix path-info --store "$NIXCACHE_STORE" --option require-sigs false "$out_path" 2>&1 >/dev/null); then
+            if err=$(nix path-info --store "$NIXCACHE_SUBSTITUTER" "$out_path" 2>&1 >/dev/null); then
               echo "cache hit : $name" >&2
             else
               if [ -n "$err" ]; then
@@ -139,7 +140,7 @@ jobs:
             fi
           }
           export -f check
-          export NIXCACHE_STORE
+          export NIXCACHE_SUBSTITUTER
           if [ "$SKIP_DISCOVER" = "true" ] || [ "$EVENT_NAME" = "schedule" ]; then
             cut -f1 pkgs.tsv > selected.txt
           else
@@ -222,12 +223,10 @@ jobs:
           # build reuses the artifact assembly performed by the first. Nix
           # suffixes non-default output links with the output name.
           nix build \
-            --option extra-substituters "$NIXCACHE_STORE" \
-            --option require-sigs false \
+            --option extra-substituters "$NIXCACHE_SUBSTITUTER" \
             .#${{ matrix.name }} --out-link standalone
           nix build \
-            --option extra-substituters "$NIXCACHE_STORE" \
-            --option require-sigs false \
+            --option extra-substituters "$NIXCACHE_SUBSTITUTER" \
             .#tarballs.aarch64-linux.${{ matrix.name }} --out-link tarball
           cp -L tarball-archive ./${{ matrix.name }}.linux-arm64.tar.gz
           # Pre-artifact source derivation. The standalone output relativizes its
@@ -243,8 +242,7 @@ jobs:
           {
             echo "SOURCE_STORE_PATHS<<EOF"
             nix build \
-              --option extra-substituters "$NIXCACHE_STORE" \
-              --option require-sigs false \
+              --option extra-substituters "$NIXCACHE_SUBSTITUTER" \
               --print-out-paths --no-link \
               .#sources.aarch64-linux.${{ matrix.name }}
             echo "EOF"
