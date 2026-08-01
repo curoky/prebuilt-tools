@@ -10,9 +10,9 @@
 # Afterwards `bm` self-upgrades like any other package.
 #
 # Usage:
-#   curl -fsSL <raw-url>/install.sh | bash
-#   curl -fsSL <raw-url>/install.sh | bash -s -- --prefix /usr/local/bin
-#   curl -fsSL <raw-url>/install.sh | bash -s -- wget
+#   curl -fsSL https://raw.githubusercontent.com/curoky/standalone-binaries/master/cmd/binman/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/curoky/standalone-binaries/master/cmd/binman/install.sh | bash -s -- --prefix /usr/local/bin
+#   curl -fsSL https://raw.githubusercontent.com/curoky/standalone-binaries/master/cmd/binman/install.sh | bash -s -- wget
 #
 # With package arguments the script bootstraps `bm`, then asks it to download
 # and extract those packages into the current directory without installing
