@@ -7,3 +7,4 @@ cmd/binman/binman
 /nixcache
 /artifact
 /binman
+/result*

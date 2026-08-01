@@ -244,6 +244,12 @@
       "aarch64-linux"
     ];
   };
+  qemu-user = {
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
+  };
   rsync = { };
   strace = {
     platforms = [
