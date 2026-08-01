@@ -13,7 +13,7 @@ let
     script_path="$(readlink -f "$0")"
     root=$(cd "$(dirname "$script_path")" && pwd)/..
 
-    exec -a "$0" "$root/bin/_wget" --ca-certificate $root/etc/ssl/certs/ca-bundle.crt "$@"
+    exec -a "$0" "$root/bin/_wget" --ca-certificate $root/etc/wget/ca-bundle.crt "$@"
   '';
   wget_static = wget.overrideAttrs (oldAttrs: rec {
     doCheck = false;
@@ -35,8 +35,8 @@ stdenv.mkDerivation rec {
     cp -r ${wget_static}/share $out/share
 
     chmod +w $out/etc/
-    mkdir -p $out/etc/ssl/certs/
-    cp ${cacert}/etc/ssl/certs/ca-bundle.crt $out/etc/ssl/certs/ca-bundle.crt
+    mkdir -p $out/etc/wget/
+    cp ${cacert}/etc/ssl/certs/ca-bundle.crt $out/etc/wget/ca-bundle.crt
 
     chmod +w $out/bin/
     mv $out/bin/wget $out/bin/_wget
