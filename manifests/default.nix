@@ -293,6 +293,10 @@
 
   # s6 stack
   s6-dns = {
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
     output = [ "bin" ];
   };
   s6-linux-utils = {
@@ -303,12 +307,25 @@
     output = [ "bin" ];
   };
   s6-networking = {
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
     output = [ "bin" ];
   };
   s6-portable-utils = {
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
     output = [ "bin" ];
   };
-  skalibs = { };
+  skalibs = {
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
+  };
 
   # go pkgs
   #
