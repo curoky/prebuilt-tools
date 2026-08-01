@@ -6,7 +6,9 @@
 ## 不变量
 
 - `bm` 使用 `CGO_ENABLED=0` 构建，运行时不调用 `curl`、`tar`、`oras`、`jq` 或 Nix。
-- package 和 profile link 都是相对 symlink，整个 prefix 可以直接移动。
+- package 和 profile 的叶子 link 都是相对 symlink，整个 prefix 可以直接移动。
+  指向 package 内目录的 symlink 展开为聚合目录，使多个 package 可以共享 `sbin`
+  等目录。
 - package 彼此独立，client 不解析依赖。
 - OCI layer digest 是版本标识；digest 相同只调和 link 状态，除非指定 `--force`。
 - 多包操作先 resolve 全部 tag；任一失败时不写入安装状态。
@@ -65,8 +67,10 @@ profiles:
 - Tar entry、symlink target、hardlink target 及既有 symlink parent 必须留在
   staged store 内；未支持的 entry type 直接报错。
 - `.binman-meta` 只能由 client 创建，不能继承归档内容。
-- Link 前完成全包冲突预检；unlink 只删除仍由该 package 拥有的 symlink。
-- Link 和 unlink 拒绝聚合根目录内已有 symlink parent。
+- Link 前完成全包冲突预检；聚合目录可以合并，叶子路径冲突直接报错；unlink 只删除
+  仍由该 package 拥有的 symlink。
+- Link 和 unlink 拒绝聚合根目录内已有的外部 symlink parent；旧版 `bm` 创建且仍
+  指向当前 prefix store 的目录 symlink 会安全迁移为聚合目录。
 - 修改解压、link 或事务逻辑时，先添加能复现边界的测试。
 
 ## 实现边界

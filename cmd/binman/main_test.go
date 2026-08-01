@@ -811,6 +811,149 @@ func TestLinkConflictDoesNotOverwriteOwner(t *testing.T) {
 	}
 }
 
+func TestLinkMergesPackageDirectorySymlinks(t *testing.T) {
+	prefix := t.TempDir()
+	for _, name := range []string{"first", "second"} {
+		path := filepath.Join(storePath(prefix, name), "bin", name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("bin", filepath.Join(storePath(prefix, name), "sbin")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := linkPkg(prefix, "first"); err != nil {
+		t.Fatal(err)
+	}
+	if err := linkPkg(prefix, "second"); err != nil {
+		t.Fatal(err)
+	}
+
+	sbinInfo, err := os.Lstat(filepath.Join(prefix, "sbin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sbinInfo.IsDir() || sbinInfo.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("sbin mode=%v want mergeable directory", sbinInfo.Mode())
+	}
+	for _, dir := range []string{"bin", "sbin"} {
+		for _, name := range []string{"first", "second"} {
+			if got, err := os.ReadFile(filepath.Join(prefix, dir, name)); err != nil || string(got) != name {
+				t.Fatalf("%s/%s content=%q err=%v", dir, name, got, err)
+			}
+		}
+	}
+
+	if err := unlinkPkg(prefix, "first"); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{"bin", "sbin"} {
+		if _, err := os.Lstat(filepath.Join(prefix, dir, "first")); !os.IsNotExist(err) {
+			t.Fatalf("%s/first remains after unlink: %v", dir, err)
+		}
+		if got, err := os.ReadFile(filepath.Join(prefix, dir, "second")); err != nil || string(got) != "second" {
+			t.Fatalf("%s/second content=%q err=%v", dir, got, err)
+		}
+	}
+}
+
+func TestLinkMigratesManagedDirectorySymlink(t *testing.T) {
+	prefix := t.TempDir()
+	for _, item := range []struct {
+		name string
+		tool string
+	}{
+		{name: "nettools", tool: "route"},
+		{name: "iproute2", tool: "ip"},
+	} {
+		path := filepath.Join(storePath(prefix, item.name), "bin", item.tool)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(item.name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("bin", filepath.Join(storePath(prefix, item.name), "sbin")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := os.MkdirAll(filepath.Join(prefix, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	route := filepath.Join(storePath(prefix, "nettools"), "bin", "route")
+	binTarget, err := filepath.Rel(filepath.Join(prefix, "bin"), route)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(binTarget, filepath.Join(prefix, "bin", "route")); err != nil {
+		t.Fatal(err)
+	}
+	sbinTarget, err := filepath.Rel(prefix, filepath.Join(storePath(prefix, "nettools"), "sbin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(sbinTarget, filepath.Join(prefix, "sbin")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := linkPkg(prefix, "iproute2"); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(filepath.Join(prefix, "sbin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("sbin mode=%v want migrated directory", info.Mode())
+	}
+	for _, item := range []struct {
+		tool string
+		want string
+	}{
+		{tool: "route", want: "nettools"},
+		{tool: "ip", want: "iproute2"},
+	} {
+		if got, err := os.ReadFile(filepath.Join(prefix, "sbin", item.tool)); err != nil || string(got) != item.want {
+			t.Fatalf("sbin/%s content=%q err=%v", item.tool, got, err)
+		}
+	}
+}
+
+func TestUnlinkRemovesOwnedLegacyDirectorySymlink(t *testing.T) {
+	prefix := t.TempDir()
+	name := "nettools"
+	path := filepath.Join(storePath(prefix, name), "bin", "route")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(name), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	storeSbin := filepath.Join(storePath(prefix, name), "sbin")
+	if err := os.Symlink("bin", storeSbin); err != nil {
+		t.Fatal(err)
+	}
+	target, err := filepath.Rel(prefix, storeSbin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(prefix, "sbin")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := unlinkPkg(prefix, name); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(prefix, "sbin")); !os.IsNotExist(err) {
+		t.Fatalf("legacy directory symlink remains after unlink: %v", err)
+	}
+}
+
 func TestLinkRejectsSymlinkParentEscape(t *testing.T) {
 	prefix := t.TempDir()
 	outside := t.TempDir()
