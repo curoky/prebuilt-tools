@@ -6,9 +6,8 @@
 ## 不变量
 
 - `bm` 使用 `CGO_ENABLED=0` 构建，运行时不调用 `curl`、`tar`、`oras`、`jq` 或 Nix。
-- package 和 profile 的叶子 link 都是相对 symlink，整个 prefix 可以直接移动。
-  指向 package 内目录的 symlink 展开为聚合目录，使多个 package 可以共享 `sbin`
-  等目录。
+- package 和 profile 只为叶子文件创建相对 symlink，目录按需创建，因此整个 prefix
+  可以直接移动。指向 package 内目录的 symlink 按其最终文件树展开。
 - package 彼此独立，client 不解析依赖。
 - OCI layer digest 是版本标识；digest 相同只调和 link 状态，除非指定 `--force`。
 - 多包操作先 resolve 全部 tag；任一失败时不写入安装状态。
@@ -40,9 +39,8 @@ digest、link 状态和安装时间。Prefix 根目录与 `<prefix>/profile/<pro
 2. 有限并发下载到临时 cache 后原子替换。
 3. 串行解压到 staged store，写 metadata，再交换 store 和调和 link。
 
-Store 交换、link 或 profile rebuild 失败时恢复旧状态。不同 package 提供同一路径时
-直接报错，不覆盖已有 owner。`upgrade` 复用同一状态机；`outdated` 并发 resolve，
-但按 package 名稳定输出。
+不同 package 提供同一路径时后 link 的 package 覆盖已有文件；manifest 顺序决定最终
+结果。`upgrade` 复用同一状态机；`outdated` 并发 resolve，但按 package 名稳定输出。
 
 ## Manifest
 
@@ -67,16 +65,16 @@ profiles:
 - Tar entry、symlink target、hardlink target 及既有 symlink parent 必须留在
   staged store 内；未支持的 entry type 直接报错。
 - `.binman-meta` 只能由 client 创建，不能继承归档内容。
-- Link 前完成全包冲突预检；聚合目录可以合并，叶子路径冲突直接报错；unlink 只删除
-  仍由该 package 拥有的 symlink。
-- Link 和 unlink 拒绝聚合根目录内已有的外部 symlink parent；旧版 `bm` 创建且仍
-  指向当前 prefix store 的目录 symlink 会安全迁移为聚合目录。
+- Link 只创建目录和叶子 symlink；已有叶子文件或目录 symlink parent 直接替换，不做
+  owner 冲突检查。unlink 只删除仍指向该 package 的 symlink。
+- Link 不沿聚合根目录内的 symlink parent 写入外部路径；unlink 遇到 symlink parent
+  直接拒绝。
 - 修改解压、link 或事务逻辑时，先添加能复现边界的测试。
 
 ## 实现边界
 
 - `registry.go`：OCI resolve、digest 和原子 cache 下载。
-- `store.go`：metadata、安全解压、store 交换和 link ownership。
+- `store.go`：metadata、安全解压、store 交换和文件聚合。
 - `install.go`：安装状态机及 package 命令。
 - `manifest.go`：strict YAML、install plan、profile 和 prune。
 - `install.sh`：首次安装 bootstrap。

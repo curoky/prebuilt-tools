@@ -233,20 +233,11 @@ type pkgLink struct {
 	rel string
 }
 
-type pkgLinks struct {
-	files    []pkgLink
-	linkDirs []pkgLink
-}
-
-func collectPkgLinks(store string) (pkgLinks, error) {
-	return collectLinks(store, store)
-}
-
-func collectLinks(root, allowedRoot string) (pkgLinks, error) {
-	var links pkgLinks
-	resolvedAllowedRoot, err := filepath.EvalSymlinks(allowedRoot)
+func collectPkgFiles(store string) ([]pkgLink, error) {
+	var files []pkgLink
+	resolvedStore, err := filepath.EvalSymlinks(store)
 	if err != nil {
-		return links, err
+		return nil, err
 	}
 	active := make(map[string]bool)
 	var walkDir func(string, string) error
@@ -255,7 +246,7 @@ func collectLinks(root, allowedRoot string) (pkgLinks, error) {
 		if err != nil {
 			return err
 		}
-		if resolved != resolvedAllowedRoot && !withinRoot(resolvedAllowedRoot, resolved) {
+		if resolved != resolvedStore && !withinRoot(resolvedStore, resolved) {
 			return fmt.Errorf("directory link %s escapes package store", path)
 		}
 		if active[resolved] {
@@ -281,7 +272,6 @@ func collectLinks(root, allowedRoot string) (pkgLinks, error) {
 			if info.Mode()&os.ModeSymlink != 0 {
 				targetInfo, statErr := os.Stat(childAbs)
 				if statErr == nil && targetInfo.IsDir() {
-					links.linkDirs = append(links.linkDirs, pkgLink{abs: childAbs, rel: childRel})
 					if err := walkDir(childAbs, childRel); err != nil {
 						return err
 					}
@@ -296,89 +286,39 @@ func collectLinks(root, allowedRoot string) (pkgLinks, error) {
 				}
 				continue
 			}
-			links.files = append(links.files, pkgLink{abs: childAbs, rel: childRel})
+			files = append(files, pkgLink{abs: childAbs, rel: childRel})
 		}
 		return nil
 	}
-	err = walkDir(root, "")
-	return links, err
+	if err := walkDir(store, ""); err != nil {
+		return nil, err
+	}
+	return files, nil
 }
 
 func linkPkg(prefix, name string) error {
 	return linkPkgInto(prefix, name, prefix)
 }
 
-// linkPkgInto performs a complete conflict preflight before creating links, so
-// a collision cannot leave a partially linked package.
 func linkPkgInto(prefix, name, root string) error {
-	store := storePath(prefix, name)
-	links, err := collectPkgLinks(store)
+	files, err := collectPkgFiles(storePath(prefix, name))
 	if err != nil {
 		return err
 	}
-	for _, linkDir := range links.linkDirs {
-		dest := filepath.Join(root, linkDir.rel)
-		if err := rejectSymlinkParents(root, dest); err != nil {
-			return fmt.Errorf("%s has unsafe parent: %w", dest, err)
-		}
-		info, err := os.Lstat(dest)
-		switch {
-		case os.IsNotExist(err):
-			if err := os.MkdirAll(dest, 0o755); err != nil {
-				return err
-			}
-		case err != nil:
-			return err
-		case info.IsDir():
-		case info.Mode()&os.ModeSymlink != 0:
-			managed, err := managedDirectoryLink(prefix, dest)
-			if err != nil {
-				return err
-			}
-			if managed == nil {
-				return fmt.Errorf("%s is already linked by another package", dest)
-			}
-			if err := materializeManagedDirectory(dest, *managed); err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("%s conflicts with package %s", dest, name)
-		}
-	}
-	for _, file := range links.files {
+	for _, file := range files {
 		dest := filepath.Join(root, file.rel)
-		if err := rejectSymlinkParents(root, dest); err != nil {
-			return fmt.Errorf("%s has unsafe parent: %w", dest, err)
-		}
-		info, err := os.Lstat(dest)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if info.Mode()&os.ModeSymlink == 0 {
-			return fmt.Errorf("%s conflicts with package %s", dest, name)
-		}
-		owned, err := symlinkPointsTo(dest, file.abs)
-		if err != nil {
-			return err
-		}
-		if !owned {
-			return fmt.Errorf("%s is already linked by another package", dest)
-		}
-	}
-
-	for _, file := range links.files {
-		dest := filepath.Join(root, file.rel)
-		if err := rejectSymlinkParents(root, dest); err != nil {
-			return fmt.Errorf("%s has unsafe parent: %w", dest, err)
-		}
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		if err := ensureAggregateDir(root, filepath.Dir(dest)); err != nil {
 			return err
 		}
 		relativeTarget, err := filepath.Rel(filepath.Dir(dest), file.abs)
 		if err != nil {
+			return err
+		}
+		info, err := os.Lstat(dest)
+		if err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			return fmt.Errorf("%s is a directory", dest)
+		}
+		if err != nil && !os.IsNotExist(err) {
 			return err
 		}
 		if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
@@ -391,74 +331,40 @@ func linkPkgInto(prefix, name, root string) error {
 	return nil
 }
 
-type managedLinkDir struct {
-	target      string
-	packageRoot string
-}
-
-func managedDirectoryLink(prefix, link string) (*managedLinkDir, error) {
-	target, err := symlinkTargetPath(link)
-	if err != nil {
-		return nil, err
-	}
-	resolvedTarget, err := filepath.EvalSymlinks(target)
-	if err != nil {
-		return nil, err
-	}
-	storeRoot := filepath.Join(prefix, "store")
-	resolvedStoreRoot, err := filepath.EvalSymlinks(storeRoot)
-	if err != nil {
-		return nil, err
-	}
-	if !withinRoot(resolvedStoreRoot, resolvedTarget) {
-		return nil, nil
-	}
-	rel, err := filepath.Rel(resolvedStoreRoot, resolvedTarget)
-	if err != nil {
-		return nil, err
-	}
-	packageName := strings.Split(rel, string(os.PathSeparator))[0]
-	packageRoot := filepath.Join(storeRoot, packageName)
-	return &managedLinkDir{target: target, packageRoot: packageRoot}, nil
-}
-
-func symlinkTargetPath(link string) (string, error) {
-	target, err := os.Readlink(link)
-	if err != nil {
-		return "", err
-	}
-	if !filepath.IsAbs(target) {
-		target = filepath.Join(filepath.Dir(link), target)
-	}
-	return filepath.Clean(target), nil
-}
-
-func materializeManagedDirectory(dest string, managed managedLinkDir) error {
-	links, err := collectLinks(managed.target, managed.packageRoot)
+func ensureAggregateDir(root, dir string) error {
+	rel, err := filepath.Rel(root, dir)
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(dest); err != nil {
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("directory %s escapes aggregate root", dir)
+	}
+	current := filepath.Clean(root)
+	if err := os.MkdirAll(current, 0o755); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dest, 0o755); err != nil {
-		return err
+	if rel == "." {
+		return nil
 	}
-	for _, linkDir := range links.linkDirs {
-		if err := os.MkdirAll(filepath.Join(dest, linkDir.rel), 0o755); err != nil {
-			return err
+	for _, part := range strings.Split(rel, string(os.PathSeparator)) {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if os.IsNotExist(err) {
+			if err := os.Mkdir(current, 0o755); err != nil {
+				return err
+			}
+			continue
 		}
-	}
-	for _, file := range links.files {
-		link := filepath.Join(dest, file.rel)
-		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
-			return err
-		}
-		target, err := filepath.Rel(filepath.Dir(link), file.abs)
 		if err != nil {
 			return err
 		}
-		if err := os.Symlink(target, link); err != nil {
+		if info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			continue
+		}
+		if err := os.RemoveAll(current); err != nil {
+			return err
+		}
+		if err := os.Mkdir(current, 0o755); err != nil {
 			return err
 		}
 	}
@@ -470,26 +376,11 @@ func unlinkPkg(prefix, name string) error {
 }
 
 func unlinkPkgFrom(prefix, name, root string) error {
-	links, err := collectPkgLinks(storePath(prefix, name))
+	files, err := collectPkgFiles(storePath(prefix, name))
 	if err != nil {
 		return err
 	}
-	for _, linkDir := range links.linkDirs {
-		dest := filepath.Join(root, linkDir.rel)
-		owned, err := symlinkPointsTo(dest, linkDir.abs)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if owned {
-			if err := os.Remove(dest); err != nil {
-				return err
-			}
-		}
-	}
-	for _, file := range links.files {
+	for _, file := range files {
 		dest := filepath.Join(root, file.rel)
 		if err := rejectSymlinkParents(root, dest); err != nil {
 			return fmt.Errorf("%s has unsafe parent: %w", dest, err)
