@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1053,6 +1054,44 @@ func TestOutdatedReturnsRegistryErrors(t *testing.T) {
 	}
 }
 
+func TestResolveArtifactsReusesBearerToken(t *testing.T) {
+	arch := "linux-x86_64"
+	var tokenRequests int32
+	middleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			if request.URL.Path == "/token" {
+				atomic.AddInt32(&tokenRequests, 1)
+				writer.Header().Set("Content-Type", "application/json")
+				_, _ = writer.Write([]byte(`{"token":"test-token"}`))
+				return
+			}
+			if request.Header.Get("Authorization") != "Bearer test-token" {
+				writer.Header().Set(
+					"WWW-Authenticate",
+					`Bearer realm="http://`+request.Host+`/token",service="test-registry"`,
+				)
+				http.Error(writer, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(writer, request)
+		})
+	}
+	packages := []string{"ripgrep", "fd", "bat", "eza"}
+	startRegistryWithMiddleware(t, arch, middleware, packages...)
+	atomic.StoreInt32(&tokenRequests, 0)
+
+	requests := make([]artifactRequest, len(packages))
+	for index, packageName := range packages {
+		requests[index] = artifactRequest{name: packageName, arch: arch}
+	}
+	if _, err := resolveArtifacts(requests); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt32(&tokenRequests); got != 1 {
+		t.Fatalf("registry token requests=%d want 1", got)
+	}
+}
+
 func TestOutdatedResolvesPackagesConcurrently(t *testing.T) {
 	arch := "linux-x86_64"
 	var active int32
@@ -1073,7 +1112,10 @@ func TestOutdatedResolvesPackagesConcurrently(t *testing.T) {
 			next.ServeHTTP(writer, request)
 		})
 	}
-	packages := []string{"ripgrep", "fd", "bat", "eza"}
+	packages := make([]string, maxParallel+4)
+	for index := range packages {
+		packages[index] = fmt.Sprintf("package-%02d", index)
+	}
 	startRegistryWithMiddleware(t, arch, middleware, packages...)
 	prefix := t.TempDir()
 	for _, packageName := range packages {
@@ -1097,6 +1139,9 @@ func TestOutdatedResolvesPackagesConcurrently(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&peak); got < 2 {
 		t.Fatalf("remote checks did not overlap: peak concurrency=%d", got)
+	}
+	if got := atomic.LoadInt32(&peak); got > maxParallel {
+		t.Fatalf("remote checks exceeded limit: peak concurrency=%d limit=%d", got, maxParallel)
 	}
 }
 

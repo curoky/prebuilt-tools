@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 )
 
 type installOpts struct {
@@ -324,10 +322,8 @@ func cmdOutdated(prefix string) error {
 		return nil
 	}
 	metas := make([]meta, len(names))
-	remotes := make([]string, len(names))
+	requests := make([]artifactRequest, len(names))
 	resolveErrors := make([]error, len(names))
-	var group errgroup.Group
-	group.SetLimit(maxParallel)
 	for index, packageName := range names {
 		metadata, err := readMeta(prefix, packageName)
 		if err != nil {
@@ -335,23 +331,22 @@ func cmdOutdated(prefix string) error {
 			continue
 		}
 		metas[index] = metadata
-		index, packageName := index, packageName
-		group.Go(func() error {
-			remotes[index], resolveErrors[index] = remoteDigest(packageName, metadata.Arch)
-			return nil
-		})
+		requests[index] = artifactRequest{name: packageName, arch: metadata.Arch}
 	}
-	_ = group.Wait()
 	if err := errors.Join(resolveErrors...); err != nil {
+		return fmt.Errorf("could not check all packages:\n%w", err)
+	}
+	artifacts, err := resolveArtifacts(requests)
+	if err != nil {
 		return fmt.Errorf("could not check all packages:\n%w", err)
 	}
 
 	any := false
 	for index, packageName := range names {
-		if metas[index].Digest != remotes[index] {
+		if metas[index].Digest != artifacts[index].digest {
 			any = true
 			fmt.Printf("%-22s %s -> %s\n",
-				packageName, short(metas[index].Digest), short(remotes[index]))
+				packageName, short(metas[index].Digest), short(artifacts[index].digest))
 		}
 	}
 	if !any {

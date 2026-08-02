@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
@@ -46,7 +47,7 @@ type artifactDownload struct {
 
 // remoteLayer returns the published content layer. Its digest is the package
 // version and its compressed stream is the package tarball.
-func remoteLayer(packageName, arch string) (v1.Layer, error) {
+func remoteLayer(packageName, arch string, puller *remote.Puller) (v1.Layer, error) {
 	if err := validatePackageName(packageName); err != nil {
 		return nil, err
 	}
@@ -57,7 +58,7 @@ func remoteLayer(packageName, arch string) (v1.Layer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", packageName, err)
 	}
-	image, err := remote.Image(reference)
+	image, err := remote.Image(reference, remote.Reuse(puller))
 	if err != nil {
 		if isNotFound(err) {
 			return nil, fmt.Errorf("%s: not found for arch %q", packageName, arch)
@@ -74,8 +75,8 @@ func remoteLayer(packageName, arch string) (v1.Layer, error) {
 	return layers[len(layers)-1], nil
 }
 
-func resolveArtifact(request artifactRequest) (packageArtifact, error) {
-	layer, err := remoteLayer(request.name, request.arch)
+func resolveArtifact(request artifactRequest, puller *remote.Puller) (packageArtifact, error) {
+	layer, err := remoteLayer(request.name, request.arch, puller)
 	if err != nil {
 		return packageArtifact{}, err
 	}
@@ -92,14 +93,21 @@ func resolveArtifact(request artifactRequest) (packageArtifact, error) {
 }
 
 func remoteDigest(packageName, arch string) (string, error) {
-	artifact, err := resolveArtifact(artifactRequest{name: packageName, arch: arch})
+	artifacts, err := resolveArtifacts([]artifactRequest{{name: packageName, arch: arch}})
 	if err != nil {
 		return "", err
 	}
-	return artifact.digest, nil
+	return artifacts[0].digest, nil
 }
 
 func resolveArtifacts(requests []artifactRequest) ([]packageArtifact, error) {
+	puller, err := remote.NewPuller(
+		remote.WithAuth(authn.Anonymous),
+		remote.WithJobs(maxParallel),
+	)
+	if err != nil {
+		return nil, err
+	}
 	artifacts := make([]packageArtifact, len(requests))
 	resolveErrors := make([]error, len(requests))
 	var group errgroup.Group
@@ -107,7 +115,7 @@ func resolveArtifacts(requests []artifactRequest) ([]packageArtifact, error) {
 	for index := range requests {
 		group.Go(func() error {
 			request := requests[index]
-			artifact, err := resolveArtifact(request)
+			artifact, err := resolveArtifact(request, puller)
 			if err != nil {
 				resolveErrors[index] = err
 				return nil
