@@ -115,6 +115,7 @@ echo "> Installing bm ($ARCH) into $INSTALL_DIR"
 # Run each retry in a fresh process so curl re-resolves registry DNS instead of
 # repeatedly connecting to the same unhealthy edge address.
 CURL_ARGS=(
+  -4
   -fsSL
   --connect-timeout 20
 )
@@ -126,7 +127,9 @@ curl_with_retry() {
   shift
   local attempt
   for ((attempt = 1; attempt <= CURL_ATTEMPTS; attempt++)); do
-    if curl "${CURL_ARGS[@]}" "$@"; then
+    if curl "${CURL_ARGS[@]}" \
+      --write-out "> ${request} attempt ${attempt}/${CURL_ATTEMPTS} remote_ip=%{remote_ip} http=%{http_code} connect=%{time_connect} tls=%{time_appconnect}\n" \
+      "$@"; then
       return 0
     fi
     if [ "$attempt" -eq "$CURL_ATTEMPTS" ]; then
