@@ -127,6 +127,9 @@ curl_with_retry() {
   shift
   local attempt
   for ((attempt = 1; attempt <= CURL_ATTEMPTS; attempt++)); do
+    if command -v getent >/dev/null 2>&1; then
+      getent ahostsv4 "$REGISTRY" >&2 || true
+    fi
     if curl "${CURL_ARGS[@]}" \
       --write-out "> ${request} attempt ${attempt}/${CURL_ATTEMPTS} remote_ip=%{remote_ip} http=%{http_code} connect=%{time_connect} tls=%{time_appconnect}\n" \
       "$@"; then
