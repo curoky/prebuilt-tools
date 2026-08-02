@@ -362,6 +362,24 @@
       isStatic = false;
     };
   };
+  # docker-compose is a CLI plugin under libexec/docker/cli-plugins. Linux keeps
+  # the default (unstable, pkgsStatic musl static); darwin uses native pkgs
+  # because pkgsStatic fails to build the Go toolchain (missing static
+  # libresolv) and the native binary already links only /usr/lib + frameworks.
+  docker-compose = {
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
+  };
+  # docker-buildx: Linux only here (pkgsStatic musl static). darwin uses the
+  # local package (packages/docker-buildx/darwin.nix) which redirects the Nix
+  # libresolv load command to /usr/lib.
+  docker-buildx = {
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
+  };
   cmakeMinimal = {
     alias = "cmake";
     platforms = [
@@ -581,10 +599,6 @@
   };
 
   ## ---- darwin only ------------------------------------------------------
-  docker-compose = {
-    platforms = [ "aarch64-darwin" ];
-    isStatic = false;
-  };
   silver-searcher = {
     platforms = [ "aarch64-darwin" ];
     "aarch64-darwin" = {
