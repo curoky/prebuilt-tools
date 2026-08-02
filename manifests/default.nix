@@ -581,6 +581,10 @@
   };
 
   ## ---- darwin only ------------------------------------------------------
+  docker-compose = {
+    platforms = [ "aarch64-darwin" ];
+    isStatic = false;
+  };
   silver-searcher = {
     platforms = [ "aarch64-darwin" ];
     "aarch64-darwin" = {

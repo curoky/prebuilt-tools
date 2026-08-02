@@ -114,6 +114,8 @@ rg '^\| .+ \| (✅|🟡)' TODO.md
 | `cloc` | 📦 本地 | 🟡 | sibling Perl wrapper 与模块 bundling 必须保留；install check 被禁用，darwin 未验证 | 只恢复可运行的 install check | — | `packages/cloc/` |
 | `colima` | 🩹 本地 | 🟡 | darwin-only；只打 colima 本体，运行时依赖（lima/qemu/docker）按本仓库模型单独安装，故删掉 stock `wrapProgram`（会把 lima-full/qemu/docker 的 `/nix/store` 路径 baked 进 PATH，违反不变量 #1），改由用户 PATH 解析；CGO net resolver 拉入 nix-store libresolv stub，postInstall 用 `install_name_tool` 改指 `/usr/lib/libresolv.9.dylib`；shell completion 保留 | 上游提供不 baked store 路径的运行时依赖定位、且 CGO 构建只链系统 libresolv 后删除 override | 624af665418d | `packages/colima/` |
 | `curl` | 📦 本地 | ❌ | 内置 CA bundle 与相对路径 wrapper | 自包含证书定位是 packaging | — | `packages/curl/` |
+| `docker-buildx` | 🩹 本地 | ✅ | darwin-only；stock `pkgsStatic` 构建 Go toolchain 时因缺静态 libresolv 失败；native stock binary 的唯一非系统动态依赖是 Nix libresolv，本地 override 改指 macOS 系统库 | stock native 只链接系统 dylib，或 `pkgsStatic` 可直接构建后删除 override | 624af665418d | `packages/docker-buildx/` |
+| `docker-compose` | 📦 native selection | ✅ | darwin-only；stock `pkgsStatic` 构建 Go toolchain 时因缺静态 libresolv 失败；native stock binary 已只链接 macOS 系统 dylib，故 manifest 选择 `isStatic = false` | `pkgsStatic` 可直接构建并满足 macOS portability 后恢复默认选择 | 624af665418d | `manifests/default.nix` |
 | `exiftool` | 📦 本地 | 🟡 | sibling Perl 与压缩模块 bundling 必须保留；install checks 被禁用，darwin 未验证 | install check 与 wrapper packaging 保留，仅在上游可运行 install check 时恢复 | — | `packages/exiftool/` |
 | `eza-ls` | 📦 本地 | ❌ | 自定义 `ls` 兼容层与 bundled eza | 这是独立产品行为，不是上游 bug | — | `packages/eza-ls/` |
 | `ffmpeg` | 🩹 本地 | 🟡 | 关闭无法静态化的 codec/network 链，修 x265 静态归档 | 逐 feature 恢复，最终只依赖系统 dylib | — | `packages/ffmpeg/` |

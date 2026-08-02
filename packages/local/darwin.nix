@@ -15,6 +15,9 @@ in
   # separately. Native pkgs (CGO on) links only /usr/lib + frameworks.
   colima = pkgs.callPackage ../colima { };
 
+  # Native buildx with its Nix libresolv load command redirected to macOS.
+  docker-buildx = pkgs.callPackage ../docker-buildx/darwin.nix { };
+
   # lima: hostside limactl + helpers + bundled guest agents. qemu PATH wrapper
   # dropped (darwin defaults to the VZ backend); runtime deps installed
   # separately. Native pkgs (CGO on) links only /usr/lib + frameworks.
