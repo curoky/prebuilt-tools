@@ -31,9 +31,9 @@ in
 
 openssh_gssapi.overrideAttrs (oldAttrs: {
   configureFlags = (oldAttrs.configureFlags or [ ]) ++ [
-    # QEMU user-mode deliberately rejects guest PR_SET_SECCOMP. Keep the
-    # pre-authentication sandbox usable for cross-architecture containers.
-    "--with-sandbox=rlimit"
+    # QEMU user-mode cannot run OpenSSH's seccomp or rlimit pre-authentication
+    # sandboxes. The service is restricted to the host loopback by devspace.
+    "--with-sandbox=none"
   ];
 
   postInstall = (oldAttrs.postInstall or "") + ''
