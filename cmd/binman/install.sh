@@ -112,21 +112,34 @@ TAG="binman-$ARCH"
 
 echo "> Installing bm ($ARCH) into $INSTALL_DIR"
 
-# Keep transient registry failures from making bootstrap flaky. A bounded
-# connect timeout also ensures each retry gets a chance within the total window.
+# Run each retry in a fresh process so curl re-resolves registry DNS instead of
+# repeatedly connecting to the same unhealthy edge address.
 CURL_ARGS=(
   -fsSL
   --connect-timeout 20
-  --retry 5
-  --retry-delay 2
-  --retry-max-time 300
 )
+CURL_ATTEMPTS=6
+CURL_RETRY_DELAY=2
+
+curl_with_retry() {
+  local attempt
+  for ((attempt = 1; attempt <= CURL_ATTEMPTS; attempt++)); do
+    if curl "${CURL_ARGS[@]}" "$@"; then
+      return 0
+    fi
+    if [ "$attempt" -eq "$CURL_ATTEMPTS" ]; then
+      return 1
+    fi
+    echo "warning: curl attempt ${attempt}/${CURL_ATTEMPTS} failed; retrying in ${CURL_RETRY_DELAY}s" >&2
+    sleep "$CURL_RETRY_DELAY"
+  done
+}
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 # 1. Anonymous pull token for ghcr.
-curl "${CURL_ARGS[@]}" \
+curl_with_retry \
   -o "$tmp/token.json" \
   "https://${REGISTRY}/token?scope=repository:${REPOSITORY}:pull"
 token="$(tr ',' '\n' <"$tmp/token.json" |
@@ -134,7 +147,7 @@ token="$(tr ',' '\n' <"$tmp/token.json" |
 [ -n "$token" ] || die "failed to obtain registry token"
 
 # 2. Resolve the manifest and pull out the single layer digest.
-curl "${CURL_ARGS[@]}" \
+curl_with_retry \
   -H "Authorization: Bearer ${token}" \
   -H "Accept: application/vnd.oci.image.manifest.v1+json" \
   -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
@@ -151,7 +164,7 @@ digest="$(tr ',' '\n' <"$tmp/manifest.json" |
 # member-match quirks (leading "./", matching the dir as well as the file).
 # Using a file also prevents retried responses from being concatenated in a
 # streaming tar pipeline.
-curl "${CURL_ARGS[@]}" \
+curl_with_retry \
   -H "Authorization: Bearer ${token}" \
   -o "$tmp/binman.tar.gz" \
   "https://${REGISTRY}/v2/${REPOSITORY}/blobs/${digest}"
