@@ -42,6 +42,34 @@ func setupLogger(prefix string, verbose bool) (io.Closer, error) {
 	return f, nil
 }
 
+// detectPrefix derives the install prefix from bm's own location. When bm is
+// installed as a package it lives at <prefix>/store/binman/bm and is linked as
+// <prefix>/bm, so the resolved executable path is <prefix>/store/binman/bm.
+// Walk that resolved path looking for a ".../store/binman" segment and return
+// the directory above "store". Falls back to defaultPrefix when bm is not
+// running from such a layout (e.g. bootstrapped into ~/.local/bin).
+func detectPrefix() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return defaultPrefix
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	return prefixFromExecutable(exe)
+}
+
+// prefixFromExecutable maps a resolved bm path back to its install prefix.
+// exe == <prefix>/store/binman/bm -> binman == store/binman, store == store.
+func prefixFromExecutable(exe string) string {
+	binmanDir := filepath.Dir(exe)
+	storeDir := filepath.Dir(binmanDir)
+	if filepath.Base(binmanDir) == "binman" && filepath.Base(storeDir) == "store" {
+		return filepath.Dir(storeDir)
+	}
+	return defaultPrefix
+}
+
 func detectArch() (string, error) {
 	switch {
 	case runtime.GOOS == "linux" && runtime.GOARCH == "amd64":
@@ -96,6 +124,9 @@ func main() {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if prefix == "" {
+				prefix = detectPrefix()
+			}
 			if cmd.Name() == "download" {
 				return nil
 			}
@@ -115,7 +146,7 @@ func main() {
 		},
 	}
 	pf := root.PersistentFlags()
-	pf.StringVar(&prefix, "prefix", defaultPrefix, "install prefix")
+	pf.StringVar(&prefix, "prefix", "", "install prefix (default: derived from bm's location, else "+defaultPrefix+")")
 	pf.StringVar(&arch, "arch", "", "arch tag: linux-x86_64 | linux-arm64 | darwin-arm64 (auto-detected)")
 	pf.BoolVar(&verbose, "verbose", false, "also print the detailed log to stderr")
 

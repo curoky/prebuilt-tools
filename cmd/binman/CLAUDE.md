@@ -58,6 +58,9 @@ profiles:
 
 - YAML 只允许一个 document，未知字段直接报错。
 - 显式 `--prefix` 和 `--arch` 优先于 manifest。
+- 未显式指定 `--prefix` 时，从 `bm` 自身位置推导：linked 后 `bm` 实际位于
+  `<prefix>/store/binman/bm`，据此反推 `<prefix>`；不在该布局（如 bootstrap 到
+  `~/.local/bin`）时回退 `/opt/binman`。
 - 重复 package 合并为一个 install target，root link 优先。
 - Profile tree 每次完整 staged rebuild 后原子替换。
 - `remove` 清理关联 profile link；`sync --prune` 删除未引用的 package。

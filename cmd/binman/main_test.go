@@ -126,6 +126,21 @@ func startRegistryWithMiddleware(
 	t.Cleanup(func() { ociRegistry = old })
 }
 
+func TestPrefixFromExecutable(t *testing.T) {
+	cases := map[string]string{
+		filepath.FromSlash("/opt/tools/store/binman/bm"): filepath.FromSlash("/opt/tools"),
+		filepath.FromSlash("/home/u/.bm/store/binman/bm"): filepath.FromSlash("/home/u/.bm"),
+		// Not installed under a prefix (e.g. bootstrapped onto PATH):
+		filepath.FromSlash("/home/u/.local/bin/bm"): defaultPrefix,
+		filepath.FromSlash("/usr/local/bin/bm"):     defaultPrefix,
+	}
+	for exe, want := range cases {
+		if got := prefixFromExecutable(exe); got != want {
+			t.Errorf("prefixFromExecutable(%q)=%q want %q", exe, got, want)
+		}
+	}
+}
+
 func TestStripFirstComponent(t *testing.T) {
 	cases := map[string]string{
 		"./ripgrep/bin/rg":      "bin/rg",
