@@ -122,6 +122,8 @@ CURL_ATTEMPTS=6
 CURL_RETRY_DELAY=2
 
 curl_with_retry() {
+  local request="$1"
+  shift
   local attempt
   for ((attempt = 1; attempt <= CURL_ATTEMPTS; attempt++)); do
     if curl "${CURL_ARGS[@]}" "$@"; then
@@ -130,7 +132,7 @@ curl_with_retry() {
     if [ "$attempt" -eq "$CURL_ATTEMPTS" ]; then
       return 1
     fi
-    echo "warning: curl attempt ${attempt}/${CURL_ATTEMPTS} failed; retrying in ${CURL_RETRY_DELAY}s" >&2
+    echo "warning: ${request} attempt ${attempt}/${CURL_ATTEMPTS} failed; retrying in ${CURL_RETRY_DELAY}s" >&2
     sleep "$CURL_RETRY_DELAY"
   done
 }
@@ -138,16 +140,23 @@ curl_with_retry() {
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-# 1. Anonymous pull token for ghcr.
-curl_with_retry \
+# 1. Complete the standard registry challenge before requesting a pull token.
+# A 401 response is expected and confirms that the registry endpoint is ready.
+curl_with_retry "registry challenge" \
+  --no-fail \
+  -o /dev/null \
+  "https://${REGISTRY}/v2/"
+
+# 2. Anonymous pull token for ghcr.
+curl_with_retry "registry token" \
   -o "$tmp/token.json" \
   "https://${REGISTRY}/token?scope=repository:${REPOSITORY}:pull"
 token="$(tr ',' '\n' <"$tmp/token.json" |
   grep -o '"token":"[^"]*"' | head -n1 | cut -d'"' -f4)"
 [ -n "$token" ] || die "failed to obtain registry token"
 
-# 2. Resolve the manifest and pull out the single layer digest.
-curl_with_retry \
+# 3. Resolve the manifest and pull out the single layer digest.
+curl_with_retry "manifest" \
   -H "Authorization: Bearer ${token}" \
   -H "Accept: application/vnd.oci.image.manifest.v1+json" \
   -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
@@ -159,12 +168,12 @@ digest="$(tr ',' '\n' <"$tmp/manifest.json" |
   grep -o '"digest":"sha256:[a-f0-9]*"' | tail -n1 | cut -d'"' -f4)"
 [ -n "$digest" ] || die "could not find layer digest for $TAG (is it published?)"
 
-# 3. Download the blob into a temp dir, then move the bm binary into place.
+# 4. Download the blob into a temp dir, then move the bm binary into place.
 # The archive layout is ./binman/bm; extracting to a tmp dir avoids tar
 # member-match quirks (leading "./", matching the dir as well as the file).
 # Using a file also prevents retried responses from being concatenated in a
 # streaming tar pipeline.
-curl_with_retry \
+curl_with_retry "blob" \
   -H "Authorization: Bearer ${token}" \
   -o "$tmp/binman.tar.gz" \
   "https://${REGISTRY}/v2/${REPOSITORY}/blobs/${digest}"
