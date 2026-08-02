@@ -30,6 +30,12 @@ let
 in
 
 openssh_gssapi.overrideAttrs (oldAttrs: {
+  configureFlags = (oldAttrs.configureFlags or [ ]) ++ [
+    # QEMU user-mode deliberately rejects guest PR_SET_SECCOMP. Keep the
+    # pre-authentication sandbox usable for cross-architecture containers.
+    "--with-sandbox=rlimit"
+  ];
+
   postInstall = (oldAttrs.postInstall or "") + ''
     mv $out/bin/scp $out/bin/_scp
     cp ${wrapperScriptScp} $out/bin/scp

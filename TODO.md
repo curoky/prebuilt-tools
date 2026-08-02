@@ -69,7 +69,7 @@ rg '^\| .+ \| (✅|🟡)' TODO.md
 | `nodejs-slim26` | 🩹 本地 | 🟡 | 已删 `uvwasi` override（同 node24，删后构建成功、musl 静态、v26.5.0）；仍保留 `ada`/`libuv`/`hdrhistogram_c`/`lief`（maturin musl cdylib 失败）/`temporal_capi`（pkg-config 缺失）与 node 级 configureFlags | 逐 patch 删除，最终满足各平台动态依赖规则 | 624af665418d | `packages/nodejs/26/` |
 | `nsight-systems` | ⚠️ 预编译 glibc | ⏳ | NVIDIA 只提供 glibc 动态发行物 | 上游提供可用的 musl-static 发行物 | — | `packages/nsight-systems/` |
 | `opencommit` | 📦 本地 | ❌ | JS 分发绑定 sibling Node runtime | sibling runtime packaging 必须保留 | — | `packages/opencommit/` |
-| `openssh_gssapi` | 📦 本地 | ❌ | wrappers 相对定位 ssh 与 sshd helpers | 可搬运 helper 定位必须保留 | — | `packages/openssh_gssapi/` |
+| `openssh_gssapi` | 🩹 + 📦 本地 | ❌ | wrappers 相对定位 ssh 与 sshd helpers；服务端固定使用 rlimit sandbox，因为 QEMU user-mode 明确拒绝 guest `PR_SET_SECCOMP`，seccomp sandbox 会让跨架构容器在 SSH 握手前断连 | 可搬运 helper 定位与跨架构 SSH 必须保留 | — | `packages/openssh_gssapi/` |
 | `p7zip` | 🩹 本地 | 🟡 | 实测不可回归：去掉 `buildFlags=default`（回退上游 `all3`）后构建 `7z.so` 共享库，musl 全静态工具链报 `R_X86_64_32 against __TMC_END__ ... making a shared object`；default 只构建 `7za`/`7zr` 静态可执行；output 布局 packaging 保留 | stock build 可用时删 build workaround，保留所需 outputs | 624af665418d | `packages/p7zip/` |
 | `parallel` | 📦 本地 | ❌ | 多入口 sibling Perl wrappers | runtime packaging 必须保留 | — | `packages/parallel/` |
 | `patchelf` | 📌 `25.05` | ✅ | 历史 pin；已验证：unstable patchelf 0.15.2 `make check` 编译测试用 `.so` 时报 `R_X86_64_32 against hidden symbol __TMC_END__`（musl-static crt 与 PIC 冲突），构建失败 | Linux 用 unstable 构建并满足 musl-static portability | 624af665418d | `manifests/default.nix` |
