@@ -23,6 +23,7 @@ rec {
   git = pkgsStatic.callPackage ../../git { };
   gnutar = pkgsStatic.callPackage ../../gnutar { };
   openssh_gssapi = pkgsStatic.callPackage ../../openssh_gssapi { };
+  poppler = pkgsStatic.callPackage ../../poppler { };
   postgresql = pkgsStatic.callPackage ../../postgresql { };
   wget = pkgsStatic.callPackage ../../wget/linux.nix { };
 

@@ -45,6 +45,7 @@
 | `nsight-systems` | ⚠️ 预编译 glibc | ⏳ | NVIDIA 只提供 glibc 动态发行物 | 上游提供可用的 musl-static 发行物 | — | `packages/nsight-systems/` |
 | `opencommit` | 📦 本地 | ❌ | JS 分发绑定 sibling Node runtime | sibling runtime packaging 必须保留 | — | `packages/opencommit/` |
 | `openssh_gssapi` | 🩹 + 📦 本地 | ❌ | wrappers 相对定位 ssh 与 sshd helpers；服务端关闭预认证 sandbox，因为 QEMU user-mode 明确拒绝 guest seccomp，rlimit sandbox 也会让跨架构容器在 SSH 握手前断连；消费者必须把监听面限制在可信边界 | 可搬运 helper 定位与跨架构 SSH 必须保留 | — | `packages/openssh_gssapi/` |
+| `poppler` | 🩹 本地 | 🟡 | stock `poppler-utils` 在 musl-static 下先因默认 feature 拉入 `nss -> p11-kit` 而被 `badPlatforms = isStatic` 拒绝；改成 `minimal + utils` 后仍需关闭 `openjpeg`（否则走 `libtiff -> giflib` 共享库链）、显式 `BUILD_TESTING=OFF`，并在顶层 `CMakeLists.txt` 补 `fontconfig`/`freetype`/`expat`/`bzip2`/`brotli` 的静态传递链接 | unstable `poppler-utils` 直接满足 musl-static，或仅保留产品层命名差异 | 624af665418d | `packages/poppler/` |
 | `p7zip` | 🩹 本地 | 🟡 | 实测不可回归：去掉 `buildFlags=default`（回退上游 `all3`）后构建 `7z.so` 共享库，musl 全静态工具链报 `R_X86_64_32 against __TMC_END__ ... making a shared object`；default 只构建 `7za`/`7zr` 静态可执行；output 布局 packaging 保留 | stock build 可用时删 build workaround，保留所需 outputs | 624af665418d | `packages/p7zip/` |
 | `parallel` | 📦 本地 | ❌ | 多入口 sibling Perl wrappers | runtime packaging 必须保留 | — | `packages/parallel/` |
 | `patchelf` | 📌 `25.05` | ✅ | 历史 pin；已验证：unstable patchelf 0.15.2 `make check` 编译测试用 `.so` 时报 `R_X86_64_32 against hidden symbol __TMC_END__`（musl-static crt 与 PIC 冲突），构建失败 | Linux 用 unstable 构建并满足 musl-static portability | 624af665418d | `manifests/default.nix` |
