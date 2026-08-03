@@ -597,12 +597,4 @@
       version = "25.11";
     };
   };
-
-  ## ---- darwin only ------------------------------------------------------
-  silver-searcher = {
-    platforms = [ "aarch64-darwin" ];
-    "aarch64-darwin" = {
-      version = "26.05";
-    };
-  };
 }

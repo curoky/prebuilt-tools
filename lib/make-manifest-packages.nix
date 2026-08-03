@@ -23,16 +23,94 @@
 }:
 system: manifest:
 let
+  configFields = [
+    "version"
+    "isStatic"
+    "output"
+    "alias"
+  ];
   reserved = [ "platforms" ] ++ allSystems;
+  fail = name: message: throw "manifest entry ${name}: ${message}";
+  require =
+    name: condition: message: value:
+    if condition then value else fail name message;
+  validateConfig =
+    name: config:
+    let
+      checkedConfig =
+        require name (builtins.isAttrs config) "configuration must be an attribute set"
+          config;
+      unknownFields = lib.subtractLists configFields (builtins.attrNames checkedConfig);
+      version = checkedConfig.version or "unstable";
+      outputs = checkedConfig.output or [ "out" ];
+      alias = checkedConfig.alias or name;
+    in
+    require name (unknownFields == [ ]) "unknown fields: ${lib.concatStringsSep ", " unknownFields}" (
+      require name (builtins.isString version && builtins.hasAttr version envs)
+        "unknown nixpkgs version ${builtins.toJSON version}"
+        (
+          require name (builtins.isBool (checkedConfig.isStatic or true)) "isStatic must be a boolean" (
+            require name (builtins.isList outputs && outputs != [ ] && builtins.all builtins.isString outputs)
+              "output must be a non-empty list of strings"
+              (
+                require name (lib.length outputs == lib.length (lib.unique outputs))
+                  "output must not contain duplicates"
+                  (
+                    require name (
+                      builtins.isString alias && alias != ""
+                    ) "alias must be a non-empty string" checkedConfig
+                  )
+              )
+          )
+        )
+    );
+  validateEntry =
+    name: raw:
+    let
+      checkedRaw = require name (builtins.isAttrs raw) "entry must be an attribute set" raw;
+      allowedFields = [ "platforms" ] ++ configFields ++ allSystems;
+      unknownFields = lib.subtractLists allowedFields (builtins.attrNames checkedRaw);
+      platforms = checkedRaw.platforms or allSystems;
+      shared = lib.removeAttrs checkedRaw reserved;
+      platformConfigs = map (
+        platform:
+        if builtins.hasAttr platform checkedRaw then
+          validateConfig "${name}.${platform}" checkedRaw.${platform}
+        else
+          { }
+      ) allSystems;
+    in
+    require name (unknownFields == [ ]) "unknown fields: ${lib.concatStringsSep ", " unknownFields}" (
+      require name
+        (
+          builtins.isList platforms
+          && platforms != [ ]
+          && builtins.all builtins.isString platforms
+          && builtins.all (platform: lib.elem platform allSystems) platforms
+        )
+        "platforms must be a non-empty list containing only: ${lib.concatStringsSep ", " allSystems}"
+        (
+          require name (lib.length platforms == lib.length (lib.unique platforms))
+            "platforms must not contain duplicates"
+            (builtins.deepSeq [ (validateConfig name shared) platformConfigs ] checkedRaw)
+        )
+    );
+  checkedManifest =
+    require "<manifest>" (builtins.isAttrs manifest) "manifest must be an attribute set"
+      manifest;
+  checkedSystem =
+    require "<system>" (lib.elem system allSystems) "unsupported system ${builtins.toJSON system}"
+      system;
 in
 lib.concatMapAttrs (
   name: raw:
   let
-    platforms = raw.platforms or allSystems;
-    enabled = lib.elem system platforms;
+    checkedRaw = validateEntry name raw;
+    platforms = checkedRaw.platforms or allSystems;
+    enabled = lib.elem checkedSystem platforms;
 
-    shared = lib.removeAttrs raw reserved;
-    perPlatform = raw.${system} or { };
+    shared = lib.removeAttrs checkedRaw reserved;
+    perPlatform = checkedRaw.${checkedSystem} or { };
     conf = shared // perPlatform;
 
     targetVer = conf.version or "unstable";
@@ -59,4 +137,4 @@ lib.concatMapAttrs (
   lib.optionalAttrs enabled {
     "${finalName}" = finalDrv;
   }
-) manifest
+) checkedManifest

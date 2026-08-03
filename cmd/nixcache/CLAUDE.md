@@ -1,7 +1,7 @@
 # Nixcache Agent Guide
 
 `cmd/nixcache/` 是本仓库专用的 GHCR-backed Nix binary cache，提供 `push`、
-`serve`、`prune` 和 `size`。全局约束见根 [`CLAUDE.md`](../../CLAUDE.md)，CI
+`serve`、`probe`、`prune` 和 `size`。全局约束见根 [`CLAUDE.md`](../../CLAUDE.md)，CI
 触发与发布流程见 [`docs/release-model.md`](../../docs/release-model.md)。
 
 ## 设计
@@ -34,7 +34,8 @@ v1-<snapshot前16位>-<system>-<runId>-<random>
 ```
 
 `serve` 用共享前缀只加载当前 snapshot+system 的 segment；`runId`+`random` 保证并发
-matrix job 的 tag 不相撞。
+matrix job 的 tag 不相撞。无法读取当前 checkout 的 `flake.lock` 时直接失败，不回退加载
+其他 snapshot。
 
 ## OCI Schema
 
@@ -68,6 +69,10 @@ digest、size、media type 和 annotation 一致。
 index，每 5 分钟刷新。首次加载完成前 `/nix-cache-info` 返回 `503`。Repository
 不存在视为空 cache；首次加载错误终止服务，周期刷新错误保留上一份 index。`serve`
 只读，不删除任何 segment。
+
+`probe <store-path>` 查询本地 `serve` 的确切 narinfo，并验证其中的 `StorePath`。退出码
+`0` 表示命中，`1` 表示明确的 `404` miss，`2` 表示连接、HTTP 或 narinfo 协议错误。CI
+只能把 `1` 当作待构建；其他非零状态必须终止 discovery。
 
 Cache 自身不签名；从其他 cache 复制的 narinfo 可能保留原签名，本仓库构建的 path
 通常没有签名。CI 必须把固定的 loopback store URL 配置为 `trusted=true`，不得用全局

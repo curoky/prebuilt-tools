@@ -101,7 +101,7 @@ rg '^\| .+ \| (✅|🟡)' TODO.md
 | `vim-plugins` | 📦 本地 | ❌ | 聚合固定 Vim plugins | plugin bundle 是产品 | — | `packages/vim-plugins/` |
 | `wget` | 🩹 + 📦 本地 | 🟡 | 实测无可回归项：恢复 checks 后 `wget_options_fuzzer` 段错误（exit 139）且缺 fuzzer corpus，`doCheck=false` 必需；CA wrapper packaging 保留 | 恢复 checks/build tool 后保留 CA packaging | 624af665418d | `packages/wget/` |
 | `zellij` | 🩹 checks | 🟡 | 已去掉 `26.05` pin，改用 unstable `zellij-unwrapped`（0.44.3，static-pie musl 达标）；仍保留 `doCheck=false`/`doInstallCheck=false`（test target 静态链 libcurl 时 libssh2 符号未解析：`undefined reference to libssh2_crypto_engine` 等） | 上游 test target 静态链接修复后恢复 checks | 624af665418d | `packages/zellij/`, `packages/local/linux.nix` |
-| `zsh` | 🩹 + 📦 本地 | 🟡 | GCC fortify ICE 与静态 module patches；FPATH wrapper 和 zshenv policy 必须保留 | 逐项删编译 patch，保留 relocation packaging | — | `packages/zsh/` |
+| `zsh` | 🩹 + 📦 本地 | 🟡 | 已删除过时的 fortify ICE workaround 与 termcap 源码 patch；实测无 module patch 时 `zmodload zsh/system`、`zsh/regex`、`zsh/mathfunc` 均失败，三个 `link=either` 必须保留；FPATH wrapper 和 zshenv policy 属 packaging | 上游静态构建默认内建三个 module 后删除剩余 patch，保留 relocation packaging | 624af665418d | `packages/zsh/` |
 | `zsh-plugins` | 📦 本地 | ❌ | 聚合 oh-my-zsh 与 plugins | plugin bundle 是产品 | — | `packages/zsh-plugins/` |
 
 ## macOS
@@ -144,7 +144,6 @@ rg '^\| .+ \| (✅|🟡)' TODO.md
 | `protobuf_3_9_2` | 📌 源码版本 | ❌ | 明确发布 legacy protobuf 3.9.2 | 版本化产品，不回到最新 upstream | — | `packages/protobuf/3_9_2/` |
 | `rime-plugins` | 📦 本地 | ❌ | 聚合多个 Rime 词库与转换结果 | 数据 bundle 是产品 | — | `packages/rime-plugins/` |
 | `shellcheck` | 📌 `25.11` | ❌ | 已验证：unstable ShellCheck 0.11.0 静态 darwin 构建时 GHC 报 `External interpreter terminated (1)`，构建失败 | 已确认必要，无可回归空间 | 624af665418d | `manifests/default.nix` |
-| `silver-searcher` | 📌 `26.05` | ❌ | 已验证：unstable 已 removed `silver-searcher`（自 2020 停止开发、卡在 obsolete pcre），eval 直接 throw | 上游已移除，只能保持老 channel pin | 624af665418d | `manifests/default.nix` |
 | `tmux-plugins` | 📦 本地 | ❌ | 独立发布 `.tmux.conf` 数据 | 数据 bundle 是产品 | — | `packages/tmux-plugins/` |
 | `uv` | 📌 `25.11` | ❌ | 已验证：unstable uv 0.11.32 静态 darwin 构建时 `aws-lc-sys` 的 `memcmp_invalid_stripped_check` 用 `--target arm64-apple-macosx` 触发 cc-wrapper 多 target 缺陷（`posix_spawn failed`），构建失败 | 已确认必要，无可回归空间 | 624af665418d | `manifests/default.nix` |
 | `vim` | 📦 本地 | ❌ | wrapper 相对设置 `VIMRUNTIME` | 可搬运 runtime 定位必须保留 | — | `packages/vim/` |

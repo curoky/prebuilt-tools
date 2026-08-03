@@ -18,20 +18,31 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITHUB_ACTOR: ${{ github.actor }}
     steps:
-      - name: Install nixcache
-        run: curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/master/cmd/nixcache/install.sh | bash -s -- --prefix "$HOME/.local/bin"
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+          cache-dependency-path: go.sum
+
+      - name: Build nixcache
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          go build -trimpath -ldflags="-s -w" -o "$RUNNER_TEMP/bin/nixcache" ./cmd/nixcache
 
       - name: Report cache size before prune
         run: |
-          before=$("$HOME/.local/bin/nixcache" size)
+          before=$("$RUNNER_TEMP/bin/nixcache" size)
           echo "before=$before" >>"$GITHUB_ENV"
           echo "Cache size before prune: $before" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Prune old snapshots
-        run: $HOME/.local/bin/nixcache prune --snapshot-keep 2 --package-retain-days 2 --package-keep 2
+        run: $RUNNER_TEMP/bin/nixcache prune --snapshot-keep 2 --package-retain-days 2 --package-keep 2
 
       - name: Report cache size after prune
         run: |
-          after=$("$HOME/.local/bin/nixcache" size)
+          after=$("$RUNNER_TEMP/bin/nixcache" size)
           echo "Cache size after prune: $after" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "Before: ${{ env.before }}" | tee -a "$GITHUB_STEP_SUMMARY"

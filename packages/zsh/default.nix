@@ -19,11 +19,6 @@ let
 in
 
 zsh.overrideAttrs (oldAttrs: rec {
-  # Work around a GCC internal compiler error (ICE) in the object-size pass
-  # (compute_builtin_object_size) triggered while compiling Src/sort.o with
-  # _FORTIFY_SOURCE enabled for the static/musl build.
-  hardeningDisable = (oldAttrs.hardeningDisable or [ ]) ++ [ "fortify" ];
-
   # nixpkgs sets `--enable-zshenv=$out/etc/zshenv`, pinning the global zshenv
   # into the read-only Nix store. Drop that flag and point it at /etc/zsh/zshenv
   # so a system-wide /etc/zsh/zshenv is honored.
@@ -31,13 +26,10 @@ zsh.overrideAttrs (oldAttrs: rec {
     (lib.filter (f: !(lib.hasPrefix "--enable-zshenv=" f)) (oldAttrs.configureFlags or [ ]))
     ++ [ "--enable-zshenv=/etc/zsh/zshenv" ];
 
-  patchPhase = oldAttrs.patchPhase or "" + ''
+  postPatch = (oldAttrs.postPatch or "") + ''
     echo "link=either" >> Src/Modules/system.mdd
     echo "link=either" >> Src/Modules/regex.mdd
     echo "link=either" >> Src/Modules/mathfunc.mdd
-    substituteInPlace Src/Modules/termcap.c \
-      --replace '#ifndef HAVE_BOOLCODES' '#if 0'
-    # --replace 'char *boolcodes[]' 'const char * const boolcodes[]'
   '';
 
   outputs = [

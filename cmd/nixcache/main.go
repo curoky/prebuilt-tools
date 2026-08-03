@@ -2,13 +2,19 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/spf13/cobra"
 )
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	root := &cobra.Command{
 		Use:           "nixcache",
 		Short:         "GHCR-backed Nix cache for standalone-binaries",
@@ -46,26 +52,39 @@ func main() {
 		Short: "Serve the cache as a local Nix substituter",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			repoRoot, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			state, err := loadSnapshot(repoRoot)
+			if err != nil {
+				return fmt.Errorf("load cache snapshot: %w", err)
+			}
 			client, err := newRegistryClient(cacheRepository, false)
 			if err != nil {
 				return err
 			}
-			// Restrict loading to the current snapshot+system's tag namespace:
-			// only those segments can be cache hits, and the cache accumulates
-			// hundreds of stale-snapshot tags. If flake.lock is unavailable,
-			// fall back to loading everything.
-			tagPrefix := ""
-			repoRoot, err := os.Getwd()
-			if err == nil {
-				if state, err := loadSnapshot(repoRoot); err == nil {
-					tagPrefix = segmentTagPrefix(state.ID, state.System)
-				} else {
-					fmt.Fprintln(os.Stderr, "warning: could not derive snapshot, loading all segments:", err)
-				}
-			}
-			return serveCache(cmd.Context(), client, tagPrefix)
+			return serveCache(cmd.Context(), client, segmentTagPrefix(state.ID, state.System))
 		},
 	}
+
+	var cacheURL string
+	probe := &cobra.Command{
+		Use:   "probe <store-path>",
+		Short: "Check whether an exact store path exists in the local cache",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			hit, err := probeStorePath(cmd.Context(), http.DefaultClient, cacheURL, args[0])
+			if err != nil {
+				return &probeCommandError{err: err}
+			}
+			if !hit {
+				return errProbeMiss
+			}
+			return nil
+		},
+	}
+	probe.Flags().StringVar(&cacheURL, "cache", "http://127.0.0.1:37515", "local cache URL")
 
 	var keep int
 	var packageRetainDays int
@@ -106,9 +125,24 @@ func main() {
 		},
 	}
 
-	root.AddCommand(push, serve, prune, size)
+	root.AddCommand(push, serve, probe, prune, size)
 	if err := root.Execute(); err != nil {
+		if errors.Is(err, errProbeMiss) {
+			return 1
+		}
 		fmt.Fprintln(os.Stderr, "Error:", err)
-		os.Exit(1)
+		var probeErr *probeCommandError
+		if errors.As(err, &probeErr) {
+			return probeErrorExitCode
+		}
+		return 1
 	}
+	return 0
 }
+
+var errProbeMiss = errors.New("cache miss")
+
+type probeCommandError struct{ err error }
+
+func (err *probeCommandError) Error() string { return err.err.Error() }
+func (err *probeCommandError) Unwrap() error { return err.err }

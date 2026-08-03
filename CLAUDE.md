@@ -50,6 +50,8 @@ macOS 系统动态库只允许来自 `/usr/lib` 和 `/System/Library/Frameworks`
 单独确认。
 
 - Manifest 不填写默认字段；包清单和 schema 以实现为准。
+- Manifest schema 在 eval 时 fail-closed：未知字段、平台、nixpkgs version、空或重复
+  output 和错误字段类型必须直接报错。
 - 本地包只修 root cause，不复制 upstream derivation。
 - 优先最小 override，避免 target overlay 污染 `buildPackages`。只针对静态 target
   的 override 必须检查 `stdenv.hostPlatform.isStatic`。
