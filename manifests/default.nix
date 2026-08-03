@@ -22,7 +22,15 @@
 {
   ## ---- common (all platforms) -------------------------------------------
 
-  bash = { };
+  # bash/coreutils temporarily skip aarch64-linux: the musl-static cross build
+  # currently fails there (see docs regression table). x86_64-linux and darwin
+  # stay on the zero-customization manifest build.
+  bash = {
+    platforms = [
+      "x86_64-linux"
+      "aarch64-darwin"
+    ];
+  };
   binutils-unwrapped = {
     alias = "binutils";
   };
@@ -32,7 +40,12 @@
   };
   cacert = { };
   connect = { };
-  coreutils = { };
+  coreutils = {
+    platforms = [
+      "x86_64-linux"
+      "aarch64-darwin"
+    ];
+  };
   # diffutils on Linux keeps a local override (packages/diffutils): unstable
   # 3.12's gnulib checkPhase fails 9 multithread/setlocale tests under
   # musl-static. Darwin uses the stock manifest build.
@@ -76,7 +89,14 @@
   openssl = {
     output = [ "bin" ];
   };
+  # patchelf skips aarch64-linux (musl-static cross build currently fails). The
+  # x86_64-linux pin to 25.05 predates that: unstable's make check hits an
+  # R_X86_64_32 relocation error under musl-static.
   patchelf = {
+    platforms = [
+      "x86_64-linux"
+      "aarch64-darwin"
+    ];
     "x86_64-linux" = {
       version = "25.05";
     };
@@ -244,10 +264,10 @@
       "aarch64-linux"
     ];
   };
+  # qemu-user skips aarch64-linux (musl-static cross build currently fails).
   qemu-user = {
     platforms = [
       "x86_64-linux"
-      "aarch64-linux"
     ];
   };
   rsync = { };
@@ -392,7 +412,15 @@
       isStatic = false;
     };
   };
+  # dive skips aarch64-linux (musl-static cross build currently fails). The
+  # x86_64-linux pin to 25.11 predates that: unstable's static dependency chain
+  # (gpgme->gnupg->openldap) fails to locate Cyrus SASL. darwin uses native
+  # pkgs.
   dive = {
+    platforms = [
+      "x86_64-linux"
+      "aarch64-darwin"
+    ];
     "x86_64-linux" = {
       version = "25.11";
     };

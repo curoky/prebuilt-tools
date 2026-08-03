@@ -40,7 +40,7 @@ Artifact 只做规范化与约束校验，不会把动态程序变成静态程�
 - 路径含 `openssl` 的文件保留既有 validation 豁免，但仍执行格式相关清理。
 
 不要通过放宽全局校验修复单包问题。新增动态例外或改变 `openssl` 豁免前先确认，并同步
-`lib/make-artifacts.nix`、[`TODO.md`](../../TODO.md) 和
+`lib/make-artifacts.nix`、[回归清单](../../docs/regression/CLAUDE.md) 和
 根 [`CLAUDE.md`](../../CLAUDE.md)。
 
 ## 实现边界

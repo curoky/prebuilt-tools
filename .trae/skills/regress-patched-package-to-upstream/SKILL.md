@@ -6,7 +6,7 @@ description: "定期 review 本仓库中被 patch 或被 pin 老版本的包，�
 # 回归 patched / pinned 包到上游
 
 本仓库长期目标是优先使用官方维护的 unstable 最新版。根 `CLAUDE.md` 是版本策略、
-平台约束和现有例外的 source of truth；根 `TODO.md` 是 pin、patch 与本地 packaging 的总账，
+平台约束和现有例外的 source of truth；`docs/regression/` 是 pin、patch 与本地 packaging 的总账，
 也是待审计候选的唯一队列。本 skill 只定义如何消费其中的回归候选并移除已经失效的 workaround。
 
 本 skill 是 `patch-nixpkgs-standalone` 的逆操作：那个在 stock 静态构建失败时**加**
@@ -71,15 +71,16 @@ shellcheck = {
 
 ## Queue Contract
 
-- `TODO.md` 是单一 Markdown 表格。批量回归只遍历「回归」列为 `✅` 或 `🟡` 的行，默认按表格
-  顺序处理：
+- `docs/regression/` 按平台/架构拆成多张 Markdown 表：`linux.md`（跨架构共享）、
+  `linux-aarch64.md`（aarch64 特有差异）、`darwin.md`（macOS），约定见 `README.md`。批量回归只遍历
+  「回归」列为 `✅` 或 `🟡` 的行，默认按表格顺序处理：
 
   ```bash
-  rg '^\| .+ \| (✅|🟡)' TODO.md
+  rg '^\| .+ \| (✅|🟡)' docs/regression/*.md
   ```
 
 - 不在批量执行时重新扫描 `packages/` 或 `manifests/default.nix` 猜测候选。仓库扫描只用于维护
-  `TODO.md`、核对队列完整性，或用户明确要求全量审计时。
+  `docs/regression/`、核对队列完整性，或用户明确要求全量审计时。
 - 每次只消费一行。先读包名、Linux、macOS、回归、`Linux 原因与保留边界`、`macOS 原因与保留边界`、
   回归判据、`Linux commit`、`macOS commit`、来源，再读取实现。表内判据是最低验收条件，不替代根
   `CLAUDE.md` 的通用 portability 检查。原因与保留边界按平台拆成两列，只读目标平台那一列。
@@ -97,7 +98,7 @@ shellcheck = {
 ## Procedure
 
 1. **从队列选择一个条目。**
-   - 批量模式取 `TODO.md` 中下一条 `✅` 或 `🟡` 行；用户指定包时，从表格定位对应行。
+   - 批量模式取 `docs/regression/` 中下一条 `✅` 或 `🟡` 行；用户指定包时，从对应表格定位该行。
    - 若指定的 pin、patch 或本地 packaging 不在表格，先补齐该行和正确状态再继续。
    - 按「来源」读取实现，确认当前代码仍与「原因与保留边界」一致。表格陈旧时先修正表格。
 
@@ -168,6 +169,6 @@ shellcheck = {
   上游修构建 bug 不会让 repackaging 过时。
 - 不要凭假设回归——总是先在**所有**目标平台上构建并验证上游。
 - 只有上游**既可构建又 portable** 时才回归。可构建但不 portable 不是去掉 patch/pin 的理由。
-- 批量回归不得绕过 `TODO.md` 自建候选清单；代码与队列不一致时，先维护队列。
+- 批量回归不得绕过 `docs/regression/` 自建候选清单；代码与队列不一致时，先维护队列。
 - diff 要外科式：只移除过时 patch/pin 拥有的东西。
 - 拿不准某个平台是否真修好（如本地无法测 darwin），就说明并先问，再删那个平台的 patch/pin。

@@ -29,7 +29,7 @@ description: "把一个 nixpkgs 包 patch 成可移植的 standalone 构建，�
 > skill 把它切回 unstable 上游。本仓库的长期目标是所有包都用 unstable channel 最新版。
 
 若本次改动新增或改变非 `unstable` version pin、本地 derivation、override、禁用
-check/installCheck 或动态例外，必须在同一次改动中维护根 `TODO.md` 总表。结构性 wrapper、
+check/installCheck 或动态例外，必须在同一次改动中维护 `docs/regression/` 回归清单。结构性 wrapper、
 sibling runtime、资源打包、产品行为和多版本发布也要进入总表，但标为 `❌`；mixed override
 标为 `🟡`，并同时写清可回归 workaround 与必须保留的 packaging。
 
@@ -151,6 +151,6 @@ musl 全静态。
 
 - 最小 diff：只 patch 能改善 portability / 移除动态依赖 / 修运行期路径的部分。别重构无关代码。
 - 匹配既有包风格（`overrideAttrs`、`postInstall`、wrapper 脚本）。
-- 新增或改变旧版本 pin、本地 derivation、override、禁用检查或动态例外时同步维护根 `TODO.md`。
+- 新增或改变旧版本 pin、本地 derivation、override、禁用检查或动态例外时同步维护 `docs/regression/` 回归清单。
 - 若改动影响架构、package selection、例外或 artifact 协议，在同一次改动里更新 `CLAUDE.md`。
 - 在 macOS 上**绝不**未经用户显式确认就复制 `/nix` dylib。

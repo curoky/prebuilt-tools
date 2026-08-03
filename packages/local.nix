@@ -10,7 +10,7 @@
   common = import ./local/common.nix {
     inherit pkgs pkgsStatic;
   };
-  linux = import ./local/linux.nix {
+  linux = import ./local/linux {
     inherit pkgs pkgsStatic;
   };
   darwin = import ./local/darwin.nix {

@@ -7,7 +7,7 @@
   `CLAUDE.md`
 
 本仓库将 nixpkgs 包和必要的本地定制转换为可搬运目录，再生成确定性 tar.gz。
-包级 workaround 和回归状态以 [`TODO.md`](TODO.md) 为准。
+包级 workaround 和回归状态以[回归清单](docs/regression/CLAUDE.md)为准。
 
 ## 产物不变量
 
@@ -56,7 +56,7 @@ macOS 系统动态库只允许来自 `/usr/lib` 和 `/System/Library/Frameworks`
 - 优先最小 override，避免 target overlay 污染 `buildPackages`。只针对静态 target
   的 override 必须检查 `stdenv.hostPlatform.isStatic`。
 - 新增或改变 pin、patch、override、禁用检查、结构性 packaging、宿主依赖或动态
-  例外时同步 `TODO.md`。
+  例外时同步[回归清单](docs/regression/CLAUDE.md)。
 - Wrapper、资源、证书和同级 runtime 要做行为 smoke test，不能只验证 derivation
   构建成功。
 
@@ -83,8 +83,8 @@ cache segment 和 retention 规则见[发布与 cache 模型](docs/release-model
 | 需求 | 修改位置 |
 | --- | --- |
 | 接入可直接使用的 nixpkgs 包 | `manifests/default.nix` |
-| 添加 patch、wrapper 或平台拆分 | `packages/<name>/`、`packages/local/<platform>.nix` |
-| 登记或回归本地定制 | `TODO.md`、manifest、`packages/local/` |
+| 添加 patch、wrapper 或平台拆分 | `packages/<name>/`、`packages/local/` |
+| 登记或回归本地定制 | `docs/regression/`、manifest、`packages/local/` |
 | 修改产物后处理与校验 | `cmd/artifact/CLAUDE.md`、`lib/make-artifacts.nix` |
 | 修改包选择或 flake outputs | `lib/`、`flake.nix` |
 | 修改 `bm` | `cmd/binman/CLAUDE.md` |
@@ -94,7 +94,7 @@ cache segment 和 retention 规则见[发布与 cache 模型](docs/release-model
 [`patch-nixpkgs-standalone`](.trae/skills/patch-nixpkgs-standalone/SKILL.md)。
 回归本地 patch 或版本 pin 时使用
 [`regress-patched-package-to-upstream`](.trae/skills/regress-patched-package-to-upstream/SKILL.md)，
-并以 `TODO.md` 为候选清单。
+并以[回归清单](docs/regression/CLAUDE.md)为候选清单。
 
 ## 验证
 
@@ -118,5 +118,5 @@ build 成功判断；补充 `--version` 或代表性 smoke test。
 
 - 跨模块设计保存在根 `CLAUDE.md`；独立组件的设计与协议放在组件目录的
   `CLAUDE.md`。
-- `docs/` 只保留需要独立展开的发布模型和跨包构建策略。
+- `docs/` 只保留需要独立展开的发布模型、跨包构建策略和回归清单。
 - 仓库内文档使用相对链接；实现参数和包清单以代码为准。

@@ -17,7 +17,7 @@ Linux 使用 arch 对应的 musl cross static set（x86_64 用 musl64，aarch64 
 aarch64-multiplatform-musl），以便 Node 的 Rust 依赖复用 build 平台缓存工具链。
 macOS 必须从 `pkgsStatic` 构建依赖，最终 Mach-O 只能加载系统库和 framework。
 
-具体 patch 和禁用检查的状态见 [`TODO.md`](../../TODO.md)。
+具体 patch 和禁用检查的状态见[回归清单](../regression/CLAUDE.md)。
 
 ## CLI Wrapper
 
