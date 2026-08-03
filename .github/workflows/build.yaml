@@ -1,0 +1,152 @@
+name: build
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build.yaml'
+      - '.github/workflows/build-platform.yaml'
+      - 'packages/**'
+      - 'manifests/**'
+      - 'lib/**'
+      - 'cmd/artifact/**'
+      - 'flake*'
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'platform to build'
+        default: all
+        required: true
+        type: choice
+        options:
+          - all
+          - x86_64-linux
+          - aarch64-linux
+          - aarch64-darwin
+      name:
+        description: 'package name (use "*" to force build all)'
+        default: ''
+        required: false
+        type: string
+      skip_discover:
+        description: 'skip binary-cache check and force build the candidate packages'
+        default: false
+        required: false
+        type: boolean
+  schedule:
+    - cron: '0 0 * * 0'
+
+permissions:
+  contents: read
+
+jobs:
+  platforms:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - name: Check out repository
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.name != '' && inputs.name != '*' }}
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.name != '' && inputs.name != '*' }}
+        uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          summarize: false
+
+      - name: Select platforms
+        id: select
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PLATFORM: ${{ inputs.platform }}
+          PACKAGE_NAME: ${{ inputs.name }}
+        run: |
+          set -euo pipefail
+
+          matrix=$(jq -nc '{
+            include: [
+              {
+                system: "x86_64-linux",
+                runner: "ubuntu-latest",
+                artifact_suffix: "linux-x86_64",
+                exclude_pkgs: "lld_18 lld_19 lld_20 lld_21 lld_22 clang18 clang19 clang20 clang21 clang22",
+                push_exclude_pkgs: "nodejs-slim24 nodejs-slim26 markdownlint-cli2 opencommit pnpm prettier nil nixfmt shellcheck gdb clang-tools-18 clang-tools-19 clang-tools-20 clang-tools-21 clang-tools-22"
+              },
+              {
+                system: "aarch64-linux",
+                runner: "ubuntu-24.04-arm",
+                artifact_suffix: "linux-arm64",
+                exclude_pkgs: "lld_18 lld_19 lld_20 lld_21 lld_22 clang18 clang19 clang20 clang21 clang22",
+                push_exclude_pkgs: "nodejs-slim24 nodejs-slim26 markdownlint-cli2 opencommit pnpm prettier nil nixfmt shellcheck gdb clang-tools-18 clang-tools-19 clang-tools-20 clang-tools-21 clang-tools-22"
+              },
+              {
+                system: "aarch64-darwin",
+                runner: "macos-26",
+                artifact_suffix: "darwin-arm64",
+                exclude_pkgs: "inetutils gnupg music-decrypto",
+                push_exclude_pkgs: "nodejs-slim26 markdownlint-cli2 opencommit pnpm prettier shellcheck gdb"
+              }
+            ]
+          }')
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PLATFORM" != "all" ]]; then
+            matrix=$(jq -c --arg platform "$PLATFORM" \
+              '{include: [.include[] | select(.system == $platform)]}' <<<"$matrix")
+          fi
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$PACKAGE_NAME" && "$PACKAGE_NAME" != "*" ]]; then
+            selected='{"include":[]}'
+            {
+              echo "## Platform availability"
+              echo
+              echo "| platform | package | status |"
+              echo "| --- | --- | --- |"
+            } >>"$GITHUB_STEP_SUMMARY"
+
+            while IFS= read -r item; do
+              system=$(jq -r '.system' <<<"$item")
+              package_names=$(nix eval --accept-flake-config --json \
+                ".#packages.${system}" --apply builtins.attrNames)
+
+              if jq -e --arg name "$PACKAGE_NAME" \
+                'index($name) != null' <<<"$package_names" >/dev/null; then
+                availability=available
+                selected=$(jq -c --argjson item "$item" \
+                  '.include += [$item]' <<<"$selected")
+              else
+                availability=skipped
+              fi
+
+              echo "| \`${system}\` | \`${PACKAGE_NAME}\` | ${availability} |" \
+                >>"$GITHUB_STEP_SUMMARY"
+            done < <(jq -c '.include[]' <<<"$matrix")
+
+            if [[ $(jq '.include | length' <<<"$selected") -eq 0 ]]; then
+              echo "::error::package '${PACKAGE_NAME}' is unavailable on every selected platform"
+              exit 1
+            fi
+            matrix=$selected
+          fi
+
+          echo "matrix=$matrix" >>"$GITHUB_OUTPUT"
+          echo "selected platforms:"
+          jq -r '.include[].system' <<<"$matrix"
+
+  build:
+    needs: platforms
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.platforms.outputs.matrix) }}
+    uses: ./.github/workflows/build-platform.yaml
+    with:
+      system: ${{ matrix.system }}
+      runner: ${{ matrix.runner }}
+      artifact_suffix: ${{ matrix.artifact_suffix }}
+      exclude_pkgs: ${{ matrix.exclude_pkgs }}
+      push_exclude_pkgs: ${{ matrix.push_exclude_pkgs }}
+      name: ${{ inputs.name || '' }}
+      skip_discover: ${{ inputs.skip_discover || false }}
+    secrets: inherit

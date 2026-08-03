@@ -1,7 +1,19 @@
 # 发布与 Cache 模型
 
-Linux 和 Darwin workflow 共享同一发布契约：按当前 `outPath` 发现缺失包，构建 standalone
-目录及归档，再分别发布 Nix cache 和工具 OCI artifact。
+`.github/workflows/build.yaml` 是 Linux 和 Darwin 的统一发布入口。它按平台调用
+`.github/workflows/build-platform.yaml`，各平台独立按当前 `outPath` 发现缺失包，构建
+standalone 目录及归档，再分别发布 Nix cache 和工具 OCI artifact。
+
+平台与 runner 映射固定为：
+
+| Nix system | Runner | Artifact suffix |
+| --- | --- | --- |
+| `x86_64-linux` | `ubuntu-latest` | `linux-x86_64` |
+| `aarch64-linux` | `ubuntu-24.04-arm` | `linux-arm64` |
+| `aarch64-darwin` | `macos-26` | `darwin-arm64` |
+
+每个平台使用独立的动态 package matrix，不能把多个平台的包展开到同一个 matrix。这样既让
+平台失败相互独立，也避免触及 GitHub Actions 单个 matrix 的 256 job 上限。
 
 Nix cache 的 segment schema、serving 和 retention 细节见
 [`cmd/nixcache/CLAUDE.md`](../cmd/nixcache/CLAUDE.md)。
@@ -40,8 +52,10 @@ identity。
 
 ## 触发矩阵
 
-`discover` 与 `build` job 按下表联动。`skip_discover` 是 `workflow_dispatch` 的布尔输入；
-`name` 是包名字符串输入（`*` 或空表示全部包）。
+`push` 和 `schedule` 始终运行全部三个平台。`workflow_dispatch` 的 `platform` 输入可选择
+`all`、`x86_64-linux`、`aarch64-linux` 或 `aarch64-darwin`，默认 `all`。
+`skip_discover` 是 `workflow_dispatch` 的布尔输入；`name` 是包名字符串输入（`*` 或空
+表示全部包）。
 
 | 触发 | `discover` job | 候选范围 | cache 命中过滤 | build matrix 来源 |
 | --- | --- | --- | --- | --- |
@@ -49,17 +63,19 @@ identity。
 | `schedule` | 运行 | 全部包 | 跳过（强制重建） | `discover` 输出 |
 | dispatch 全部，普通 | 运行 | 全部包 | 做 | `discover` 输出 |
 | dispatch 全部，强制 | 运行 | 全部包 | 跳过 | `discover` 输出 |
-| dispatch 具体包 | 跳过 | 仅该包 | 不适用 | `inputs.name` |
+| dispatch 具体包 | 跳过 | 仅该包 | 不适用 | 入口预检后的 `inputs.name` |
 
-具体包 dispatch 直接构造单包 matrix，不做 cache 探测。新增触发方式或改变选择语义时，必须
-同步 Linux、Darwin workflow 和本表。
+具体包 dispatch 先在入口 workflow 验证所选平台是否暴露该包，再为可用平台直接构造
+单包 matrix，不做 cache 探测。不存在该包的平台显示为 skipped，其他平台继续；如果所有
+所选平台都不可用，入口 job 失败，避免错误包名静默成功。新增触发方式或改变选择语义时，
+必须同步两个 build workflow 和本表。
 
 Node.js 运行时和同级 runtime 工具（`nodejs-slim*`、`markdownlint-cli2`、`opencommit`、
 `pnpm`、`prettier`）以及 `nil`、`nixfmt`、`shellcheck`、`gdb`、`clang-tools-{18..22}`
-编译慢，仅在 `push` 触发时通过 workflow 的 `PUSH_EXCLUDE_PKGS` 从候选中排除，避免拖慢普通
+编译慢，仅在 `push` 触发时通过平台配置的 `push_exclude_pkgs` 从候选中排除，避免拖慢普通
 代码 push。其中 `nil`、`nixfmt`、`clang-tools-*` 只在 Linux 暴露，Darwin 的排除列表相应
 更短。`schedule` 和 `workflow_dispatch` 不受此排除影响，仍会构建并发布它们。改动
-`PUSH_EXCLUDE_PKGS` 时须同步 Linux、Darwin workflow 和本说明。
+`push_exclude_pkgs` 时须同步入口 workflow 和本说明。
 
 `clang-tools-{18..22}`（原 `build-llvm-tools.yaml`）已并入 Linux workflow 的普通
 `discover` / build matrix，与其他包共用 cache 命中过滤和 artifact 发布契约。它们是

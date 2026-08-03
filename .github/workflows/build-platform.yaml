@@ -1,0 +1,383 @@
+name: build platform
+
+on:
+  workflow_call:
+    inputs:
+      system:
+        required: true
+        type: string
+      runner:
+        required: true
+        type: string
+      artifact_suffix:
+        required: true
+        type: string
+      exclude_pkgs:
+        required: true
+        type: string
+      push_exclude_pkgs:
+        required: true
+        type: string
+      name:
+        default: ''
+        required: false
+        type: string
+      skip_discover:
+        default: false
+        required: false
+        type: boolean
+
+env:
+  NIXCACHE_STORE: http://127.0.0.1:37515
+  NIXCACHE_SUBSTITUTER: http://127.0.0.1:37515?trusted=true
+
+jobs:
+  discover:
+    if: ${{ inputs.name == '' || inputs.name == '*' }}
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+      count: ${{ steps.set.outputs.count }}
+      candidates: ${{ steps.set.outputs.candidates }}
+      hits: ${{ steps.set.outputs.hits }}
+    steps:
+      - name: Set up Homebrew
+        if: ${{ inputs.system == 'aarch64-darwin' }}
+        uses: Homebrew/actions/setup-homebrew@main
+
+      - name: Select GNU tools
+        if: ${{ inputs.system == 'aarch64-darwin' }}
+        run: |
+          echo "/opt/homebrew/opt/grep/libexec/gnubin" >>"$GITHUB_PATH"
+          echo "/opt/homebrew/opt/findutils/libexec/gnubin" >>"$GITHUB_PATH"
+
+      - name: Install GNU tools
+        if: ${{ inputs.system == 'aarch64-darwin' }}
+        run: brew install grep findutils
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+          cache-dependency-path: go.sum
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          summarize: false
+
+      - name: Start Nix cache
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          go build -trimpath -ldflags="-s -w" -o "$RUNNER_TEMP/bin/nixcache" ./cmd/nixcache
+          "$RUNNER_TEMP/bin/nixcache" serve >"$RUNNER_TEMP/nixcache.log" 2>&1 &
+          curl --retry 90 --retry-delay 1 --retry-all-errors -fsS \
+            "$NIXCACHE_STORE/nix-cache-info" || {
+              cat "$RUNNER_TEMP/nixcache.log"
+              exit 1
+            }
+
+      - id: set
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SKIP_DISCOVER: ${{ inputs.skip_discover }}
+          SYSTEM: ${{ inputs.system }}
+          EXCLUDE_PKGS: ${{ inputs.exclude_pkgs }}
+          PUSH_EXCLUDE_PKGS: ${{ inputs.push_exclude_pkgs }}
+        run: |
+          set -euo pipefail
+
+          # shellcheck disable=SC2016
+          nix eval --accept-flake-config --raw ".#packages.${SYSTEM}" --apply '
+            pkgs: builtins.concatStringsSep "\n" (
+              builtins.filter (s: s != "") (builtins.attrValues (builtins.mapAttrs
+                (name: drv:
+                  if name == "all" || name == "all-fast" then "" else "${name}\t${drv.outPath}")
+                pkgs))
+            )
+          ' >pkgs.tsv
+
+          for name in $EXCLUDE_PKGS; do
+            grep -vP "^${name}\t" pkgs.tsv >pkgs.tsv.tmp && mv pkgs.tsv.tmp pkgs.tsv
+          done
+
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            for name in $PUSH_EXCLUDE_PKGS; do
+              grep -vP "^${name}\t" pkgs.tsv >pkgs.tsv.tmp && mv pkgs.tsv.tmp pkgs.tsv
+            done
+          fi
+
+          check() {
+            local name="${1%%$'\t'*}"
+            local out_path="${1#*$'\t'}"
+            local status
+            if "$RUNNER_TEMP/bin/nixcache" probe "$out_path"; then
+              echo "cache hit : $name" >&2
+            else
+              status=$?
+              case "$status" in
+                1)
+                  echo "need build: $name" >&2
+                  echo "$name"
+                  ;;
+                *)
+                  echo "::error::cache probe failed for $name with status $status" >&2
+                  return "$status"
+                  ;;
+              esac
+            fi
+          }
+          export -f check
+          export RUNNER_TEMP
+          if [[ "$SKIP_DISCOVER" == "true" || "$EVENT_NAME" == "schedule" ]]; then
+            cut -f1 pkgs.tsv >selected.txt
+          else
+            if ! xargs -P 16 -d '\n' -I {} bash -c 'check "$@"' _ {} <pkgs.tsv >selected.txt; then
+              echo "::error::cache discovery aborted because at least one probe failed"
+              exit 1
+            fi
+          fi
+
+          matrix=$(nix run nixpkgs#jq -- -R -s -c \
+            'split("\n") | map(select(length > 0)) | {include: map({name: .})}' \
+            <selected.txt)
+          candidates=$(grep -c . pkgs.tsv || true)
+          count=$(grep -c . selected.txt || true)
+          hits=$((candidates - count))
+
+          {
+            echo "count=$count"
+            echo "candidates=$candidates"
+            echo "hits=$hits"
+            echo "matrix=$matrix"
+          } >>"$GITHUB_OUTPUT"
+          echo "selected packages ($count of $candidates candidates, $hits cache hits):"
+          cat selected.txt
+
+      - name: Dump Nix cache log
+        if: always()
+        run: sed 's/^/[nixcache] /' "$RUNNER_TEMP/nixcache.log" || true
+
+  build:
+    needs: discover
+    if: ${{ always() && needs.discover.result != 'failure' && needs.discover.result != 'cancelled' && ((needs.discover.outputs.count != '0' && needs.discover.outputs.count != '') || (inputs.name != '' && inputs.name != '*')) }}
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ needs.discover.result == 'skipped' && fromJSON(format('{{"include":[{{"name":"{0}"}}]}}', inputs.name)) || fromJSON(needs.discover.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Free disk space
+        if: ${{ inputs.system != 'aarch64-darwin' && startsWith(matrix.name, 'clang-tools-') }}
+        run: tools/free-disk-space.sh
+
+      - name: Set up swap space
+        if: ${{ inputs.system != 'aarch64-darwin' && startsWith(matrix.name, 'clang-tools-') }}
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 10
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+          cache-dependency-path: go.sum
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          summarize: false
+
+      - name: Start Nix cache
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          go build -trimpath -ldflags="-s -w" -o "$RUNNER_TEMP/bin/nixcache" ./cmd/nixcache
+          "$RUNNER_TEMP/bin/nixcache" serve >"$RUNNER_TEMP/nixcache.log" 2>&1 &
+          curl --retry 90 --retry-delay 1 --retry-all-errors -fsS \
+            "$NIXCACHE_STORE/nix-cache-info" || {
+              cat "$RUNNER_TEMP/nixcache.log"
+              exit 1
+            }
+
+      - name: Build package and source closure
+        env:
+          SYSTEM: ${{ inputs.system }}
+          ARTIFACT_SUFFIX: ${{ inputs.artifact_suffix }}
+        run: |
+          nix build \
+            --option extra-substituters "$NIXCACHE_SUBSTITUTER" \
+            ".#${{ matrix.name }}" --out-link standalone
+          nix build \
+            --option extra-substituters "$NIXCACHE_SUBSTITUTER" \
+            ".#tarballs.${SYSTEM}.${{ matrix.name }}" --out-link tarball
+          cp -L tarball-archive "./${{ matrix.name }}.${ARTIFACT_SUFFIX}.tar.gz"
+          {
+            echo "SOURCE_STORE_PATHS<<EOF"
+            nix build \
+              --option extra-substituters "$NIXCACHE_SUBSTITUTER" \
+              --print-out-paths --no-link \
+              ".#sources.${SYSTEM}.${{ matrix.name }}"
+            echo "EOF"
+          } >>"$GITHUB_ENV"
+
+      - name: Push Nix closure to GHCR
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NIXCACHE_PACKAGE_KEY: ${{ matrix.name }}
+        run: |
+          source_paths=()
+          while IFS= read -r path; do
+            if [[ -n "$path" ]]; then
+              source_paths+=("$path")
+            fi
+          done <<<"$SOURCE_STORE_PATHS"
+          "$RUNNER_TEMP/bin/nixcache" push \
+            "$(readlink -f ./standalone)" "${source_paths[@]}"
+
+      - uses: oras-project/setup-oras@v2
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push artifact to GHCR
+        env:
+          ARTIFACT_SUFFIX: ${{ inputs.artifact_suffix }}
+        run: |
+          oras push \
+            "ghcr.io/curoky/standalone-binaries:${{ matrix.name }}-${ARTIFACT_SUFFIX}" \
+            "./${{ matrix.name }}.${ARTIFACT_SUFFIX}.tar.gz:application/vnd.oci.image.layer.v1.tar+gzip"
+
+      - name: Record build result
+        if: always()
+        env:
+          SYSTEM: ${{ inputs.system }}
+        run: |
+          mkdir -p build-results
+          printf '%s\t%s\n' "${{ matrix.name }}" "${{ job.status }}" \
+            >"build-results/${SYSTEM}-${{ matrix.name }}.tsv"
+
+      - name: Upload build result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-result-${{ inputs.system }}-${{ matrix.name }}
+          path: build-results/${{ inputs.system }}-${{ matrix.name }}.tsv
+          retention-days: 7
+
+      - name: Dump Nix cache log
+        if: always()
+        run: sed 's/^/[nixcache] /' "$RUNNER_TEMP/nixcache.log" || true
+
+  summary:
+    needs: [discover, build]
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SYSTEM: ${{ inputs.system }}
+      PACKAGE_NAME: ${{ inputs.name }}
+      DISCOVER_RESULT: ${{ needs.discover.result }}
+      BUILD_RESULT: ${{ needs.build.result }}
+      CANDIDATES: ${{ needs.discover.outputs.candidates }}
+      HITS: ${{ needs.discover.outputs.hits }}
+      SELECTED: ${{ needs.discover.outputs.count }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download build results
+        if: ${{ needs.build.result != 'skipped' }}
+        uses: actions/download-artifact@v8
+        with:
+          pattern: build-result-${{ inputs.system }}-*
+          path: build-results
+          merge-multiple: true
+
+      - name: Render summary
+        run: |
+          set -euo pipefail
+
+          snapshot=$(sha256sum flake.lock | cut -c1-16)
+          success=0
+          failure=0
+          other=0
+          declare -a failed_pkgs=()
+          shopt -s nullglob
+          results=(build-results/*.tsv)
+          shopt -u nullglob
+          for file in "${results[@]}"; do
+            while IFS=$'\t' read -r name status; do
+              [[ -n "$name" ]] || continue
+              case "$status" in
+                success) success=$((success + 1)) ;;
+                failure) failure=$((failure + 1)); failed_pkgs+=("$name") ;;
+                *) other=$((other + 1)) ;;
+              esac
+            done <"$file"
+          done
+          built_total=$((success + failure + other))
+
+          {
+            echo "# build ${SYSTEM} summary"
+            echo
+            echo "| field | value |"
+            echo "| --- | --- |"
+            echo "| trigger | \`${{ github.event_name }}\` |"
+            echo "| platform | \`${SYSTEM}\` |"
+            echo "| commit | [\`${GITHUB_SHA:0:12}\`](${{ github.server_url }}/${{ github.repository }}/commit/${GITHUB_SHA}) |"
+            echo "| flake.lock snapshot | \`${snapshot}\` |"
+            echo "| run | [#${{ github.run_number }}](${RUN_URL}) |"
+            echo
+            echo "## discover"
+            echo
+            if [[ "$DISCOVER_RESULT" == "skipped" ]]; then
+              echo "discover was skipped (single-package dispatch for \`${PACKAGE_NAME}\`)."
+            else
+              echo "| metric | count |"
+              echo "| --- | --- |"
+              echo "| candidates | ${CANDIDATES:-0} |"
+              echo "| cache hits | ${HITS:-0} |"
+              echo "| selected for build | ${SELECTED:-0} |"
+            fi
+            echo
+            echo "## build"
+            echo
+            echo "job result: \`${BUILD_RESULT}\`"
+            echo
+            echo "| metric | count |"
+            echo "| --- | --- |"
+            echo "| built | ${built_total} |"
+            echo "| success | ${success} |"
+            echo "| failure | ${failure} |"
+            if [[ "$other" -gt 0 ]]; then
+              echo "| other | ${other} |"
+            fi
+            echo
+            if [[ "$failure" -gt 0 ]]; then
+              echo "### failed packages"
+              echo
+              for name in "${failed_pkgs[@]}"; do
+                echo "- \`${name}\`"
+              done
+              echo
+              echo "See the [build jobs](${RUN_URL}) for per-package logs."
+            fi
+          } >"$RUNNER_TEMP/summary.md"
+
+          cat "$RUNNER_TEMP/summary.md" >>"$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/summary.md"
