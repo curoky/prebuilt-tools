@@ -75,6 +75,7 @@
 | `tmux-plugins` | 📦 本地 | ❌ | 独立发布 `.tmux.conf` 数据 | 数据 bundle 是产品 | — | `packages/tmux-plugins/` |
 | `vim` | 📦 本地 | ❌ | wrapper 相对设置 `VIMRUNTIME` | 可搬运 runtime 定位必须保留 | — | `packages/vim/` |
 | `vim-plugins` | 📦 本地 | ❌ | 聚合固定 Vim plugins | plugin bundle 是产品 | — | `packages/vim-plugins/` |
+| `watchexec` | 🩹 本地 | ✅ | stock 在 workspace 根执行裸 `cargo build`，install hook 会把测试 crate `test-socketfd` 一并发布；本地 override 用 `--package=watchexec-cli` 只构建产品 CLI | stock 输出不再包含 `test-socketfd`，且最终产物满足 musl-static portability | b7c2ada94fe9 | `packages/watchexec/` |
 | `wget` | 🩹 + 📦 本地 | 🟡 | 实测无可回归项：恢复 checks 后 `wget_options_fuzzer` 段错误（exit 139）且缺 fuzzer corpus，`doCheck=false` 必需；CA wrapper packaging 保留 | 恢复 checks/build tool 后保留 CA packaging | 624af665418d | `packages/wget/` |
 | `zellij` | 🩹 checks | 🟡 | 已去掉 `26.05` pin，改用 unstable `zellij-unwrapped`（0.44.3，static-pie musl 达标）；仍保留 `doCheck=false`/`doInstallCheck=false`（test target 静态链 libcurl 时 libssh2 符号未解析：`undefined reference to libssh2_crypto_engine` 等） | 上游 test target 静态链接修复后恢复 checks | 624af665418d | `packages/zellij/`, `packages/local/linux/common.nix` |
 | `zsh` | 🩹 + 📦 本地 | 🟡 | 已删除过时的 fortify ICE workaround 与 termcap 源码 patch；实测无 module patch 时 `zmodload zsh/system`、`zsh/regex`、`zsh/mathfunc` 均失败，三个 `link=either` 必须保留；FPATH wrapper 和 zshenv policy 属 packaging | 上游静态构建默认内建三个 module 后删除剩余 patch，保留 relocation packaging | 624af665418d | `packages/zsh/` |
