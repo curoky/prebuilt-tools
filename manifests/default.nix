@@ -514,6 +514,15 @@
       isStatic = false;
     };
   };
+  # rclone: Linux only here (pkgsStatic musl static). darwin uses the local
+  # package (packages/rclone/darwin.nix) which redirects the Nix libresolv
+  # load command to /usr/lib.
+  rclone = {
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
+  };
   runc = {
     platforms = [
       "x86_64-linux"

@@ -32,6 +32,7 @@ in
 
   # Native Go packages with Darwin-specific Mach-O relocation.
   golangci-lint = pkgs.callPackage ../golangci-lint/darwin.nix { };
+  rclone = pkgs.callPackage ../rclone/darwin.nix { };
 
   # Perl.
   perl = pkgs.callPackage ../perl/darwin.nix {
