@@ -22,6 +22,7 @@
 {
   ## ---- common (all platforms) -------------------------------------------
 
+  _7zz = { };
   # bash/coreutils temporarily skip aarch64-linux: the musl-static cross build
   # currently fails there (see docs regression table). x86_64-linux and darwin
   # stay on the zero-customization manifest build.
