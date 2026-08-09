@@ -142,6 +142,7 @@ stdenv.mkDerivation rec {
     unset PYTHONPATH
 
     ${python3Packages.python.interpreter} - \
+      ${stdenv.shell} \
       "$check_store/copyparty/bin/copyparty" \
       -i 127.0.0.1 \
       -p 40130 \
@@ -198,6 +199,7 @@ stdenv.mkDerivation rec {
     export TMPDIR=$check_runtime_mp
 
     ${python3Packages.python.interpreter} - \
+      ${stdenv.shell} \
       "$check_store/copyparty/bin/copyparty" \
       -j2 \
       -i 127.0.0.1 \
