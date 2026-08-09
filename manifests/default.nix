@@ -156,7 +156,6 @@
   fd = { };
   git-absorb = { };
   mcfly = { };
-  nixpkgs-fmt = { };
   procs = { };
   ripgrep = { };
   ruff = { };
@@ -246,12 +245,7 @@
       "aarch64-linux"
     ];
   };
-  nixfmt = {
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
-  };
+  nixfmt = { };
   numactl = {
     platforms = [
       "x86_64-linux"
