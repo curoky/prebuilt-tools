@@ -468,6 +468,11 @@
       "aarch64-linux"
     ];
   };
+  golint = {
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
+  };
   gomodifytags = {
     "aarch64-darwin" = {
       isStatic = false;
@@ -516,6 +521,11 @@
       "x86_64-linux"
       "aarch64-linux"
     ];
+  };
+  revive = {
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
   };
   runc = {
     platforms = [
