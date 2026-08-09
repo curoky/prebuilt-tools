@@ -36,6 +36,7 @@
 | `gnutar` | 🩹 本地 | ✅ | gnutar gnulib `xattr-at` 与静态 libacl 都定义 `*xattrat`，GCC 15 `-fno-common` 下链接冲突，需 `-Wl,--allow-multiple-definition` | stock unstable 无 flag 也能静态链接并保留 ACL/xattr | 624af665418d | `packages/gnutar/` |
 | `gpgme` | 🩹 本地 | 🟡 | 实测均不可回归：stock 完整 gnupg 依赖树拖入 openldap 报 `Could not locate Cyrus SASL`，minimalGnuPG 必须保留；保留 minimal 后恢复 checks 又因静态 gpg-agent 无法启动报 `gpg: failed to start gpg-agent`，`--disable-gpg-test`+`doCheck=false` 保留 | 逐项恢复依赖与 checks，保持 musl-static | 624af665418d | `packages/gpgme/` |
 | `libtool` | 📦 本地 | ❌ | 改写 `libtoolize` 的 baked data paths | 相对资源定位必须保留 | — | `packages/libtool/` |
+| `lua5_5` | 🩹 本地 | ✅ | stock Lua 把自身 Nix output 编译进默认 `package.path`/`package.cpath`；本地 override 恢复上游 `/usr/local` root，避免 standalone runtime 引用 Nix store | stock 默认 module paths 不再包含 Nix store 路径 | b7c2ada94fe9 | `packages/lua/` |
 | `makeself` | 📦 本地 | ❌ | wrapper 相对定位 header 资源 | 可搬运资源定位必须保留 | — | `packages/makeself/` |
 | `markdownlint-cli2` | 📦 本地 | ❌ | JS 分发绑定 sibling Node runtime | sibling runtime packaging 必须保留 | — | `packages/markdownlint-cli2/` |
 | `miniserve` | 📦 本地 | ❌ | wrapper 设置仓库要求的默认功能开关 | 产品行为必须保留 | — | `packages/miniserve/` |

@@ -219,7 +219,7 @@
       "aarch64-linux"
     ];
   };
-  lua = {
+  lua5_5 = {
     platforms = [
       "x86_64-linux"
       "aarch64-linux"
