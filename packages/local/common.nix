@@ -22,6 +22,7 @@
   libtool = pkgsStatic.callPackage ../libtool { };
   makeself = pkgsStatic.callPackage ../makeself { };
   p7zip = pkgsStatic.callPackage ../p7zip { };
+  pkgconf = pkgsStatic.callPackage ../pkgconf { };
   protobuf_3_8_0 = pkgsStatic.callPackage ../protobuf/3_8_0 { };
   protobuf_3_9_2 = pkgsStatic.callPackage ../protobuf/3_9_2 { };
   vim = pkgsStatic.callPackage ../vim { };

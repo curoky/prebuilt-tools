@@ -102,9 +102,6 @@
       version = "25.05";
     };
   };
-  pkg-config-unwrapped = {
-    alias = "pkg-config";
-  };
   snappy = {
     output = [ "bin" ];
   };

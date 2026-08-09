@@ -33,6 +33,7 @@
 | `nodejs-slim26` | 🩹 本地 | 🟡 | 修 static deps、LIEF/Temporal、system libs 和 checks；macOS 注入 build tools，darwin 未验证 | 逐 patch 删除，最终满足各平台动态依赖规则 | — | `packages/nodejs/26/` |
 | `opencommit` | 📦 本地 | ❌ | JS 分发绑定 sibling Node runtime | sibling runtime packaging 必须保留 | — | `packages/opencommit/` |
 | `p7zip` | 🩹 本地 | 🟡 | 强制 default build flags；output 布局为 packaging，darwin 未验证 | stock build 可用时删 build workaround，保留所需 outputs | — | `packages/p7zip/` |
+| `pkgconf` | 🩹 本地 | ✅ | stock `pkgconf-unwrapped` 把自身 Nix output 的 `.pc`、system lib/include 与 personality 路径编译进二进制；本地 override 改用标准 `/usr` 与 `/usr/local` 路径，避免 standalone 产物残留 `/nix/store` | stock 二进制不再编译进 Nix store 路径且只依赖系统 dylib | — | `packages/pkgconf/` |
 | `parallel` | 📦 本地 | ❌ | 多入口 sibling Perl wrappers | runtime packaging 必须保留 | — | `packages/parallel/` |
 | `perl` | 🩹 + 📦 本地 | 🟡 | macOS 静态替换与 install-name relocation；wrapper 必须保留，darwin 未验证 | 只删除 stock 已覆盖的依赖/link patch | — | `packages/perl/` |
 | `pnpm` | 📦 本地 | ❌ | JS 分发绑定 sibling Node runtime | sibling runtime packaging 必须保留 | — | `packages/pnpm/` |
