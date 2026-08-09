@@ -67,7 +67,7 @@
 | `python312` | 📦 本地 | ❌ | 静态 CPython 与内建扩展模块 | 多版本静态 runtime 是产品决策 | — | `packages/python/` |
 | `python313` | 📦 本地 | ❌ | 静态 CPython 与内建扩展模块 | 多版本静态 runtime 是产品决策 | — | `packages/python/` |
 | `python314` | 📦 本地 | ❌ | 静态 CPython 与内建扩展模块 | 多版本静态 runtime 是产品决策 | — | `packages/python/` |
-| `python315` | 🩹 + 📦 本地 | 🟡 | 实测不可回归：去掉 `patchMuslStatx` 后 `nix build` 报 `struct statx has no member named stx_dio_offset_align; did you mean stx_dio_offet_align`，unstable 未修复 musl 头拼写与 CPython 3.15 的冲突；静态 modules packaging 保留 | 只删除字段替换，保留静态 modules | 624af665418d | `packages/python/` |
+| `python315` | 📦 本地 | ❌ | 静态 CPython 与内建扩展模块 | 多版本静态 runtime 是产品决策 | — | `packages/python/` |
 | `rime-plugins` | 📦 本地 | ❌ | 聚合多个 Rime 词库与转换结果 | 数据 bundle 是产品 | — | `packages/rime-plugins/` |
 | `runc` | 📦 native selection | ❌ | Linux 容器运行时，依赖 namespaces/cgroups，无 macOS 构建目标 | 无 macOS 端可回归空间（平台固有） | — | `manifests/default.nix` |
 | `s6` | 🩹 本地 | 🟡 | 实测不可回归：stock unstable s6 2.15.1.0 产物多数二进制文本 baked 自身 `/nix/store/.../bin`（如 s6-svscan 引用 s6-supervise），仍需 patch 去 baked prefix | stock 输出不再写入 Nix store 路径 | 624af665418d | `packages/s6/` |

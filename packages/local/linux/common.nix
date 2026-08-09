@@ -77,7 +77,6 @@ rec {
   python315 = mkPython {
     python = pkgsStatic.python315;
     setupLocal = ../../python/315/Setup.local;
-    patchMuslStatx = true;
   };
   copyparty = pkgs.callPackage ../../copyparty {
     inherit python314;
