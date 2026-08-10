@@ -244,7 +244,15 @@
       "aarch64-linux"
     ];
   };
-  nixfmt = { };
+  # nixfmt temporarily skips aarch64-darwin: the static build currently fails
+  # on macOS (see docs regression table). Linux stays on the stock manifest
+  # pkgsStatic build.
+  nixfmt = {
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
+  };
   numactl = {
     platforms = [
       "x86_64-linux"

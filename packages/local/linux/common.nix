@@ -22,6 +22,7 @@ rec {
   diffutils = pkgsStatic.callPackage ../../diffutils { };
   git = pkgsStatic.callPackage ../../git { };
   gnutar = pkgsStatic.callPackage ../../gnutar { };
+  libarchive = pkgsStatic.callPackage ../../libarchive { };
   lua5_5 = pkgsStatic.callPackage ../../lua { };
   openssh_gssapi = pkgsStatic.callPackage ../../openssh_gssapi { };
   poppler = pkgsStatic.callPackage ../../poppler { };

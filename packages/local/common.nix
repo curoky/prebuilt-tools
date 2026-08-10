@@ -19,7 +19,6 @@
     enableMinimal = true;
     guiSupport = false;
   };
-  libarchive = pkgsStatic.callPackage ../libarchive { };
   libtool = pkgsStatic.callPackage ../libtool { };
   makeself = pkgsStatic.callPackage ../makeself { };
   p7zip = pkgsStatic.callPackage ../p7zip { };
