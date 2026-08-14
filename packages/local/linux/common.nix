@@ -21,6 +21,9 @@ rec {
   cmake_4_1_2 = pkgsStatic.callPackage ../../cmake/4_1_2 { };
   diffutils = pkgsStatic.callPackage ../../diffutils { };
   git = pkgsStatic.callPackage ../../git { };
+  graphviz = pkgsStatic.callPackage ../../graphviz {
+    inherit (pkgs) python3;
+  };
   gnutar = pkgsStatic.callPackage ../../gnutar { };
   libarchive = pkgsStatic.callPackage ../../libarchive { };
   lua5_5 = pkgsStatic.callPackage ../../lua { };
