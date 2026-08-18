@@ -550,6 +550,11 @@
       isStatic = false;
     };
   };
+  supercronic = {
+    "aarch64-darwin" = {
+      isStatic = false;
+    };
+  };
   lark-cli = {
     # Linux: default isStatic = true -> pkgsStatic musl static.
     # darwin: native pkgs (CGO on). The upstream CGO build already links only
