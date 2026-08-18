@@ -134,6 +134,7 @@ jobs:
 
   build:
     needs: platforms
+    name: ${{ matrix.system }}
     permissions:
       contents: read
       packages: write
