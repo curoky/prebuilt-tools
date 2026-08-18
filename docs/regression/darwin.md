@@ -45,6 +45,7 @@
 | `rclone` | 🩹 本地 | 🟡 | 仅 darwin 有定制（Linux 走零定制 manifest pkgsStatic 全静态）；native Go 构建的 CGO net resolver 拉入 nix-store libresolv stub，postInstall 用 `install_name_tool` 改指 `/usr/lib/libresolv.9.dylib`，并用 `nuke-refs` 清理 Go toolchain 内嵌的 tzdata/mailcap/iana-etc fallback store hash；standalone 产物只链系统 dylib且无真实 store 路径 | stock native 只链接系统 dylib且不内嵌真实 store 路径，或 `pkgsStatic` 可直接构建并满足 macOS portability 后删除 override | b7c2ada94fe9 | `packages/rclone/` |
 | `rime-plugins` | 📦 本地 | ❌ | 聚合多个 Rime 词库与转换结果 | 数据 bundle 是产品 | — | `packages/rime-plugins/` |
 | `shellcheck` | 📌 `25.11` | ❌ | 已验证：unstable ShellCheck 0.11.0 静态 darwin 构建时 GHC 报 `External interpreter terminated (1)`，构建失败 | 已确认必要，无可回归空间 | 624af665418d | `manifests/default.nix` |
+| `supercronic` | 🩹 本地 | 🟡 | 仅 darwin 有定制（Linux 走零定制 manifest pkgsStatic 全静态）；native Go 构建的 CGO net resolver 拉入 nix-store libresolv stub，postInstall 用 `install_name_tool` 改指 `/usr/lib/libresolv.9.dylib`，standalone 产物只链系统 dylib | 上游 CGO 构建直接链接系统 libresolv，或 `pkgsStatic` 可直接构建后删除 override | — | `packages/supercronic/` |
 | `tmux-plugins` | 📦 本地 | ❌ | 独立发布 `.tmux.conf` 数据 | 数据 bundle 是产品 | — | `packages/tmux-plugins/` |
 | `uv` | 📌 `25.11` | ❌ | 已验证：unstable uv 0.11.32 静态 darwin 构建时 `aws-lc-sys` 的 `memcmp_invalid_stripped_check` 用 `--target arm64-apple-macosx` 触发 cc-wrapper 多 target 缺陷（`posix_spawn failed`），构建失败 | 已确认必要，无可回归空间 | 624af665418d | `manifests/default.nix` |
 | `vim` | 📦 本地 | ❌ | wrapper 相对设置 `VIMRUNTIME` | 可搬运 runtime 定位必须保留 | — | `packages/vim/` |

@@ -550,10 +550,14 @@
       isStatic = false;
     };
   };
+  # supercronic: Linux only here (pkgsStatic musl static). darwin uses the local
+  # package (packages/supercronic/darwin.nix) which redirects the Nix libresolv
+  # load command to /usr/lib.
   supercronic = {
-    "aarch64-darwin" = {
-      isStatic = false;
-    };
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
   };
   lark-cli = {
     # Linux: default isStatic = true -> pkgsStatic musl static.
