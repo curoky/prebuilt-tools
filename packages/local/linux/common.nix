@@ -20,6 +20,7 @@ rec {
   cmake_3_27_9 = pkgsStatic.callPackage ../../cmake/3_27_9 { };
   cmake_4_1_2 = pkgsStatic.callPackage ../../cmake/4_1_2 { };
   diffutils = pkgsStatic.callPackage ../../diffutils { };
+  fuse = pkgsStatic.callPackage ../../fuse { };
   git = pkgsStatic.callPackage ../../git { };
   graphviz = pkgsStatic.callPackage ../../graphviz {
     inherit (pkgs) python3;

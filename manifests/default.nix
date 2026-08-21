@@ -178,6 +178,17 @@
       "aarch64-linux"
     ];
   };
+  # fuse (libfuse 2.x) is a local package (packages/fuse): stock pkgsStatic.fuse
+  # substitutes mount.fuse's `su` with `${shadow.su}/bin/su`, baking a
+  # /nix/store path and pulling in shadow -> libbsd (musl-static checkPhase
+  # aborts on explicit_bzero). fuse3 has no such substitution and stays here.
+  fuse3 = {
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
+    output = [ "bin" ];
+  };
   indent = {
     platforms = [
       "x86_64-linux"
