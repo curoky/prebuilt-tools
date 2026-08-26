@@ -107,12 +107,17 @@ rec {
   conmon = pkgsStatic.callPackage ../../conmon { };
   crun = pkgsStatic.callPackage ../../crun { };
   gpgme = pkgsStatic.callPackage ../../gpgme { };
+  # aardvark-dns 2.1.0 uses `libc::close_range`, which the musl bindings do not
+  # provide; the local override switches it to the raw syscall so podman's helper
+  # bundle builds under musl-static. See packages/aardvark-dns/.
+  aardvark-dns = pkgsStatic.callPackage ../../aardvark-dns { };
   podman5 = pkgsStatic.callPackage ../../podman/podman5.nix {
     inherit
       catatonit
       crun
       conmon
       gpgme
+      aardvark-dns
       ;
   };
   podman6 = pkgsStatic.callPackage ../../podman/podman6.nix {
@@ -121,6 +126,7 @@ rec {
       crun
       conmon
       gpgme
+      aardvark-dns
       ;
   };
 
