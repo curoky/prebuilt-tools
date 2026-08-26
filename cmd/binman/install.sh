@@ -23,9 +23,6 @@
 #   BINMAN_ARCH        / --arch ARCH    arch tag: linux-x86_64 | linux-arm64 | darwin-arm64
 set -euo pipefail
 
-REGISTRY="ghcr.io"
-REPOSITORY="curoky/standalone-binaries"
-
 INSTALL_DIR="${BINMAN_INSTALL_DIR:-$HOME/.local/bin}"
 ARCH="${BINMAN_ARCH:-}"
 PACKAGES=()
@@ -118,7 +115,7 @@ trap 'rm -rf "$tmp"' EXIT
 # 1. Anonymous pull token for ghcr.
 curl -fsSL \
   -o "$tmp/token.json" \
-  "https://${REGISTRY}/token?scope=repository:${REPOSITORY}:pull"
+  "https://ghcr.io/token?scope=repository:curoky/standalone-binaries:pull"
 token="$(tr ',' '\n' <"$tmp/token.json" |
   grep -o '"token":"[^"]*"' | head -n1 | cut -d'"' -f4)"
 [ -n "$token" ] || die "failed to obtain registry token"
@@ -129,7 +126,7 @@ curl -fsSL \
   -H "Accept: application/vnd.oci.image.manifest.v1+json" \
   -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
   -o "$tmp/manifest.json" \
-  "https://${REGISTRY}/v2/${REPOSITORY}/manifests/${TAG}"
+  "https://ghcr.io/v2/curoky/standalone-binaries/manifests/${TAG}"
 
 # The artifact has one content layer; take the last digest in the layers array.
 digest="$(tr ',' '\n' <"$tmp/manifest.json" |
@@ -142,7 +139,7 @@ digest="$(tr ',' '\n' <"$tmp/manifest.json" |
 curl -fsSL \
   -H "Authorization: Bearer ${token}" \
   -o "$tmp/binman.tar.gz" \
-  "https://${REGISTRY}/v2/${REPOSITORY}/blobs/${digest}"
+  "https://ghcr.io/v2/curoky/standalone-binaries/blobs/${digest}"
 tar -xzf "$tmp/binman.tar.gz" -C "$tmp"
 [ -f "$tmp/binman/bm" ] || die "archive did not contain binman/bm"
 mkdir -p "$INSTALL_DIR"
