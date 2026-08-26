@@ -107,7 +107,15 @@ rec {
   conmon = pkgsStatic.callPackage ../../conmon { };
   crun = pkgsStatic.callPackage ../../crun { };
   gpgme = pkgsStatic.callPackage ../../gpgme { };
-  podman = pkgsStatic.callPackage ../../podman {
+  podman5 = pkgsStatic.callPackage ../../podman/podman5.nix {
+    inherit
+      catatonit
+      crun
+      conmon
+      gpgme
+      ;
+  };
+  podman6 = pkgsStatic.callPackage ../../podman/podman6.nix {
     inherit
       catatonit
       crun

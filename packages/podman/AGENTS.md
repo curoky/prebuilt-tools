@@ -1,7 +1,21 @@
 # Podman 包设计
 
-本包将 Podman 发布为可整体移动的目录。所有运行时依赖都应尽可能打包到
-`libexec/podman`，而不是从宿主系统获取。
+本目录把 Podman 拆成两个并行版本，共享同一套 bin/conf/patch 资源，但每个版本用
+一个完全自包含的 derivation 文件，不抽象公共 nix 逻辑：
+
+- [`podman5.nix`](podman5.nix)：跟随上游 nixpkgs pin 的 podman 5.x（当前
+  5.8.4），不 override `version`/`src`/`vendorHash`，复用 nixpkgs 拉取的源码与
+  module 集。
+- [`podman6.nix`](podman6.nix)：把 podman 6.x pin 到具体 release（当前 6.1.0），
+  自行 override `version`/`src` 并把 `vendorHash` 设为 `null`（6.1.0 源码自带
+  committed vendor/）。
+
+两个 `.nix` 文件的 `runcStatic`、`podman.override`、patch、`postInstall` 与
+`installCheckPhase` 目前内容一致，但刻意各自完整维护，改动其一时需手动同步另一个。
+
+两个版本各自将 Podman 发布为可整体移动的目录。所有运行时依赖都应尽可能打包到
+`libexec/podman`，而不是从宿主系统获取。以下运行时查找契约与打包约定对两者同时
+适用。
 
 ## 运行时查找契约
 
@@ -23,11 +37,12 @@ $BINDIR/../libexec/podman
 - 未设置 link-time helper 目录的非本包构建仍应保持上游查找行为。
 
 `strict-helper-search.patch` 在共享 resolver 边界实现该契约。包级 patch 不得重新引入
-系统路径列表。
+系统路径列表。v5.8.x 与 v6.1.0 的 vendor 路径都已是 `go.podman.io/common`，两个版本
+复用同一份 patch。
 
 ## 打包约定
 
-`default.nix` 将上游 helper bundle 复制到 `libexec/podman`，并把字面量
+两个 `.nix` 文件都将上游 helper bundle 复制到 `libexec/podman`，并把字面量
 `$BINDIR/../libexec/podman` 作为查找模板链接进 Podman。新增运行时依赖时，应尽可能
 把它加入该 bundle，并复用已有共享 resolver，不要增加面向宿主系统的包级查找逻辑。
 
