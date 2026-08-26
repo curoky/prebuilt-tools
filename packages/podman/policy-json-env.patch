@@ -1,0 +1,17 @@
+--- a/vendor/go.podman.io/image/v5/signature/policy_config.go
++++ b/vendor/go.podman.io/image/v5/signature/policy_config.go
+@@ -72,6 +72,14 @@ func defaultPolicyPathWithHomeDir(sys *types.SystemContext, homeDir string, syst
+ 	if sys != nil && sys.SignaturePolicyPath != "" {
+ 		return sys.SignaturePolicyPath, nil
+ 	}
++	// podman 6.x reads CONTAINERS_POLICY_JSON natively via configfile. Backport
++	// the same env override here so the standalone wrappers can point podman 5.x
++	// at the policy.json shipped next to the binary ($BINDIR/../conf/policy.json).
++	// The value is used verbatim; a missing file surfaces the original ENOENT
++	// from NewPolicyFromFile instead of silently falling back to system paths.
++	if path := os.Getenv("CONTAINERS_POLICY_JSON"); path != "" {
++		return path, nil
++	}
+ 	userPolicyFilePath := filepath.Join(homeDir, userPolicyFile)
+ 	if err := fileutils.Exists(userPolicyFilePath); err == nil {
+ 		return userPolicyFilePath, nil

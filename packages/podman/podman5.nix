@@ -66,6 +66,10 @@ in
       ./rm-podman-mac-helper-msg.patch
 
       ./strict-helper-search.patch
+
+      # podman 5.x ignores CONTAINERS_POLICY_JSON; backport the podman 6.x env
+      # override so the wrapper can resolve policy.json relative to the binary.
+      ./policy-json-env.patch
     ];
 
     postPatch = (oldAttrs.postPatch or "") + ''

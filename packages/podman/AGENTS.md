@@ -40,6 +40,13 @@ $BINDIR/../libexec/podman
 系统路径列表。v5.8.x 与 v6.1.0 的 vendor 路径都已是 `go.podman.io/common`，两个版本
 复用同一份 patch。
 
+`policy.json` 的定位只用 `bin/podman`/`bin/podman-server` 设置的
+`CONTAINERS_POLICY_JSON=$root/../conf/policy.json`。podman 6.x 上游已原生读取该 env，
+podman 5.x 未支持，故 `podman5.nix` 额外应用 `policy-json-env.patch`，给
+`vendor/go.podman.io/image/v5/signature/policy_config.go` 的 `defaultPolicyPathWithHomeDir`
+backport 同样的 env 覆盖（优先级低于 `sys.SignaturePolicyPath`、高于用户与系统默认路径，
+值原样使用、缺失即报原始 ENOENT 而不回退）。`podman6.nix` 不需要该 patch。
+
 ## 打包约定
 
 两个 `.nix` 文件都将上游 helper bundle 复制到 `libexec/podman`，并把字面量
