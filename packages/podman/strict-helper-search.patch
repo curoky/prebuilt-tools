@@ -1,6 +1,9 @@
 --- a/libpod/oci_conmon_common.go
 +++ b/libpod/oci_conmon_common.go
-@@ -123,16 +123,3 @@
+@@ -107,36 +107,15 @@
+ 	runtime.supportsNoCgroups = slices.Contains(runtimeCfg.Engine.RuntimeSupportsNoCgroups.Get(), configIndex)
+ 	runtime.supportsKVM = slices.Contains(runtimeCfg.Engine.RuntimeSupportsKVM.Get(), configIndex)
+ 
 -	foundPath := false
 -	for _, path := range paths {
 -		stat, err := os.Stat(path)
@@ -20,8 +23,8 @@
 +	runtimePath, err := config.FindOCIRuntime(name, paths)
 +	if err != nil {
 +		return nil, fmt.Errorf("cannot stat OCI runtime %s path: %w", name, err)
-@@ -140,11 +127 @@
--
+ 	}
+ 
 -	// Search the $PATH as last fallback
 -	if !foundPath {
 -		if foundRuntime, err := exec.LookPath(name); err == nil {
@@ -33,20 +36,34 @@
 -
 -	if !foundPath {
 +	if runtimePath == "" {
-@@ -152,0 +130 @@
+ 		return nil, fmt.Errorf("no valid executable found for OCI runtime %s: %w", name, define.ErrInvalidArg)
+ 	}
 +	runtime.path = runtimePath
+ 
+ 	runtime.exitsDir = filepath.Join(runtime.tmpDir, "exits")
+ 	// The persist-dir is where conmon writes the exit file and oom file (if oom killed), we join the container ID to this path later on
 --- a/vendor/go.podman.io/common/pkg/config/config.go
 +++ b/vendor/go.podman.io/common/pkg/config/config.go
-@@ -834,0 +835 @@
+@@ -860,8 +860,15 @@
+ }
+ 
+ func (c *EngineConfig) findRuntime() string {
 +	packagedDir := PackagedExecutableDir()
-@@ -836,0 +838,6 @@
+ 	// Search for crun first followed by runc, runj, kata, runsc, ocijail
+ 	for _, name := range []string{"crun", "runc", "runj", "kata", "runsc", "ocijail"} {
 +		if packagedDir != "" {
 +			if path, err := FindOCIRuntime(name, c.OCIRuntimes[name]); err == nil && path != "" {
 +				return name
 +			}
 +			continue
 +		}
-@@ -849,0 +857,36 @@
+ 		for _, v := range c.OCIRuntimes[name] {
+ 			if err := fileutils.Exists(v); err == nil {
+ 				return name
+@@ -875,6 +882,42 @@
+ 	return ""
+ }
+ 
 +// FindOCIRuntime returns the first regular OCI runtime from the configured paths.
 +// PATH is used only when no exclusive packaged executable directory is configured.
 +func FindOCIRuntime(name string, paths []string) (string, error) {
@@ -83,17 +100,35 @@
 +	return "", nil
 +}
 +
-@@ -944,0 +988,4 @@
+ // Validate is the main entry point for Engine configuration validation
+ // It returns an `error` on validation failure, otherwise
+ // `nil`.
+@@ -970,6 +1013,10 @@
+ // to first (version) matching conmon binary. If non is found, we try
+ // to do a path lookup of "conmon".
+ func (c *Config) FindConmon() (string, error) {
 +	if dir := PackagedExecutableDir(); dir != "" {
 +		path := filepath.Join(dir, "conmon")
 +		return findConmonPath([]string{path}, path)
 +	}
-@@ -974,0 +1022,4 @@
+ 	return findConmonPath(c.Engine.ConmonPath.Get(), "conmon")
+ }
+ 
+@@ -1000,6 +1047,10 @@
+ // to first (version) matching conmonrs binary. If non is found, we try
+ // to do a path lookup of "conmonrs".
+ func (c *Config) FindConmonRs() (string, error) {
 +	if dir := PackagedExecutableDir(); dir != "" {
 +		path := filepath.Join(dir, "conmonrs")
 +		return findConmonPath([]string{path}, path)
 +	}
-@@ -1097,0 +1149,12 @@
+ 	return findConmonPath(c.Engine.ConmonRsPath.Get(), "conmonrs")
+ }
+ 
+@@ -1123,9 +1174,28 @@
+ 	return bindirCached
+ }
+ 
 +// PackagedExecutableDir returns the exclusive executable directory set by the packager.
 +func PackagedExecutableDir() string {
 +	if additionalHelperBinariesDir == "" {
@@ -106,7 +141,9 @@
 +	return filepath.Clean(strings.Replace(additionalHelperBinariesDir, bindirPrefix, bindir, 1))
 +}
 +
-@@ -1100,0 +1164,8 @@
+ // FindHelperBinary will search the given binary name in the configured directories.
+ // If searchPATH is set to true it will also search in $PATH.
+ func (c *Config) FindHelperBinary(name string, searchPATH bool) (string, error) {
 +	if dir := PackagedExecutableDir(); dir != "" {
 +		path := filepath.Join(dir, filepath.Base(name))
 +		if found, err := exec.LookPath(path); err == nil {
@@ -114,8 +151,16 @@
 +		}
 +		return "", fmt.Errorf("could not find %q in packaged helper directory %q", name, dir)
 +	}
-+
-@@ -1229,0 +1301,3 @@
+ 	dirList := c.Engine.HelperBinariesDir.Get()
+ 	bindirPath := ""
+ 	bindirSearched := false
+@@ -1255,6 +1325,9 @@
+ 
+ // FindInitBinary will return the path to the init binary (catatonit).
+ func (c *Config) FindInitBinary() (string, error) {
 +	if PackagedExecutableDir() != "" {
 +		return c.FindHelperBinary(defaultInitName, false)
 +	}
+ 	// Sigh, for some reason we ended up with two InitPath field in containers.conf and
+ 	// both are used in podman so we have to keep supporting both to prevent regressions.
+ 	if c.Containers.InitPath != "" {

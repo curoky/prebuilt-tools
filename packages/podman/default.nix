@@ -70,6 +70,21 @@ in
   runc = runcStatic;
 }).overrideAttrs
   (oldAttrs: rec {
+    # Upstream nixpkgs still pins podman 5.x; bump to the latest release here.
+    # The 5.x -> 6.x jump changed the Go module path to go.podman.io/podman/v6
+    # and reworked config-file parsing, so src + vendorHash must both move.
+    version = "6.1.0";
+    src = fetchFromGitHub {
+      owner = "podman-container-tools";
+      repo = "podman";
+      rev = "v${version}";
+      hash = "sha256-wjqB8sQY7Ovz4bY4dBWfLDD7qvu8EA1KubVp6ocWle8=";
+    };
+    # The v6.1.0 source tarball ships a committed vendor/ directory, so
+    # buildGoModule must use it directly (vendorHash = null) instead of
+    # re-fetching modules. Our strict-helper patch edits files under vendor/.
+    vendorHash = null;
+
     propagatedBuildInputs = [ ];
     buildInputs = lib.optionals stdenv.hostPlatform.isLinux [
       btrfs-progs
