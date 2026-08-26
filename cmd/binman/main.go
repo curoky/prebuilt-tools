@@ -16,7 +16,7 @@ import (
 const (
 	defaultRegistry = "ghcr.io/curoky/standalone-binaries"
 	metaFile        = ".binman-meta"
-	defaultPrefix   = "/opt/binman"
+	defaultPrefix   = "/opt/bm"
 	logFile         = "binman.log"
 	maxParallel     = 16 // cap concurrent registry requests / downloads
 )

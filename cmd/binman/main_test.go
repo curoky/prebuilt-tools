@@ -158,8 +158,8 @@ func TestStripFirstComponent(t *testing.T) {
 func TestBinmanNaming(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", "/tmp/cache")
 
-	if defaultPrefix != "/opt/binman" {
-		t.Fatalf("defaultPrefix=%q want /opt/binman", defaultPrefix)
+	if defaultPrefix != "/opt/bm" {
+		t.Fatalf("defaultPrefix=%q want /opt/bm", defaultPrefix)
 	}
 	if metaFile != ".binman-meta" {
 		t.Fatalf("metaFile=%q want .binman-meta", metaFile)
