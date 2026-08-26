@@ -29,6 +29,11 @@ auth，不读取 Docker credential config。
 `bm` 自身使用 `binman-<architecture>` tag，归档路径是 `binman/bm`。
 `install.sh` 是唯一允许依赖宿主 `curl` 和 `tar` 的路径。
 
+`bm version` 打印 link 时注入的构建信息：`buildCommit`、`buildCommitDate`、
+`buildDate`、`buildHost`。这些是 `main` 包级变量，默认 `"unknown"`，由发布 workflow
+通过 `-ldflags -X main.<var>=...` 填充；`go build`/`go test` 无需注入。改变变量名或
+新增字段时，同步 `build-binman.yaml`。
+
 ## 状态与事务
 
 安装状态位于 `<prefix>/store/<package>/`，`.binman-meta` 记录 package、architecture、

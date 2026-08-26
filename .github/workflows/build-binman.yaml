@@ -44,7 +44,17 @@ jobs:
           go vet ./...
           go test ./...
           mkdir -p ./binman
-          go build -trimpath -ldflags="-s -w" -o ./binman/bm .
+          COMMIT="$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
+          COMMIT_DATE="$(git -C "$GITHUB_WORKSPACE" show -s --format=%cI HEAD)"
+          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          BUILD_HOST="${RUNNER_OS}/${RUNNER_ARCH} (${{ matrix.runner }})"
+          go build -trimpath \
+            -ldflags="-s -w \
+              -X main.buildCommit=${COMMIT} \
+              -X main.buildCommitDate=${COMMIT_DATE} \
+              -X main.buildDate=${BUILD_DATE} \
+              -X 'main.buildHost=${BUILD_HOST}'" \
+            -o ./binman/bm .
           tar -czvf ./binman.${{ matrix.tag }}.tar.gz ./binman
 
       - uses: oras-project/setup-oras@v2

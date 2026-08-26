@@ -21,6 +21,15 @@ const (
 	maxParallel     = 16 // cap concurrent registry requests / downloads
 )
 
+// Build metadata injected at link time via -ldflags "-X main.<var>=...".
+// They default to "unknown" for `go build`/`go test` without ldflags.
+var (
+	buildCommit     = "unknown"
+	buildCommitDate = "unknown"
+	buildDate       = "unknown"
+	buildHost       = "unknown"
+)
+
 var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 var logger = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -225,6 +234,21 @@ func main() {
 		RunE:  func(cmd *cobra.Command, args []string) error { return cmdOutdated(prefix) },
 	}
 
+	version := &cobra.Command{
+		Use:   "version",
+		Short: "Show build metadata bundled into this bm binary",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Printf("commit:   %s\n", buildCommit)
+			fmt.Printf("committed at: %s\n", buildCommitDate)
+			fmt.Printf("built at: %s\n", buildDate)
+			fmt.Printf("built on: %s\n", buildHost)
+			fmt.Printf("go:       %s\n", runtime.Version())
+			fmt.Printf("platform: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+			return nil
+		},
+	}
+
 	var prune bool
 	sync := &cobra.Command{
 		Use:   "sync [file]",
@@ -246,7 +270,7 @@ func main() {
 	sync.Flags().BoolVar(&force, "force", false, "reinstall even if the digest already matches")
 	sync.Flags().BoolVar(&prune, "prune", false, "remove installed packages not listed in the manifest")
 
-	root.AddCommand(install, download, remove, upgrade, info, list, outdated, sync)
+	root.AddCommand(install, download, remove, upgrade, info, list, outdated, sync, version)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
