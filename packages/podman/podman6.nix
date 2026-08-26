@@ -13,6 +13,7 @@
   conmon,
   catatonit,
   coreutils,
+  aardvark-dns,
   podman,
 }:
 let
@@ -43,6 +44,7 @@ in
   catatonit = catatonit;
   crun = crun;
   runc = runcStatic;
+  aardvark-dns = aardvark-dns;
 }).overrideAttrs
   (oldAttrs: rec {
     # Upstream nixpkgs still pins podman 5.x; bump to the latest release here.

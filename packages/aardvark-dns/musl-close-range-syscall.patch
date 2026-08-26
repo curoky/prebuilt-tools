@@ -1,0 +1,14 @@
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -34,7 +34,10 @@
+ 
+ fn main() {
+     // Close all fds we inherited from our parent process, we only need stdio.
+-    let _ = unsafe { libc::close_range(3, libc::c_uint::MAX, 0) };
++    // Use the raw syscall so this also builds against musl, whose libc bindings
++    // (unlike glibc's) do not expose a `close_range` wrapper function while
++    // still defining `SYS_close_range`.
++    let _ = unsafe { libc::syscall(libc::SYS_close_range, 3, libc::c_uint::MAX, 0) };
+ 
+     let formatter = Formatter3164 {
+         facility: Facility::LOG_USER,

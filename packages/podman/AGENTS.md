@@ -53,6 +53,14 @@ backport 同样的 env 覆盖（优先级低于 `sys.SignaturePolicyPath`、高�
 `$BINDIR/../libexec/podman` 作为查找模板链接进 Podman。新增运行时依赖时，应尽可能
 把它加入该 bundle，并复用已有共享 resolver，不要增加面向宿主系统的包级查找逻辑。
 
+helper bundle 里的 `aardvark-dns` 由两个 `.nix` 文件通过
+`podman.override { aardvark-dns = ...; }` 换成本地 patch 版
+（[`packages/aardvark-dns/`](../aardvark-dns/)）。上游 aardvark-dns 2.1.0 在
+`src/main.rs` 无条件调用 `libc::close_range`，musl 的 libc 绑定只导出
+`SYS_close_range` 常量而没有该 wrapper 函数，musl-static 构建会失败；patch 改用
+`libc::syscall(libc::SYS_close_range, ...)`，仅动 crate 自身源码、不动 vendor，故不
+需要 cargoHash override。改动其一时需同步另一个。
+
 `bin/podman` 和 `bin/podman-server` 必须根据自身位置设置配置文件路径、
 `PODMAN_DATA_DIR` 及 `data/tmpdir` 下的 `TMPDIR`。`storage.conf` 通过
 `PODMAN_DATA_DIR` 把 `graphroot` 和 `runroot` 定位到 sibling `data` 目录；
