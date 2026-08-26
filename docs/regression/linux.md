@@ -2,7 +2,7 @@
 
 适用于 x86_64-linux 与 aarch64-linux，只列该平台有定制的包。仅 aarch64-linux 特有的差异见
 [`linux-aarch64.md`](linux-aarch64.md)。表格约定、状态/定制图例与批量回归命令见
-[`CLAUDE.md`](CLAUDE.md)。
+[`AGENTS.md`](AGENTS.md)。
 
 | 包 | 定制 | 回归 | 原因与保留边界 | 回归判据 | commit | 来源 |
 | --- | --- | --- | --- | --- | --- | --- |

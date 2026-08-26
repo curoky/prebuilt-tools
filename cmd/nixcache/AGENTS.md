@@ -1,7 +1,7 @@
 # Nixcache Agent Guide
 
 `cmd/nixcache/` 是本仓库专用的 GHCR-backed Nix binary cache，提供 `push`、
-`serve`、`probe`、`prune` 和 `size`。全局约束见根 [`CLAUDE.md`](../../CLAUDE.md)，CI
+`serve`、`probe`、`prune` 和 `size`。全局约束见根 [`AGENTS.md`](../../AGENTS.md)，CI
 触发与发布流程见 [`docs/release-model.md`](../../docs/release-model.md)。
 
 ## 设计

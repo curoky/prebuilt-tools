@@ -14,4 +14,4 @@ launcher，而 Podman 的 helper collection 会复制该 launcher。`packages/po
 相关 helper 路径必须保持可搬运。
 
 容器栈的 C 组件见 [C / autotools](c-autotools.md)。pin 和 patch 状态见
-[回归清单](../regression/CLAUDE.md)。
+[回归清单](../regression/AGENTS.md)。

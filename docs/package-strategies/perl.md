@@ -2,7 +2,7 @@
 
 Perl 包按平台构建独立 runtime，脚本工具在运行期显式使用同级 `perl` 包。精确模块清单和
 构建参数以 `packages/perl/`、`packages/exiftool/` 为准；定制状态见
-[回归清单](../regression/CLAUDE.md)。
+[回归清单](../regression/AGENTS.md)。
 
 ## 平台 Runtime
 

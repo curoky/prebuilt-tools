@@ -21,7 +21,7 @@ artifact validation 共同保证产物约束。
 - 只补齐实际需要的静态传递库；
 - 关闭会强制引入 shared library 的可选 feature；
 - build tool 必须来自 build platform，不能误用 target 静态包；
-- checks 只能在确有平台限制时禁用，并登记到[回归清单](../regression/CLAUDE.md)。
+- checks 只能在确有平台限制时禁用，并登记到[回归清单](../regression/AGENTS.md)。
 
 复杂的 linker 或 feature-reduction 方案见
 [特殊案例](special-cases.md)。
@@ -39,4 +39,4 @@ artifact validation 共同保证产物约束。
 ## 工具裁剪
 
 只发布产品需要的 output。例如 clang-tools 只提取 `clang-format`，PostgreSQL 只发布
-psql client。裁剪边界是产品契约，具体实现和版本以 `packages/` 与[回归清单](../regression/CLAUDE.md)为准。
+psql client。裁剪边界是产品契约，具体实现和版本以 `packages/` 与[回归清单](../regression/AGENTS.md)为准。

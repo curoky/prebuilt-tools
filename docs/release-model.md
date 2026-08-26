@@ -16,7 +16,7 @@ standalone 目录及归档，再分别发布 Nix cache 和工具 OCI artifact。
 平台失败相互独立，也避免触及 GitHub Actions 单个 matrix 的 256 job 上限。
 
 Nix cache 的 segment schema、serving 和 retention 细节见
-[`cmd/nixcache/CLAUDE.md`](../cmd/nixcache/CLAUDE.md)。
+[`cmd/nixcache/AGENTS.md`](../cmd/nixcache/AGENTS.md)。
 
 ## 发布流程
 

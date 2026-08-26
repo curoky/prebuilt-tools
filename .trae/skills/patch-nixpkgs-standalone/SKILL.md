@@ -6,7 +6,7 @@ description: "把一个 nixpkgs 包 patch 成可移植的 standalone 构建，�
 # Patch nixpkgs 包为 standalone 产物
 
 在本仓库新增或修复一个包、使其 ship 出的 artifact 可移植时用本 skill。先读
-根 `CLAUDE.md`；平台约束、现有例外、manifest schema 和发布模型只在那里定义。本 skill
+根 `AGENTS.md`；平台约束、现有例外、manifest schema 和发布模型只在那里定义。本 skill
 只提供从 stock 上游包定位问题并实现最小修复的操作流程。
 
 ## 入口判定
@@ -36,7 +36,7 @@ sibling runtime、资源打包、产品行为和多版本发布也要进入总�
 ## 全局边界
 
 所有产物都不得在运行期引用 `/nix/store`。Linux 常规二进制默认 musl 全静态；macOS
-只允许系统动态库。根 `CLAUDE.md` 记录的动态和宿主工具例外不得类推给新包。
+只允许系统动态库。根 `AGENTS.md` 记录的动态和宿主工具例外不得类推给新包。
 
 如果 stock 和下述最小修复都无法满足约束，先向用户报告具体阻塞。不要静默新增动态例外，
 也不要在 macOS 静默复制 dylib。
@@ -59,7 +59,7 @@ sibling runtime、资源打包、产品行为和多版本发布也要进入总�
   `packages/cloc`。
 
 Darwin 当前不发布 Python runtime，已有 Python wrapper 使用宿主 `python3`。这是根
-`CLAUDE.md` 记录的现状缺口，不是新工具应复制的默认模式。
+`AGENTS.md` 记录的现状缺口，不是新工具应复制的默认模式。
 
 ## 3. Linux 路线
 
@@ -144,7 +144,7 @@ darwin 路线，必须在 `postInstall` 里：
 若仍有 `/nix/store` 动态库存活：回到 ladder 上一层（`CGO_ENABLED=0`、patch install names/rpaths、
 静态替换该依赖，或——经确认后——复制 dylib）。
 
-对根 `CLAUDE.md` 已记录的例外，按对应 case study 验证其宿主 ABI 与 `/nix` 清理，不伪称其为
+对根 `AGENTS.md` 已记录的例外，按对应 case study 验证其宿主 ABI 与 `/nix` 清理，不伪称其为
 musl 全静态。
 
 ## Guardrails
@@ -152,5 +152,5 @@ musl 全静态。
 - 最小 diff：只 patch 能改善 portability / 移除动态依赖 / 修运行期路径的部分。别重构无关代码。
 - 匹配既有包风格（`overrideAttrs`、`postInstall`、wrapper 脚本）。
 - 新增或改变旧版本 pin、本地 derivation、override、禁用检查或动态例外时同步维护 `docs/regression/` 回归清单。
-- 若改动影响架构、package selection、例外或 artifact 协议，在同一次改动里更新 `CLAUDE.md`。
+- 若改动影响架构、package selection、例外或 artifact 协议，在同一次改动里更新 `AGENTS.md`。
 - 在 macOS 上**绝不**未经用户显式确认就复制 `/nix` dylib。

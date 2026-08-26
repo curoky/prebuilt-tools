@@ -2,7 +2,7 @@
 
 `cmd/artifact/` 是所有包共享的后处理与归档工具，由
 `lib/make-artifacts.nix` 调用。全局产物约束见根
-[`CLAUDE.md`](../../CLAUDE.md)；本文件定义该组件的行为边界。
+[`AGENTS.md`](../../AGENTS.md)；本文件定义该组件的行为边界。
 
 ## 输入与输出
 
@@ -40,8 +40,8 @@ Artifact 只做规范化与约束校验，不会把动态程序变成静态程�
 - 路径含 `openssl` 的文件保留既有 validation 豁免，但仍执行格式相关清理。
 
 不要通过放宽全局校验修复单包问题。新增动态例外或改变 `openssl` 豁免前先确认，并同步
-`lib/make-artifacts.nix`、[回归清单](../../docs/regression/CLAUDE.md) 和
-根 [`CLAUDE.md`](../../CLAUDE.md)。
+`lib/make-artifacts.nix`、[回归清单](../../docs/regression/AGENTS.md) 和
+根 [`AGENTS.md`](../../AGENTS.md)。
 
 ## 实现边界
 
@@ -52,7 +52,7 @@ Artifact 只做规范化与约束校验，不会把动态程序变成静态程�
 - `main_test.go`：规范化、格式识别、校验与归档行为。
 
 保持标准库实现，不增加外部运行时依赖。修改归档顶层目录、metadata 或 binary policy
-时，同步 `lib/make-artifacts.nix`、[`cmd/binman/CLAUDE.md`](../binman/CLAUDE.md)
+时，同步 `lib/make-artifacts.nix`、[`cmd/binman/AGENTS.md`](../binman/AGENTS.md)
 和发布 workflow。
 
 ## 验证

@@ -2,7 +2,7 @@
 
 默认路径是在 `manifests/default.nix` 选择 unstable `pkgsStatic`，再由
 `cmd/artifact/` 完成 assembly、校验和归档。专题文档只解释不能从代码表面看出的
-设计约束；具体包清单和回归状态分别以实现和[回归清单](../regression/CLAUDE.md)为准。
+设计约束；具体包清单和回归状态分别以实现和[回归清单](../regression/AGENTS.md)为准。
 
 | 生态 | 文档 | 主要案例 |
 | --- | --- | --- |
@@ -36,4 +36,4 @@ wrapper 从自身路径求出共同 `store/` 目录，再显式执行同级 runt
 ### 状态管理
 
 pin、patch、禁用检查、linker workaround、结构性 packaging 和动态例外只在
-[回归清单](../regression/CLAUDE.md)维护状态。专题文档不复制回归队列或测试历史。
+[回归清单](../regression/AGENTS.md)维护状态。专题文档不复制回归队列或测试历史。

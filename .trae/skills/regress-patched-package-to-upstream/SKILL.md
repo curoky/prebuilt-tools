@@ -5,7 +5,7 @@ description: "定期 review 本仓库中被 patch 或被 pin 老版本的包，�
 
 # 回归 patched / pinned 包到上游
 
-本仓库长期目标是优先使用官方维护的 unstable 最新版。根 `CLAUDE.md` 是版本策略、
+本仓库长期目标是优先使用官方维护的 unstable 最新版。根 `AGENTS.md` 是版本策略、
 平台约束和现有例外的 source of truth；`docs/regression/` 是 pin、patch 与本地 packaging 的总账，
 也是待审计候选的唯一队列。本 skill 只定义如何消费其中的回归候选并移除已经失效的 workaround。
 
@@ -42,7 +42,7 @@ shellcheck = {
 };
 ```
 
-这类要试着去掉 `version`。只要 unstable 最新版在目标平台能构建且满足根 `CLAUDE.md`
+这类要试着去掉 `version`。只要 unstable 最新版在目标平台能构建且满足根 `AGENTS.md`
 的约束，就删除 pin。
 
 ## Principle
@@ -83,7 +83,7 @@ shellcheck = {
   `docs/regression/`、核对队列完整性，或用户明确要求全量审计时。
 - 每次只消费一行。先读包名、Linux、macOS、回归、`Linux 原因与保留边界`、`macOS 原因与保留边界`、
   回归判据、`Linux commit`、`macOS commit`、来源，再读取实现。表内判据是最低验收条件，不替代根
-  `CLAUDE.md` 的通用 portability 检查。原因与保留边界按平台拆成两列，只读目标平台那一列。
+  `AGENTS.md` 的通用 portability 检查。原因与保留边界按平台拆成两列，只读目标平台那一列。
 - `Linux commit` / `macOS commit` 记录该平台最后一次回归测试时 `flake.lock` 里 `nixpkgs-unstable`
   的 rev（短 hash），未测过填 `—`。消费前先对比该列与当前 `flake.lock` 的 unstable rev：若相同，说明
   该平台在当前 channel 已验证过、本轮可跳过；rev 不同（含 `—`）才需要重新构建验证。
@@ -125,7 +125,7 @@ shellcheck = {
      运行期引用。
    - **macOS：** `otool -L` 检查二进制及每个 ship 的 `.dylib`/`.bundle`/`.so` → 只有
      `/usr/lib/*`、`/System/Library/Frameworks/*` 或 `@loader_path` 条目；**零** `/nix/store`。
-   - 根 `CLAUDE.md` 记录的例外按对应 case study 验证，不把动态例外误判成上游回归成功。
+   - 根 `AGENTS.md` 记录的例外按对应 case study 验证，不把动态例外误判成上游回归成功。
    - 若上游能构建但仍不 portable，则 patch/pin **尚未**过时——保留它。只有在上游
      **既可构建又 portable** 时才回归。
 
@@ -159,7 +159,7 @@ shellcheck = {
      刷新为本次 `flake.lock` 的 `nixpkgs-unstable` 短 rev，标记该 channel 已测过。只有整项回归删行时
      无需再填 commit。
    - 若回归改变稳定 package selection、例外或协议，更新根
-   `CLAUDE.md`；若只删除包级非默认策略，更新或删除对应 case study。不要在根文档维护易漂移的
+   `AGENTS.md`；若只删除包级非默认策略，更新或删除对应 case study。不要在根文档维护易漂移的
    当前包枚举。
 
 ## Guardrails

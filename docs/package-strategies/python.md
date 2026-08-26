@@ -1,7 +1,7 @@
 # Python Runtime 与脚本工具
 
 Linux 发布多个 musl 全静态 CPython runtime；纯 Python 工具由 wrapper 绑定明确的运行时。
-版本、补丁和包状态见[回归清单](../regression/CLAUDE.md)。
+版本、补丁和包状态见[回归清单](../regression/AGENTS.md)。
 
 ## 静态 CPython
 

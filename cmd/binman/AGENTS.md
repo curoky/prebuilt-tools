@@ -1,7 +1,7 @@
 # Binman Agent Guide
 
 `cmd/binman/` 实现 OCI artifact client `bm`。全局产物约束见根
-[`CLAUDE.md`](../../CLAUDE.md)；本文件是该组件的设计与修改契约。
+[`AGENTS.md`](../../AGENTS.md)；本文件是该组件的设计与修改契约。
 
 ## 不变量
 
