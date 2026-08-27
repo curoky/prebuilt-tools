@@ -63,12 +63,13 @@
 {
   stdenv,
   ffmpeg-headless,
+  x265,
 }:
 
 let
   ffmpeg_static =
-    (ffmpeg-headless.override (prev: {
-      x265 = (prev.x265.override { multibitdepthSupport = false; }).overrideAttrs (_: {
+    (ffmpeg-headless.override {
+      x265 = (x265.override { multibitdepthSupport = false; }).overrideAttrs (_: {
         postInstall = "";
       });
       withOpenapv = false;
@@ -97,7 +98,7 @@ let
       # failure aborts the whole build. The test suite validates upstream ffmpeg,
       # not our packaging, so disable it.
       doCheck = false;
-    })).bin;
+    }).bin;
 in
 
 stdenv.mkDerivation {
