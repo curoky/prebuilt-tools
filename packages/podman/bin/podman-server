@@ -26,6 +26,6 @@ mkdir -p /run/podman
 
 # --out=$root/../podman.log \
 exec -a "$0" "$root/_podman" \
-  --log-level=debug \
+  --log-level=info \
   system service --time=0 unix:///run/podman/podman.sock \
   "$@" >>"$root/../podman.log" 2>&1
