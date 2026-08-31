@@ -68,7 +68,8 @@
 
 let
   ffmpeg_static =
-    (ffmpeg-headless.override {
+    (
+      (ffmpeg-headless.override {
       x265 = (x265.override { multibitdepthSupport = false; }).overrideAttrs (_: {
         postInstall = "";
       });
@@ -98,7 +99,8 @@ let
       # failure aborts the whole build. The test suite validates upstream ffmpeg,
       # not our packaging, so disable it.
       doCheck = false;
-    }).bin;
+    })
+    ).bin;
 in
 
 stdenv.mkDerivation {
