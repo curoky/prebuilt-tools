@@ -8,6 +8,7 @@
 | `aria2` | 📌 `24.11` | ❌ | 已验证：unstable aria2 1.37.0 静态 darwin 构建链接 `libxml2.a` 时缺 `iconv`/`iconv_open`/`libiconv` 符号，链接失败 | 已确认必要，两平台都无可回归空间 | 624af665418d | `manifests/default.nix` |
 | `autoconf` | 📦 本地 | ❌ | 相对路径 wrappers 定位配套脚本 | 上游入口无需 Nix store 路径时再评估 | — | `packages/autoconf/` |
 | `automake` | 📦 本地 | ❌ | 相对路径 wrappers 定位配套脚本 | 上游入口无需 Nix store 路径时再评估 | — | `packages/automake/` |
+| `bats` | 📦 本地 | ❌ | 用 `bats.unresholved`（上游 `install.sh` 产物）替代默认经 resholve 的 `bats`：默认包把 coreutils/findutils/ncurses 等外部命令和自身 `$BATS_ROOT`/`source` 都 baked 成绝对 `/nix/store` 路径，normalize.go 删除 store 片段后会留下空 `BATS_ROOT` 与 `source ""` 而损坏。unresholved 为纯 Bash，运行时从 `$BASH_SOURCE` 推导 `BATS_ROOT`、经 PATH 解析外部命令，唯一 /nix 引用是 Bash shebang，被 normalize.go 改写为 `#!/usr/bin/env bash`。附带 `doInstallCheck=false` | 上游默认 `bats` 不再 baked 绝对 store 路径（可被 normalize 安全处理）时再评估回到 manifest | — | `packages/bats/` |
 | `cloc` | 📦 本地 | 🟡 | sibling Perl wrapper 与模块 bundling 必须保留；install check 被禁用，darwin 未验证 | 只恢复可运行的 install check | — | `packages/cloc/` |
 | `colima` | 🩹 本地 | 🟡 | darwin-only；只打 colima 本体，运行时依赖（lima/qemu/docker）按本仓库模型单独安装，故删掉 stock `wrapProgram`（会把 lima-full/qemu/docker 的 `/nix/store` 路径 baked 进 PATH，违反不变量 #1），改由用户 PATH 解析；CGO net resolver 拉入 nix-store libresolv stub，postInstall 用 `install_name_tool` 改指 `/usr/lib/libresolv.9.dylib`；shell completion 保留 | 上游提供不 baked store 路径的运行时依赖定位、且 CGO 构建只链系统 libresolv 后删除 override | 624af665418d | `packages/colima/` |
 | `curl` | 📦 本地 | ❌ | 内置 CA bundle 与相对路径 wrapper | 自包含证书定位是 packaging | — | `packages/curl/` |
