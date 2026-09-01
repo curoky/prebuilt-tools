@@ -655,7 +655,10 @@
       version = "24.11";
     };
   };
+  # shellcheck splits outputs (bin/man/doc/out); the executable lives in `bin`,
+  # so the default `out` would export an empty tree.
   shellcheck = {
+    output = [ "bin" ];
     "aarch64-darwin" = {
       version = "25.11";
     };
